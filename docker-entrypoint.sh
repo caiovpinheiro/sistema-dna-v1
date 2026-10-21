@@ -1,4 +1,4 @@
 #!/bin/sh
 set -eu
-./node_modules/.bin/prisma migrate deploy
+node scripts/migrate-production.mjs
 exec node backend/dist/server.js

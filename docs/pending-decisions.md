@@ -13,7 +13,7 @@ Itens que a V1 tratou de forma conservadora. Nenhum exige parar o desenvolviment
 
 ## Migrations
 
-O deploy executa `prisma migrate deploy` antes de subir a API. A migration `20261021183000_v1_foundation` aplica os arquivos `001` a `004`: coluna de posições, sequence de contratação, vínculo em `colaborador` e tabela de idempotência. Ela não apaga dados.
+O start do container marca `20261021180000_baseline` como já aplicada, porque a base não está vazia, e então executa `20261021183000_v1_foundation`. Essa migration aplica os arquivos `001` a `004`: coluna de posições, sequence de contratação, vínculo em `colaborador` e tabela de idempotência. Ela não apaga dados.
 
 O `005_backfill_quantidade_posicoes.sql` continua de fora. O `UPDATE` que preencheria as vagas antigas segue comentado.
 
