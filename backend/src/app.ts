@@ -1,9 +1,12 @@
 import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
+import fastifyStatic from "@fastify/static";
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
 import Fastify, { type FastifyInstance } from "fastify";
+import fs from "node:fs";
+import path from "node:path";
 import { jsonSchemaTransform, validatorCompiler, type ZodTypeProvider } from "fastify-type-provider-zod";
 import type { Pool } from "pg";
 import type { AppConfig } from "./config.js";
@@ -99,5 +102,22 @@ export async function buildApp(context: AppContext): Promise<FastifyInstance> {
   });
 
   await registerRoutes(app, context.config, services, context.db);
+  await serveFrontend(app);
   return app;
+}
+
+async function serveFrontend(app: FastifyInstance): Promise<void> {
+  const frontendDist = process.env.FRONTEND_DIST;
+  if (!frontendDist || !fs.existsSync(frontendDist)) return;
+  await app.register(fastifyStatic, { root: path.resolve(frontendDist) });
+  app.setNotFoundHandler((request, reply) => {
+    const url = request.url.split("?")[0];
+    if (request.method === "GET" && !url.startsWith("/api") && !url.startsWith("/docs")) {
+      return reply.sendFile("index.html");
+    }
+    return reply.code(404).send({
+      success: false,
+      error: { code: "NAO_ENCONTRADO", message: "Rota não encontrada." },
+    });
+  });
 }
