@@ -1,0 +1,21 @@
+{
+  "name": "dnawork",
+  "private": true,
+  "version": "1.0.0",
+  "description": "DNAWORK V1 — sistema administrativo de recrutamento e seleção",
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,web -c blue,cyan \"npm run dev -w backend\" \"npm run dev -w frontend\"",
+    "build": "npm run build -w backend && npm run build -w frontend",
+    "test": "npm run test -w backend",
+    "lint": "npm run lint -w backend && npm run lint -w frontend",
+    "db:local": "npm run db:local -w backend",
+    "hash-password": "npm run hash-password -w backend"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}
