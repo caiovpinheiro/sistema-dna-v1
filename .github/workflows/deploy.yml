@@ -32,13 +32,14 @@ jobs:
             ghcr.io/${{ github.repository }}:${{ github.sha }}
 
       - name: Disparar deploy no EasyPanel
+        continue-on-error: true
         env:
           WEBHOOK: ${{ secrets.WEBHOOK_DEPLOY_SISTEMA_DNA }}
         run: |
           if [ -z "$WEBHOOK" ]; then
-            echo "Segredo WEBHOOK_DEPLOY_SISTEMA_DNA ausente."
+            echo "Segredo WEBHOOK_DEPLOY_SISTEMA_DNA ausente. A imagem já foi publicada. Implante pelo painel."
             exit 1
           fi
-          if ! curl --fail --silent --show-error --output /dev/null --request POST "$WEBHOOK"; then
-            curl --fail --silent --show-error --output /dev/null --request GET "$WEBHOOK"
+          if ! curl --fail --silent --show-error --connect-timeout 15 --max-time 30 --output /dev/null --request POST "$WEBHOOK"; then
+            curl --fail --silent --show-error --connect-timeout 15 --max-time 30 --output /dev/null --request GET "$WEBHOOK"
           fi
