@@ -1,10 +1,11 @@
+import { verify } from "@node-rs/argon2";
 import type { FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import type { Pool } from "pg";
 import { z } from "zod";
 import type { AppConfig } from "../config.js";
 import { AppError } from "../lib/errors.js";
-import { many } from "../repositories/sql.js";
+import { many, one } from "../repositories/sql.js";
 import { candidatoCreateSchema, candidatoListSchema, candidatoPatchSchema } from "../schemas/candidato.js";
 import { contratacaoCreateSchema, contratacaoEncerrarSchema, contratacaoListSchema } from "../schemas/contratacao.js";
 import { empresaCreateSchema, empresaListSchema, empresaPatchSchema } from "../schemas/empresa.js";
@@ -42,15 +43,21 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
 
   api.post("/api/v1/auth/login", {
     config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
-    schema: { tags: ["auth"], body: z.object({ email: z.string().email(), password: z.string().min(1) }) },
+    schema: { tags: ["auth"], body: z.object({ email: z.string().trim().min(3), password: z.string().min(1) }) },
   }, async (request, reply) => {
     const body = request.body as { email: string; password: string };
-    const emailOk = body.email.toLowerCase() === config.ADMIN_EMAIL.toLowerCase();
-    const passwordOk = emailOk && await app.verifyAdminPassword(body.password);
-    if (!passwordOk) throw new AppError(401, "CREDENCIAIS_INVALIDAS", "E-mail ou senha inválidos.");
-    const token = await reply.jwtSign({ sub: "bootstrap-admin", email: config.ADMIN_EMAIL, role: "admin" });
+    const email = body.email.trim().toLowerCase();
+    const staff = await findStaff(db, email);
+    const staffOk = staff?.ativo === true && await verify(staff.senha_hash, body.password);
+    const bootstrapOk = !staff && email === config.ADMIN_EMAIL.toLowerCase() && await app.verifyAdminPassword(body.password);
+    if (!staffOk && !bootstrapOk) throw new AppError(401, "CREDENCIAIS_INVALIDAS", "E-mail ou senha inválidos.");
+    const token = await reply.jwtSign({
+      sub: staff && staffOk ? staff.id : "bootstrap-admin",
+      email: staff && staffOk ? staff.email : config.ADMIN_EMAIL,
+      role: "admin",
+    });
     reply.setCookie("dnawork_session", token, sessionCookie(config));
-    return ok({ email: config.ADMIN_EMAIL, role: "admin" });
+    return ok({ email: staff && staffOk ? staff.email : config.ADMIN_EMAIL, role: "admin", nome: staff && staffOk ? staff.nome : "Administrador" });
   });
 
   api.get("/api/v1/auth/me", { schema: { tags: ["auth"] } }, async (request) => ok({
@@ -159,5 +166,20 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
       body: contratacaoEncerrarSchema,
     },
   }, async (request) => ok(await services.contratacoes.encerrar(request.params.id, request.body)));
+}
+
+type StaffUser = { id: string; nome: string; email: string; senha_hash: string; ativo: boolean };
+
+async function findStaff(db: Pool, email: string): Promise<StaffUser | null> {
+  try {
+    return await one<StaffUser>(db, `
+      SELECT id, nome, email, senha_hash, ativo
+      FROM dna_work.app_usuario
+      WHERE lower(email) = $1
+    `, [email]);
+  } catch (error) {
+    if ((error as { code?: string }).code === "42P01") return null;
+    throw error;
+  }
 }
 

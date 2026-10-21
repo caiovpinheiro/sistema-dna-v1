@@ -1,3 +1,4 @@
+import { isoToLegacy } from "../lib/dates.js";
 import type { ContratacaoListQuery } from "../schemas/contratacao.js";
 import { many, one, REGIME_SQL, sortClause, type Db } from "./sql.js";
 
@@ -200,6 +201,9 @@ export class ContratacaoRepository {
       params.push(`%${query.regime}%`);
       where.push(`${REGIME_SQL} LIKE $${params.length}`);
     }
+    const periodo = `replace(coalesce(nullif(btrim(cv.datainicio), ''), nullif(btrim(cv.data_contratacao), '')), '-', '/')`;
+    if (query.inicio_de) add(`${periodo} >= $#`, isoToLegacy(query.inicio_de));
+    if (query.inicio_ate) add(`${periodo} <= $#`, isoToLegacy(query.inicio_ate));
     const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
     const order = query.sort
       ? sortClause(query.sort, query.order, SORTS, "cv.id_contratacao")

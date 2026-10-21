@@ -21,7 +21,7 @@ export function ContratacoesPage() {
         <div><h1 className="text-2xl font-extrabold">Contratações</h1><p className="text-sm text-slate-500">Todo vínculo nasce de uma vaga existente.</p></div>
         <Link to="/contratacoes/nova"><Button>Nova contratação</Button></Link>
       </div>
-      <Card className="grid gap-3 md:grid-cols-4">
+      <Card className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
         <Input aria-label="Busca" placeholder="Candidato, empresa ou cargo" defaultValue={params.get("q") ?? ""} onBlur={(event) => update("q", event.target.value)} />
         <Select aria-label="Regime" defaultValue={params.get("regime") ?? ""} onChange={(event) => update("regime", event.target.value)}>
           <option value="">Regime</option><option value="clt">CLT</option><option value="estagio">Estágio</option>
@@ -29,6 +29,8 @@ export function ContratacoesPage() {
         <Select aria-label="Status" defaultValue={params.get("status") ?? ""} onChange={(event) => update("status", event.target.value)}>
           <option value="">Status</option><option value="1">Ativa</option><option value="2">Encerrada</option>
         </Select>
+        <Input aria-label="Início de" type="date" defaultValue={params.get("inicio_de") ?? ""} onChange={(event) => update("inicio_de", event.target.value)} />
+        <Input aria-label="Início até" type="date" defaultValue={params.get("inicio_ate") ?? ""} onChange={(event) => update("inicio_ate", event.target.value)} />
       </Card>
       {result.isLoading ? <Skeleton className="h-64" /> : result.isError ? <p className="text-rose-600">Erro ao pesquisar contratações.</p> : result.data?.data.length ? (
         <Card className="overflow-x-auto p-0">
@@ -47,7 +49,7 @@ export function ContratacoesPage() {
               ))}
             </tbody>
           </table>
-          <p className="px-4 py-3 text-xs text-slate-500">{result.data.meta?.total ?? 0} registros</p>
+          <p className="px-4 py-3 text-sm font-semibold text-slate-700">{result.data.meta?.total ?? 0} contratações</p>
         </Card>
       ) : <Empty title="Nenhuma contratação" text="Registre um vínculo a partir de uma vaga com posição livre." />}
     </div>

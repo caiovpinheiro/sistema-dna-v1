@@ -157,6 +157,15 @@ CREATE TABLE IF NOT EXISTS dna_work.colaborador (
 CREATE INDEX IF NOT EXISTS colaborador__id_colaborador ON dna_work.colaborador USING btree (id_colaborador);
 CREATE INDEX IF NOT EXISTS colaborador__id_contratacao ON dna_work.colaborador USING btree (id_contratacao);
 
+CREATE TABLE IF NOT EXISTS dna_work.app_usuario (
+  id uuid PRIMARY KEY,
+  nome character varying(160) NOT NULL,
+  email character varying(160) NOT NULL UNIQUE,
+  senha_hash character varying(255) NOT NULL,
+  ativo boolean NOT NULL DEFAULT true,
+  criado_em timestamp without time zone NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS dna_work.api_idempotencia (
   chave character varying(120) PRIMARY KEY,
   request_hash character varying(128) NOT NULL,

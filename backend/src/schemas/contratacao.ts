@@ -21,6 +21,8 @@ export const contratacaoListSchema = z.object({
   id_candidato: z.string().trim().optional(),
   regime: z.enum(["clt", "estagio"]).optional(),
   status: z.coerce.number().int().optional(),
+  inicio_de: isoDateSchema.optional(),
+  inicio_ate: isoDateSchema.optional(),
 });
 
 export type ContratacaoCreate = z.infer<typeof contratacaoCreateSchema>;
