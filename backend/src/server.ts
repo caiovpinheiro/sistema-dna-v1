@@ -10,7 +10,8 @@ if (capabilities.missing.length) {
   console.warn(`Migrations da V1 ainda não aplicadas: ${capabilities.missing.join(", ")}`);
 }
 const app = await buildApp({ config, db, capabilities });
-await app.listen({ port: config.PORT, host: config.HOST });
+const host = process.env.NODE_ENV === "production" ? "0.0.0.0" : config.HOST;
+await app.listen({ port: config.PORT, host });
 
 const shutdown = async () => {
   await app.close();
