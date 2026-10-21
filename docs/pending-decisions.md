@@ -1,6 +1,6 @@
 # Decisões em aberto
 
-Itens que a V1 tratou de forma conservadora. Nenhum exige parar o desenvolvimento local. A aplicação na base atual depende da aprovação das migrations.
+Itens que a V1 tratou de forma conservadora. Nenhum exige parar o desenvolvimento local.
 
 ## Precisam de confirmação do negócio
 
@@ -11,15 +11,13 @@ Itens que a V1 tratou de forma conservadora. Nenhum exige parar o desenvolviment
 5. **Candidato sem CPF.** 64.088 registros antigos não têm CPF. O cadastro novo exige CPF válido.
 6. **Backfill de `quantidade_posicoes`.** A sugestão comentada em `005` iguala a quantidade aos contratos ativos, deixando essas vagas preenchidas. Vagas sem contrato ficam `NULL` e não aceitam contratação até alguém definir a quantidade. `limcand` não deve ser copiado.
 
-## Migrations ainda não aplicadas
+## Migrations
 
-Não executar na base atual sem autorização:
+O deploy executa `prisma migrate deploy` antes de subir a API. A migration `20261021183000_v1_foundation` aplica os arquivos `001` a `004`: coluna de posições, sequence de contratação, vínculo em `colaborador` e tabela de idempotência. Ela não apaga dados.
 
-- `001_vaga_quantidade_posicoes.sql`
-- `002_conratacaovaga_sequence.sql`
-- `003_colaborador_id_contratacao.sql`
-- `004_api_idempotencia.sql`
-- `005_backfill_quantidade_posicoes.sql` contém o diagnóstico e um `UPDATE` comentado.
+O `005_backfill_quantidade_posicoes.sql` continua de fora. O `UPDATE` que preencheria as vagas antigas segue comentado.
+
+Não usar `prisma db push` nem `prisma migrate dev` na base atual. O `schema.prisma` não descreve as tabelas legadas.
 
 ## Fora desta versão
 

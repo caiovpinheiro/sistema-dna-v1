@@ -2,7 +2,7 @@
 
 Sistema administrativo de recrutamento e seleção. O frontend React conversa com a API Fastify, e a API conversa com o schema `dna_work`. Esta versão cobre candidato, empresa, vaga e contratação CLT/estágio.
 
-A base atual não é alterada por estes comandos. Testes sobem um PostgreSQL local, vazio. As migrations em `database/migrations` ficam para aprovação.
+Os comandos locais não alteram a base atual. Testes sobem um PostgreSQL local, vazio. No deploy, o container executa `prisma migrate deploy` antes de iniciar a API.
 
 ## Requisitos
 
@@ -89,8 +89,8 @@ npm run build
 
 1. Revogar o token e trocar a senha que foram expostos fora do repositório.
 2. Ler `docs/database-audit.md` e `docs/pending-decisions.md`.
-3. Aprovar e aplicar, manualmente, as migrations `001` a `004`.
+3. O deploy aplica sozinho a migration `20261021183000_v1_foundation`, equivalente aos arquivos `001` a `004`.
 4. Decidir o backfill da `005`. Sem `quantidade_posicoes`, vaga antiga não aceita contratação.
 5. Confirmar `VAGA_STATUS_BLOQUEADAS` e `ALLOW_MULTIPLE_ACTIVE_LINKS`.
 
-Não há deploy nem publicação neste repositório.
+O GitHub Actions publica a imagem e chama o webhook do EasyPanel. O container aplica as migrations pendentes e só então sobe a API.
