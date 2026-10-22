@@ -26,6 +26,7 @@ COPY prisma ./prisma
 COPY templates ./templates
 COPY scripts/migrate-production.mjs ./scripts/migrate-production.mjs
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
-RUN chmod +x docker-entrypoint.sh
+RUN chmod +x docker-entrypoint.sh && mkdir -p /app/data/tces && chmod 777 /app/data/tces
+ENV PDF_STORAGE_DIR=/app/data/tces
 EXPOSE 3333
 ENTRYPOINT ["./docker-entrypoint.sh"]

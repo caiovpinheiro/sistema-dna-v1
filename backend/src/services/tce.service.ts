@@ -1,4 +1,6 @@
 import fs from "node:fs/promises";
+import { constants as fsConstants } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type { Pool } from "pg";
@@ -6,7 +8,7 @@ import type { AppConfig } from "../config.js";
 import { AppError } from "../lib/errors.js";
 import { getEscola, mensagemEscola, searchEscolas } from "../lib/escolas.js";
 import { getEmpresaCadastro, listEmpresasCadastro } from "../lib/supabase-empresas.js";
-import { fillTceTemplate, storageDir } from "../lib/tce-pdf.js";
+import { fillTceTemplate } from "../lib/tce-pdf.js";
 import { APOLICE_SEGURO, CAMPOS_DATA, dataParaPdf, emptyManual, ESCOLA_KEYS, type Concedente, type ManualData } from "../lib/tce-fields.js";
 import { criarDocumentoZapSign } from "../lib/zapsign.js";
 import type { TermoService } from "./termo.service.js";
@@ -55,12 +57,12 @@ export class TceService {
       cep: input.concedente.cep || empresa.cep,
       cidade: input.concedente.cidade || empresa.cidade,
       estado: input.concedente.estado || empresa.estado,
-      email: (input.concedente.email || empresa.email).trim().toLowerCase(),
+      email: texto(input.concedente.email || empresa.email).toLowerCase(),
       representante: input.concedente.representante || empresa.representante,
     };
-    if (!campos.nome.trim()) throw new AppError(422, "NOME_OBRIGATORIO", "Nome do candidato é obrigatório.");
+    if (!texto(campos.nome)) throw new AppError(422, "NOME_OBRIGATORIO", "Nome do candidato é obrigatório.");
     for (const key of CAMPOS_DATA) {
-      const value = campos[key].trim();
+      const value = texto(campos[key]);
       if (!value) continue;
       const partes = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
       const data = partes ? new Date(Number(partes[1]), Number(partes[2]) - 1, Number(partes[3])) : null;
@@ -70,6 +72,7 @@ export class TceService {
     }
 
     const id = randomUUID();
+    const dir = await pastaGravavel(this.config.PDF_STORAGE_DIR);
     const pdf = await fillTceTemplate({
       concedente_razao_social: concedente.razao_social,
       concedente_cnpj: concedente.cnpj,
@@ -81,16 +84,15 @@ export class TceService {
       concedente_representante: concedente.representante,
       ...campos,
     });
-    const dir = storageDir(this.config.PDF_STORAGE_DIR);
-    await fs.mkdir(dir, { recursive: true });
     const filename = `${id}.pdf`;
-    await fs.writeFile(path.join(dir, filename), pdf);
-
     try {
+      await fs.writeFile(path.join(dir, filename), pdf);
+      const candidatoNome = limite(campos.nome);
+      const empresaNome = limite(concedente.razao_social);
       await this.db.query(`
         INSERT INTO public.tces (id, empresa_id, empresa_nome, candidato_nome, payload, pdf_path, status)
         VALUES ($1, $2, $3, $4, $5::jsonb, $6, 'generated')
-      `, [id, empresa.id, concedente.razao_social, campos.nome, JSON.stringify({ campos, empresa: concedente }), filename]);
+      `, [id, empresa.id, empresaNome, candidatoNome, JSON.stringify({ campos, empresa: concedente }), filename]);
 
       await this.db.query(`
         INSERT INTO dna_work.termo_estagio
@@ -98,17 +100,17 @@ export class TceService {
         VALUES ($1, NULL, $2, 'gerado', $3::jsonb, $1, $4, $5)
       `, [
         id,
-        `TCE - ${campos.nome}`.slice(0, 200),
+        `TCE - ${candidatoNome}`.slice(0, 200),
         JSON.stringify(signatariosDe(campos, concedente)),
-        campos.nome,
-        concedente.razao_social,
+        candidatoNome,
+        empresaNome,
       ]);
+      return await this.termos.get(id);
     } catch (error) {
       await fs.unlink(path.join(dir, filename)).catch(() => undefined);
       await this.db.query("DELETE FROM public.tces WHERE id = $1", [id]).catch(() => undefined);
-      throw error;
+      throw erroGravacao(error);
     }
-    return this.termos.get(id);
   }
 
   async lerPdf(id: string): Promise<Buffer> {
@@ -117,7 +119,7 @@ export class TceService {
     if (!filename) throw new AppError(404, "NAO_ENCONTRADO", "PDF do TCE não encontrado.");
     const safe = path.basename(filename);
     try {
-      return await fs.readFile(path.join(storageDir(this.config.PDF_STORAGE_DIR), safe));
+      return await fs.readFile(path.join(await pastaGravavel(this.config.PDF_STORAGE_DIR), safe));
     } catch {
       throw new AppError(404, "NAO_ENCONTRADO", "PDF do TCE não encontrado.");
     }
@@ -167,12 +169,49 @@ export class TceService {
   }
 }
 
+function texto(value: string | null | undefined) {
+  return (value ?? "").trim();
+}
+
+function limite(value: string, max = 200) {
+  return texto(value).slice(0, max);
+}
+
+let pastaPdf: string | null = null;
+
+async function pastaGravavel(configured: string): Promise<string> {
+  if (pastaPdf) return pastaPdf;
+  const candidatas = [configured || path.join(process.cwd(), "data", "tces"), path.join(os.tmpdir(), "dnawork-tces")];
+  for (const dir of candidatas) {
+    try {
+      await fs.mkdir(dir, { recursive: true });
+      await fs.access(dir, fsConstants.W_OK);
+      pastaPdf = dir;
+      return dir;
+    } catch {
+      continue;
+    }
+  }
+  throw new AppError(500, "PDF_SEM_PASTA", "O servidor não conseguiu gravar o PDF do TCE.");
+}
+
+function erroGravacao(error: unknown): AppError {
+  if (error instanceof AppError) return error;
+  const pg = error as { code?: string; message?: string };
+  if (pg.code === "42P01" || pg.code === "42703" || pg.code === "23502") {
+    return new AppError(500, "TCE_SCHEMA", "O banco ainda não está pronto para gravar o TCE. Reinicie o serviço para aplicar a atualização.");
+  }
+  if (pg.code === "22001") return new AppError(422, "TEXTO_LONGO", "Um dos textos passou do limite aceito pelo banco.");
+  const detalhe = pg.message?.split("\n")[0]?.slice(0, 180);
+  return new AppError(500, "TCE_GRAVACAO", detalhe ? `Não foi possível gravar o TCE. ${detalhe}` : "Não foi possível gravar o TCE.");
+}
+
 function signatariosDe(campos: ManualData, concedente: Concedente) {
   const lista = [
-    { nome: campos.nome, email: campos.email.trim().toLowerCase(), status: "pendente", url: null as string | null },
-    { nome: concedente.representante || concedente.razao_social, email: concedente.email.trim().toLowerCase(), status: "pendente", url: null },
+    { nome: campos.nome, email: texto(campos.email).toLowerCase(), status: "pendente", url: null as string | null },
+    { nome: concedente.representante || concedente.razao_social, email: texto(concedente.email).toLowerCase(), status: "pendente", url: null },
   ];
-  const escolaEmail = campos.escola_email.trim().toLowerCase();
+  const escolaEmail = texto(campos.escola_email).toLowerCase();
   if (escolaEmail) lista.push({ nome: campos.nome_escola || "Instituição de ensino", email: escolaEmail, status: "pendente", url: null });
   return lista;
 }
