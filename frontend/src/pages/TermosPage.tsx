@@ -1,8 +1,7 @@
-import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
 import { GeradorTce } from "@/components/gerador-tce";
-import { Badge, Button, Card, Empty, Skeleton } from "@/components/ui";
+import { Badge, Card, Empty, Skeleton } from "@/components/ui";
 import { api } from "@/lib/api";
 
 type Termo = {
@@ -22,8 +21,19 @@ const labels: Record<string, string> = {
   cancelado: "Cancelado",
 };
 
+export function GerarTcePage() {
+  return (
+    <div className="grid gap-5">
+      <div>
+        <h1 className="text-2xl font-extrabold">Gerar TCE</h1>
+        <p className="text-sm text-slate-500">Preencha o termo e envie para assinatura na ZapSign.</p>
+      </div>
+      <Card><GeradorTce /></Card>
+    </div>
+  );
+}
+
 export function TermosPage() {
-  const [aberto, setAberto] = useState(false);
   const [params, setParams] = useSearchParams();
   const status = params.get("status") ?? "";
   const query = useQuery({
@@ -36,10 +46,6 @@ export function TermosPage() {
       <div>
         <h1 className="text-2xl font-extrabold">Termos de estágio</h1>
         <p className="text-sm text-slate-500">Documentos enviados à ZapSign e os que já foram assinados.</p>
-      </div>
-      <div>
-        <Button type="button" variant="secondary" onClick={() => setAberto((value) => !value)}>{aberto ? "Fechar gerador" : "Gerar TCE"}</Button>
-        {aberto ? <Card className="mt-3"><GeradorTce /></Card> : null}
       </div>
       <div className="flex flex-wrap gap-2">
         {["", "enviado", "assinado", "recusado"].map((value) => (

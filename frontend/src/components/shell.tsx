@@ -12,7 +12,11 @@ const items = [
 
 const afterVagas = [
   { to: "/contratacoes", label: "Contratações", icon: Handshake },
-  { to: "/termos", label: "Termos", icon: FileSignature },
+];
+
+const termoLinks: Array<{ to: string; label: string; end?: boolean }> = [
+  { to: "/termos", label: "Consultar", end: true },
+  { to: "/termos/gerar", label: "Gerar TCE" },
 ];
 
 const vagaLinks: Array<{ to: string; label: string; end?: boolean }> = [
@@ -78,6 +82,7 @@ export function Shell({ email, notify }: { email: string; notify: (message: stri
   const comissaoActive = pathname.startsWith("/financeiro/comissao");
   const vagaActive = pathname.startsWith("/vagas");
   const instituicaoActive = pathname.startsWith("/instituicoes");
+  const termoActive = pathname.startsWith("/termos");
   const linkClass = ({ isActive }: { isActive: boolean }) => cn("flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold", isActive ? "bg-white/10 text-white" : "text-slate-300 hover:bg-white/5 hover:text-white");
 
   async function logout() {
@@ -99,6 +104,7 @@ export function Shell({ email, notify }: { email: string; notify: (message: stri
           <item.icon size={18} /> {item.label}
         </NavLink>
       ))}
+      <SideGroup label="Termos" icon={FileSignature} active={termoActive} links={termoLinks} onNavigate={() => setOpen(false)} />
       <SideGroup label="Instituições" icon={GraduationCap} active={instituicaoActive} links={instituicaoLinks} onNavigate={() => setOpen(false)} />
       <SideGroup label="Financeiro" icon={Wallet} active={financeiroActive} links={financeLinks} onNavigate={() => setOpen(false)} />
       <SideGroup label="Comissão" icon={Percent} active={comissaoActive} links={comissaoLinks} onNavigate={() => setOpen(false)} />

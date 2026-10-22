@@ -19,7 +19,7 @@ import { NovaContratacaoPage } from "@/pages/NovaContratacaoPage";
 import { VagaDetailPage } from "@/pages/VagaDetailPage";
 import { VagaFormPage } from "@/pages/VagaFormPage";
 import { TermoDetailPage } from "@/pages/TermoDetailPage";
-import { TermosPage } from "@/pages/TermosPage";
+import { GerarTcePage, TermosPage } from "@/pages/TermosPage";
 import { VagasPage } from "@/pages/VagasPage";
 
 const client = new QueryClient({ defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } } });
@@ -68,6 +68,7 @@ export function App() {
             <Route path="/contratacoes/nova" element={<NovaContratacaoPage />} />
             <Route path="/contratacoes/:id" element={<ContratacaoDetailPage />} />
             <Route path="/termos" element={<TermosPage />} />
+            <Route path="/termos/gerar" element={<GerarTcePage />} />
             <Route path="/termos/:id" element={<TermoDetailPage />} />
             <Route path="/financeiro/faturamento" element={<GerarFaturamentoPage />} />
             <Route path="/financeiro/contas-a-receber" element={<ContasReceberPage />} />
