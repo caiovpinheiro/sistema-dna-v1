@@ -97,13 +97,14 @@ export class TceService {
       await this.db.query(`
         INSERT INTO dna_work.termo_estagio
           (id, id_contratacao, nome, status, signatarios, tce_id, candidato_nome, empresa_nome)
-        VALUES ($1, NULL, $2, 'gerado', $3::jsonb, $1, $4, $5)
+        VALUES ($1::uuid, NULL, $2, 'gerado', $3::jsonb, $6::text, $4, $5)
       `, [
         id,
         `TCE - ${candidatoNome}`.slice(0, 200),
         JSON.stringify(signatariosDe(campos, concedente)),
         candidatoNome,
         empresaNome,
+        id,
       ]);
       return await this.termos.get(id);
     } catch (error) {
