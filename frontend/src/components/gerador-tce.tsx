@@ -21,9 +21,9 @@ type Escola = { id: string; rotulo: string; campos: Record<string, string> };
 
 const APOLICE = "Apólice Coletiva nº 09820055561928 da Porto Seguro";
 
-const CAMPOS: Array<{ key: string; label: string; section: string; full?: boolean; multiline?: boolean; placeholder?: string }> = [
+const CAMPOS: Array<{ key: string; label: string; section: string; full?: boolean; multiline?: boolean; placeholder?: string; date?: boolean }> = [
   { key: "nome", label: "Nome completo", section: "candidato" },
-  { key: "data_nascimento", label: "Data de nascimento", section: "candidato", placeholder: "dd/mm/aaaa" },
+  { key: "data_nascimento", label: "Data de nascimento", section: "candidato", date: true },
   { key: "cpf", label: "CPF", section: "candidato" },
   { key: "rg", label: "RG", section: "candidato" },
   { key: "email", label: "E-mail", section: "candidato" },
@@ -38,7 +38,7 @@ const CAMPOS: Array<{ key: string; label: string; section: string; full?: boolea
   { key: "turno", label: "Turno", section: "candidato" },
   { key: "tipo_estagio", label: "Tipo de estágio", section: "candidato", placeholder: "Obrigatório ou não obrigatório" },
   { key: "nome_responsavel", label: "Nome", section: "responsavel" },
-  { key: "nascimento_responsavel", label: "Data de nascimento", section: "responsavel", placeholder: "dd/mm/aaaa" },
+  { key: "nascimento_responsavel", label: "Data de nascimento", section: "responsavel", date: true },
   { key: "cpf_responsavel", label: "CPF", section: "responsavel" },
   { key: "rg_responsavel", label: "RG", section: "responsavel" },
   { key: "email_responsavel", label: "E-mail", section: "responsavel" },
@@ -56,8 +56,8 @@ const CAMPOS: Array<{ key: string; label: string; section: string; full?: boolea
   { key: "escola_cidade", label: "Cidade", section: "escola" },
   { key: "escola_estado", label: "Estado", section: "escola", placeholder: "UF" },
   { key: "emissao_cidade_data", label: "Cidade e data de emissão", section: "estagio", full: true },
-  { key: "estagio_inicio", label: "Início", section: "estagio", placeholder: "dd/mm/aaaa" },
-  { key: "estagio_termino", label: "Término", section: "estagio", placeholder: "dd/mm/aaaa" },
+  { key: "estagio_inicio", label: "Início", section: "estagio", date: true },
+  { key: "estagio_termino", label: "Término", section: "estagio", date: true },
   { key: "carga_horaria_diaria", label: "Carga horária diária", section: "estagio" },
   { key: "carga_horaria_semanal", label: "Carga horária semanal", section: "estagio" },
   { key: "jornada", label: "Jornada", section: "estagio" },
@@ -65,7 +65,7 @@ const CAMPOS: Array<{ key: string; label: string; section: string; full?: boolea
   { key: "bolsa", label: "Bolsa", section: "estagio" },
   { key: "beneficios", label: "Benefícios", section: "estagio" },
   { key: "seguro_apolice", label: "Apólice de seguro", section: "estagio", full: true },
-  { key: "data_termo_aditivo", label: "Data do termo aditivo", section: "estagio" },
+  { key: "data_termo_aditivo", label: "Data do termo aditivo", section: "estagio", date: true },
   { key: "plano_atividades", label: "Plano de atividades", section: "estagio", full: true, multiline: true },
 ];
 
@@ -199,7 +199,7 @@ export function GeradorTce() {
                 {field.multiline ? (
                   <Textarea rows={6} value={campos[field.key] ?? ""} onChange={(event) => setCampos((atual) => ({ ...atual, [field.key]: event.target.value }))} />
                 ) : (
-                  <Input readOnly={field.key === "seguro_apolice"} placeholder={field.placeholder} value={field.key === "seguro_apolice" ? APOLICE : campos[field.key] ?? ""} onChange={(event) => setCampos((atual) => ({ ...atual, [field.key]: event.target.value }))} />
+                  <Input type={field.date ? "date" : "text"} readOnly={field.key === "seguro_apolice"} placeholder={field.placeholder} value={field.key === "seguro_apolice" ? APOLICE : campos[field.key] ?? ""} onChange={(event) => setCampos((atual) => ({ ...atual, [field.key]: event.target.value }))} />
                 )}
               </Field>
             </div>

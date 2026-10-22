@@ -30,6 +30,20 @@ export type Concedente = {
   representante: string;
 };
 
+export const CAMPOS_DATA: ManualKey[] = [
+  "data_nascimento",
+  "nascimento_responsavel",
+  "estagio_inicio",
+  "estagio_termino",
+  "data_termo_aditivo",
+];
+
+export function dataParaPdf(value: string): string {
+  const iso = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!iso) return value;
+  return `${iso[3]}/${iso[2]}/${iso[1]}`;
+}
+
 export function emptyManual(): ManualData {
   const data = {} as ManualData;
   for (const key of MANUAL_FIELDS) data[key] = "";

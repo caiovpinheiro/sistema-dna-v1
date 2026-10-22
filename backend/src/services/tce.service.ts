@@ -7,7 +7,7 @@ import { AppError } from "../lib/errors.js";
 import { getEscola, mensagemEscola, searchEscolas } from "../lib/escolas.js";
 import { getEmpresaCadastro, listEmpresasCadastro } from "../lib/supabase-empresas.js";
 import { fillTceTemplate, storageDir } from "../lib/tce-pdf.js";
-import { APOLICE_SEGURO, emptyManual, ESCOLA_KEYS, type Concedente, type ManualData } from "../lib/tce-fields.js";
+import { APOLICE_SEGURO, CAMPOS_DATA, dataParaPdf, emptyManual, ESCOLA_KEYS, type Concedente, type ManualData } from "../lib/tce-fields.js";
 import { criarDocumentoZapSign } from "../lib/zapsign.js";
 import type { TermoService } from "./termo.service.js";
 
@@ -59,6 +59,15 @@ export class TceService {
       representante: input.concedente.representante || empresa.representante,
     };
     if (!campos.nome.trim()) throw new AppError(422, "NOME_OBRIGATORIO", "Nome do candidato é obrigatório.");
+    for (const key of CAMPOS_DATA) {
+      const value = campos[key].trim();
+      if (!value) continue;
+      const partes = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      const data = partes ? new Date(Number(partes[1]), Number(partes[2]) - 1, Number(partes[3])) : null;
+      const valida = Boolean(partes && data && data.getFullYear() === Number(partes[1]) && data.getMonth() === Number(partes[2]) - 1 && data.getDate() === Number(partes[3]));
+      if (!valida) throw new AppError(422, "DATA_INVALIDA", "Informe uma data válida.");
+      campos[key] = dataParaPdf(value);
+    }
 
     const id = randomUUID();
     const pdf = await fillTceTemplate({
