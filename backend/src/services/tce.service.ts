@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import type { Pool } from "pg";
 import type { AppConfig } from "../config.js";
 import { AppError } from "../lib/errors.js";
-import { getEscola, mensagemEscola, searchEscolas } from "../lib/escolas-mysql.js";
+import { getEscola, mensagemEscola, searchEscolas } from "../lib/escolas.js";
 import { getEmpresaCadastro, listEmpresasCadastro } from "../lib/supabase-empresas.js";
 import { fillTceTemplate, storageDir } from "../lib/tce-pdf.js";
 import { APOLICE_SEGURO, emptyManual, ESCOLA_KEYS, type Concedente, type ManualData } from "../lib/tce-fields.js";
@@ -31,7 +31,7 @@ export class TceService {
 
   async buscarEscolas(termo: string) {
     try {
-      return { opcoes: await searchEscolas(this.config, termo), erro: "" };
+      return { opcoes: await searchEscolas(this.db, termo), erro: "" };
     } catch (error) {
       return { opcoes: [], erro: mensagemEscola(error) };
     }
@@ -42,7 +42,7 @@ export class TceService {
     if (!empresa) throw new AppError(404, "NAO_ENCONTRADO", "Empresa não encontrada.");
     const campos = { ...input.campos, seguro_apolice: APOLICE_SEGURO };
     if (input.escolaId) {
-      const escola = await getEscola(this.config, input.escolaId);
+      const escola = await getEscola(this.db, input.escolaId);
       if (!escola) throw new AppError(404, "NAO_ENCONTRADO", "Escola não encontrada.");
       for (const key of ESCOLA_KEYS) {
         if (!campos[key]) campos[key] = escola.campos[key];

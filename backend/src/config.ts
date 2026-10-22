@@ -33,11 +33,6 @@ const envSchema = z.object({
   ZAPSIGN_API_URL: z.string().optional().default("https://api.zapsign.com.br"),
   SUPABASE_URL: z.string().optional().default(""),
   SUPABASE_SERVICE_ROLE_KEY: z.string().optional().default(""),
-  MYSQL_HOST: z.string().optional().default(""),
-  MYSQL_PORT: z.string().optional().default("3306"),
-  MYSQL_USER: z.string().optional().default(""),
-  MYSQL_PASSWORD: z.string().optional().default(""),
-  MYSQL_DATABASE: z.string().optional().default(""),
   PDF_STORAGE_DIR: z.string().optional().default(""),
 });
 

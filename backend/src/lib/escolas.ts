@@ -1,10 +1,9 @@
-import mysql from "mysql2/promise";
-import type { AppConfig } from "../config.js";
+import type { Pool } from "pg";
 import { AppError } from "./errors.js";
 import { ESCOLA_KEYS } from "./tce-fields.js";
 
-type InstituicaoRow = mysql.RowDataPacket & {
-  id_instiduicao: string;
+type InstituicaoRow = {
+  id_instiduicao: string | number;
   razao_social: string | null;
   nome_fantasia: string | null;
   cnpj: string | null;
@@ -29,10 +28,8 @@ export type EscolaOpcao = {
 const SELECT = `
   SELECT id_instiduicao, razao_social, nome_fantasia, cnpj, email, logradouro, numero,
          complemento, bairro, cidade, uf, cep, representante_legal, responsavel
-  FROM instituicao
+  FROM dna_work.instituicao
 `;
-
-let pool: mysql.Pool | null = null;
 
 function text(value: unknown) {
   if (typeof value === "string") return value.trim();
@@ -54,6 +51,10 @@ function formatCep(value: string) {
   const raw = digits(value);
   if (raw.length !== 8) return value;
   return raw.replace(/^(\d{5})(\d{3})$/, "$1-$2");
+}
+
+function semAcento(value: string) {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 }
 
 function mapRow(row: InstituicaoRow): EscolaOpcao {
@@ -86,53 +87,49 @@ function mapRow(row: InstituicaoRow): EscolaOpcao {
   };
 }
 
-function getPool(config: AppConfig) {
-  if (!config.MYSQL_HOST || !config.MYSQL_USER || !config.MYSQL_PASSWORD || !config.MYSQL_DATABASE) {
-    throw new AppError(503, "ESCOLAS_NAO_CONFIGURADAS", "Defina MYSQL_HOST, MYSQL_USER, MYSQL_PASSWORD e MYSQL_DATABASE no ambiente.");
+function falha(error: unknown): never {
+  const code = typeof error === "object" && error && "code" in error ? String(error.code) : "";
+  if (code === "42P01") {
+    throw new AppError(503, "ESCOLAS_INDISPONIVEIS", "A tabela de instituições não está no PostgreSQL atual.");
   }
-  if (!pool) {
-    pool = mysql.createPool({
-      host: config.MYSQL_HOST,
-      port: Number(config.MYSQL_PORT || 3306),
-      user: config.MYSQL_USER,
-      password: config.MYSQL_PASSWORD,
-      database: config.MYSQL_DATABASE,
-      ssl: { rejectUnauthorized: false },
-      connectTimeout: 10000,
-      connectionLimit: 4,
-    });
+  if (code === "42703") {
+    throw new AppError(503, "ESCOLAS_INDISPONIVEIS", "A tabela de instituições não tem as colunas esperadas.");
   }
-  return pool;
+  throw error;
 }
 
 export function mensagemEscola(error: unknown) {
   if (error instanceof AppError) return error.message;
-  const code = typeof error === "object" && error && "code" in error ? String(error.code) : "";
-  if (code === "ETIMEDOUT" || code === "ECONNREFUSED" || code === "ENOTFOUND") {
-    return "O servidor não alcança o cadastro de escolas.";
-  }
   return "Não foi possível buscar as escolas.";
 }
 
-export async function searchEscolas(config: AppConfig, termo: string): Promise<EscolaOpcao[]> {
+export async function searchEscolas(db: Pool, termo: string): Promise<EscolaOpcao[]> {
   const consulta = termo.trim();
   if (consulta.length < 2) return [];
   const like = `%${consulta.replace(/[%_]/g, "")}%`;
-  const semAcento = `%${consulta.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[%_]/g, "")}%`;
-  const [rows] = await getPool(config).query<InstituicaoRow[]>(
-    `${SELECT}
-     WHERE razao_social LIKE ? OR nome_fantasia LIKE ? OR razao_sem_acento LIKE ?
-        OR fantasia_sem_acento LIKE ? OR cnpj LIKE ?
-     ORDER BY nome_fantasia ASC
-     LIMIT 15`,
-    [like, like, semAcento, semAcento, like],
-  );
-  return rows.map(mapRow);
+  const acento = `%${semAcento(consulta).replace(/[%_]/g, "")}%`;
+  try {
+    const result = await db.query<InstituicaoRow>(`
+      ${SELECT}
+      WHERE razao_social ILIKE $1 OR nome_fantasia ILIKE $1 OR cnpj ILIKE $1
+         OR translate(lower(coalesce(razao_social, '')), 'áàãâäéèêëíìîïóòõôöúùûüç', 'aaaaaeeeeiiiioooooouuuuc') ILIKE $2
+         OR translate(lower(coalesce(nome_fantasia, '')), 'áàãâäéèêëíìîïóòõôöúùûüç', 'aaaaaeeeeiiiioooooouuuuc') ILIKE $2
+      ORDER BY nome_fantasia ASC
+      LIMIT 15
+    `, [like, acento]);
+    return result.rows.map(mapRow);
+  } catch (error) {
+    falha(error);
+  }
 }
 
-export async function getEscola(config: AppConfig, id: string): Promise<EscolaOpcao | null> {
+export async function getEscola(db: Pool, id: string): Promise<EscolaOpcao | null> {
   const clean = id.trim();
   if (!clean || clean.length > 255) return null;
-  const [rows] = await getPool(config).query<InstituicaoRow[]>(`${SELECT} WHERE id_instiduicao = ? LIMIT 1`, [clean]);
-  return rows[0] ? mapRow(rows[0]) : null;
+  try {
+    const result = await db.query<InstituicaoRow>(`${SELECT} WHERE id_instiduicao::text = $1 LIMIT 1`, [clean]);
+    return result.rows[0] ? mapRow(result.rows[0]) : null;
+  } catch (error) {
+    falha(error);
+  }
 }
