@@ -15,6 +15,7 @@ import type { CandidatoService } from "../services/candidato.service.js";
 import type { ContratacaoService } from "../services/contratacao.service.js";
 import type { DashboardService } from "../services/dashboard.service.js";
 import type { EmpresaService } from "../services/empresa.service.js";
+import type { TermoService } from "../services/termo.service.js";
 import type { VagaService } from "../services/vaga.service.js";
 import { sessionCookie } from "../plugins/auth.js";
 
@@ -27,6 +28,7 @@ type Services = {
   vagas: VagaService;
   contratacoes: ContratacaoService;
   dashboard: DashboardService;
+  termos: TermoService;
 };
 
 function idempotencyKey(header: string | string[] | undefined): string {
@@ -166,6 +168,20 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
       body: contratacaoEncerrarSchema,
     },
   }, async (request) => ok(await services.contratacoes.encerrar(request.params.id, request.body)));
+
+  api.get("/api/v1/termos", {
+    schema: { tags: ["termos"], querystring: z.object({ status: z.enum(["enviado", "assinado", "recusado", "cancelado"]).optional() }) },
+  }, async (request) => ok(await services.termos.list(request.query.status)));
+  api.get("/api/v1/termos/:id", {
+    schema: { tags: ["termos"], params: z.object({ id: z.string().uuid() }) },
+  }, async (request) => ok(await services.termos.get(request.params.id)));
+  api.post("/api/v1/termos", {
+    schema: { tags: ["termos"], body: z.object({ id_contratacao: z.number().int().positive() }) },
+  }, async (request, reply) => reply.code(201).send(ok(await services.termos.criar(request.body.id_contratacao))));
+  api.post("/api/v1/zapsign/webhook", async (request) => {
+    const payload = request.body && typeof request.body === "object" ? request.body as Record<string, unknown> : {};
+    return ok(await services.termos.receberWebhook(payload));
+  });
 }
 
 type StaffUser = { id: string; nome: string; email: string; senha_hash: string; ativo: boolean };

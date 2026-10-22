@@ -1,4 +1,4 @@
-import { Briefcase, Building2, Handshake, LayoutDashboard, LogOut, Menu, Search, Users, X } from "lucide-react";
+import { Briefcase, Building2, FileSignature, Handshake, LayoutDashboard, LogOut, Menu, Search, Users, X } from "lucide-react";
 import { useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
@@ -10,6 +10,7 @@ const items = [
   { to: "/empresas", label: "Empresas", icon: Building2 },
   { to: "/vagas", label: "Vagas", icon: Briefcase },
   { to: "/contratacoes", label: "Contratações", icon: Handshake },
+  { to: "/termos", label: "Termos", icon: FileSignature },
 ];
 
 export function Shell({ email, notify }: { email: string; notify: (message: string, error?: boolean) => void }) {

@@ -22,6 +22,7 @@ import { CandidatoService } from "./services/candidato.service.js";
 import { ContratacaoService } from "./services/contratacao.service.js";
 import { DashboardService } from "./services/dashboard.service.js";
 import { EmpresaService } from "./services/empresa.service.js";
+import { TermoService } from "./services/termo.service.js";
 import { VagaService } from "./services/vaga.service.js";
 
 export type AppContext = {
@@ -92,12 +93,13 @@ export async function buildApp(context: AppContext): Promise<FastifyInstance> {
     vagas: new VagaService(context.db, vagas, empresas, context.config, context.capabilities),
     contratacoes: new ContratacaoService(context.db, contratacoes, vagas, candidatos, context.config, context.capabilities),
     dashboard: new DashboardService(context.db, contratacoes, context.config, context.capabilities),
+    termos: new TermoService(context.db, context.config),
   };
 
   app.addHook("onRequest", async (request) => {
     const path = request.url.split("?")[0];
     if (request.method === "OPTIONS") return;
-    if (path === "/health" || path === "/api/v1/auth/login" || path.startsWith("/docs")) return;
+    if (path === "/health" || path === "/api/v1/auth/login" || path === "/api/v1/zapsign/webhook" || path.startsWith("/docs")) return;
     if (path.startsWith("/api/")) await app.authenticate(request);
   });
 

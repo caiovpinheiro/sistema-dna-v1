@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { Badge, Button, Card, Field, Input, Skeleton } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 import { dateBr, formatCpf, money, regimeLabel, situacaoLabel } from "@/lib/format";
@@ -14,10 +14,22 @@ type Detail = {
 
 export function ContratacaoDetailPage() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [message, setMessage] = useState("");
   const client = useQueryClient();
   const query = useQuery({ queryKey: ["contratacao", id], queryFn: () => api<Detail>(`/api/v1/contratacoes/${id}`) });
+  const termo = useMutation({
+    mutationFn: () => api<{ id: string }>("/api/v1/termos", { method: "POST", body: JSON.stringify({ id_contratacao: Number(id) }) }),
+    onSuccess: (result) => navigate(`/termos/${result.data.id}`),
+    onError: (error) => {
+      if (error instanceof ApiError && error.code === "TERMO_JA_ENVIADO" && typeof error.details?.id === "string") {
+        navigate(`/termos/${error.details.id}`);
+        return;
+      }
+      setMessage(error instanceof ApiError ? error.message : "Não foi possível enviar o termo.");
+    },
+  });
   const close = useMutation({
     mutationFn: () => api(`/api/v1/contratacoes/${id}/encerrar`, { method: "POST", body: JSON.stringify({ data_encerramento: date }) }),
     onSuccess: async () => {
@@ -59,6 +71,14 @@ export function ContratacaoDetailPage() {
           <Link className="font-semibold text-cyan-800" to={`/vagas/${data.id_vaga}`}>Abrir vaga</Link>
         </div>
       </Card>
+      {data.regime === "estagio" ? (
+        <Card className="grid gap-3 md:max-w-md">
+          <h2 className="font-bold">Termo de estágio</h2>
+          <p className="text-sm text-slate-500">Envia o termo para o estagiário e para a empresa assinarem na ZapSign.</p>
+          <Button disabled={termo.isPending} onClick={() => termo.mutate()}>{termo.isPending ? "Enviando…" : "Gerar assinatura"}</Button>
+          {message ? <p className="text-sm">{message}</p> : null}
+        </Card>
+      ) : null}
       {data.situacao === "ativa" ? (
         <Card className="grid gap-3 md:max-w-md">
           <h2 className="font-bold">Encerrar vínculo</h2>

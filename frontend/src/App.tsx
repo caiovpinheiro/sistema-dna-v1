@@ -16,6 +16,8 @@ import { LoginPage } from "@/pages/LoginPage";
 import { NovaContratacaoPage } from "@/pages/NovaContratacaoPage";
 import { VagaDetailPage } from "@/pages/VagaDetailPage";
 import { VagaFormPage } from "@/pages/VagaFormPage";
+import { TermoDetailPage } from "@/pages/TermoDetailPage";
+import { TermosPage } from "@/pages/TermosPage";
 import { VagasPage } from "@/pages/VagasPage";
 
 const client = new QueryClient({ defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } } });
@@ -61,6 +63,8 @@ export function App() {
             <Route path="/contratacoes" element={<ContratacoesPage />} />
             <Route path="/contratacoes/nova" element={<NovaContratacaoPage />} />
             <Route path="/contratacoes/:id" element={<ContratacaoDetailPage />} />
+            <Route path="/termos" element={<TermosPage />} />
+            <Route path="/termos/:id" element={<TermoDetailPage />} />
           </Route>
         </Routes>
       </BrowserRouter>

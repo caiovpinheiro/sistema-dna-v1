@@ -1,0 +1,48 @@
+import { AppError } from "./errors.js";
+
+export type ZapSigner = { name: string; email: string; external_id?: string };
+export type ZapSignerResult = { name?: string; email?: string; status?: string; sign_url?: string };
+export type ZapDoc = {
+  token?: string;
+  status?: string;
+  signed_file?: string | null;
+  signers?: ZapSignerResult[];
+};
+
+export async function criarDocumentoZapSign(input: {
+  apiUrl: string;
+  apiToken: string;
+  name: string;
+  externalId: string;
+  pdf: Buffer;
+  signers: ZapSigner[];
+}): Promise<ZapDoc> {
+  if (!input.apiToken) {
+    throw new AppError(503, "ZAPSIGN_NAO_CONFIGURADA", "Defina ZAPSIGN_API_TOKEN no ambiente antes de enviar um termo.");
+  }
+  const url = `${input.apiUrl.replace(/\/$/, "")}/api/v1/docs/?api_token=${encodeURIComponent(input.apiToken)}`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: input.name,
+      external_id: input.externalId,
+      lang: "pt-br",
+      signers: input.signers.map((signer) => ({
+        name: signer.name,
+        email: signer.email,
+        auth_mode: "tokenEmail",
+        lock_email: true,
+        external_id: signer.external_id,
+      })),
+      base64_pdf: input.pdf.toString("base64"),
+    }),
+  });
+  const body = await response.json().catch(() => null) as { detail?: string; message?: string } & ZapDoc | null;
+  if (!response.ok || !body?.token) {
+    throw new AppError(502, "ZAPSIGN_RECUSOU", "A ZapSign não aceitou o termo.", {
+      status: response.status,
+    });
+  }
+  return body;
+}

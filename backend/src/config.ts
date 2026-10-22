@@ -29,6 +29,8 @@ const envSchema = z.object({
     .string()
     .optional()
     .transform((value) => value === "true"),
+  ZAPSIGN_API_TOKEN: z.string().optional().default(""),
+  ZAPSIGN_API_URL: z.string().optional().default("https://api.zapsign.com.br"),
 });
 
 export type AppConfig = z.infer<typeof envSchema> & {
