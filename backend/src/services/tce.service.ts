@@ -58,11 +58,7 @@ export class TceService {
       email: (input.concedente.email || empresa.email).trim().toLowerCase(),
       representante: input.concedente.representante || empresa.representante,
     };
-    const candidatoEmail = campos.email.trim().toLowerCase();
     if (!campos.nome.trim()) throw new AppError(422, "NOME_OBRIGATORIO", "Nome do candidato é obrigatório.");
-    if (!candidatoEmail || !concedente.email) {
-      throw new AppError(422, "EMAIL_AUSENTE", "O estagiário e a empresa precisam ter e-mail para a assinatura.");
-    }
 
     const id = randomUUID();
     const pdf = await fillTceTemplate({
@@ -87,35 +83,14 @@ export class TceService {
         VALUES ($1, $2, $3, $4, $5::jsonb, $6, 'generated')
       `, [id, empresa.id, concedente.razao_social, campos.nome, JSON.stringify({ campos, empresa: concedente }), filename]);
 
-      const signers = [
-        { name: campos.nome, email: candidatoEmail },
-        { name: concedente.representante || concedente.razao_social, email: concedente.email },
-      ];
-      const escolaEmail = campos.escola_email.trim().toLowerCase();
-      if (escolaEmail) signers.push({ name: campos.nome_escola || "Instituição de ensino", email: escolaEmail });
-
-      const doc = await criarDocumentoZapSign({
-        apiUrl: this.config.ZAPSIGN_API_URL,
-        apiToken: this.config.ZAPSIGN_API_TOKEN,
-        name: `TCE - ${campos.nome}`,
-        externalId: id,
-        pdf: Buffer.from(pdf),
-        signers,
-      });
       await this.db.query(`
         INSERT INTO dna_work.termo_estagio
-          (id, id_contratacao, nome, zapsign_token, status, signatarios, tce_id, candidato_nome, empresa_nome)
-        VALUES ($1, NULL, $2, $3, 'enviado', $4::jsonb, $1, $5, $6)
+          (id, id_contratacao, nome, status, signatarios, tce_id, candidato_nome, empresa_nome)
+        VALUES ($1, NULL, $2, 'gerado', $3::jsonb, $1, $4, $5)
       `, [
         id,
         `TCE - ${campos.nome}`.slice(0, 200),
-        doc.token,
-        JSON.stringify((doc.signers ?? []).map((signer) => ({
-          nome: signer.name ?? "",
-          email: signer.email ?? "",
-          status: signer.status ?? "new",
-          url: signer.sign_url ?? null,
-        }))),
+        JSON.stringify(signatariosDe(campos, concedente)),
         campos.nome,
         concedente.razao_social,
       ]);
@@ -126,6 +101,71 @@ export class TceService {
     }
     return this.termos.get(id);
   }
+
+  async lerPdf(id: string): Promise<Buffer> {
+    const row = await this.db.query<{ pdf_path: string }>("SELECT pdf_path FROM public.tces WHERE id = $1", [id]);
+    const filename = row.rows[0]?.pdf_path;
+    if (!filename) throw new AppError(404, "NAO_ENCONTRADO", "PDF do TCE não encontrado.");
+    const safe = path.basename(filename);
+    try {
+      return await fs.readFile(path.join(storageDir(this.config.PDF_STORAGE_DIR), safe));
+    } catch {
+      throw new AppError(404, "NAO_ENCONTRADO", "PDF do TCE não encontrado.");
+    }
+  }
+
+  async enviar(id: string) {
+    const termo = await this.termos.get(id);
+    if (termo.status !== "gerado") {
+      throw new AppError(409, "TERMO_JA_ENVIADO", "Este TCE já foi enviado para assinatura.");
+    }
+    const saved = await this.db.query<{ payload: { campos?: ManualData; empresa?: Concedente } }>(
+      "SELECT payload FROM public.tces WHERE id = $1",
+      [id],
+    );
+    const payload = saved.rows[0]?.payload;
+    const campos = payload?.campos;
+    const concedente = payload?.empresa;
+    if (!campos || !concedente) throw new AppError(404, "NAO_ENCONTRADO", "Dados do TCE não encontrados.");
+    const signers = signatariosDe(campos, concedente).filter((item) => item.email);
+    if (!campos.email.trim() || !concedente.email.trim()) {
+      throw new AppError(422, "EMAIL_AUSENTE", "O estagiário e a empresa precisam ter e-mail para a assinatura. Gere o TCE novamente com esses e-mails.");
+    }
+    const pdf = await this.lerPdf(id);
+    const doc = await criarDocumentoZapSign({
+      apiUrl: this.config.ZAPSIGN_API_URL,
+      apiToken: this.config.ZAPSIGN_API_TOKEN,
+      name: `TCE - ${campos.nome}`,
+      externalId: id,
+      pdf,
+      signers: signers.map((item) => ({ name: item.nome, email: item.email })),
+    });
+    await this.db.query(`
+      UPDATE dna_work.termo_estagio
+      SET status = 'enviado', zapsign_token = $2, signatarios = $3::jsonb, atualizado_em = now()
+      WHERE id = $1
+    `, [
+      id,
+      doc.token,
+      JSON.stringify((doc.signers ?? []).map((signer) => ({
+        nome: signer.name ?? "",
+        email: signer.email ?? "",
+        status: signer.status ?? "new",
+        url: signer.sign_url ?? null,
+      }))),
+    ]);
+    return this.termos.get(id);
+  }
+}
+
+function signatariosDe(campos: ManualData, concedente: Concedente) {
+  const lista = [
+    { nome: campos.nome, email: campos.email.trim().toLowerCase(), status: "pendente", url: null as string | null },
+    { nome: concedente.representante || concedente.razao_social, email: concedente.email.trim().toLowerCase(), status: "pendente", url: null },
+  ];
+  const escolaEmail = campos.escola_email.trim().toLowerCase();
+  if (escolaEmail) lista.push({ nome: campos.nome_escola || "Instituição de ensino", email: escolaEmail, status: "pendente", url: null });
+  return lista;
 }
 
 export function camposFromBody(raw: Record<string, unknown>): ManualData {

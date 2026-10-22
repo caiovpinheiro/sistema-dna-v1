@@ -69,6 +69,7 @@ const badgeStyles: Record<string, string> = {
   indefinida: "bg-slate-100 text-slate-600",
   clt: "bg-blue-50 text-blue-800",
   estagio: "bg-violet-50 text-violet-800",
+  gerado: "bg-sky-50 text-sky-800",
   assinado: "bg-emerald-50 text-emerald-800",
   enviado: "bg-amber-50 text-amber-800",
   recusado: "bg-rose-50 text-rose-700",

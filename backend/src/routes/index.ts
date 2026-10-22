@@ -173,7 +173,7 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
   }, async (request) => ok(await services.contratacoes.encerrar(request.params.id, request.body)));
 
   api.get("/api/v1/termos", {
-    schema: { tags: ["termos"], querystring: z.object({ status: z.enum(["enviado", "assinado", "recusado", "cancelado"]).optional() }) },
+    schema: { tags: ["termos"], querystring: z.object({ status: z.enum(["gerado", "enviado", "assinado", "recusado", "cancelado"]).optional() }) },
   }, async (request) => ok(await services.termos.list(request.query.status)));
   api.get("/api/v1/termos/:id", {
     schema: { tags: ["termos"], params: z.object({ id: z.string().uuid() }) },
@@ -214,6 +214,15 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
     });
     return reply.code(201).send(ok(termo));
   });
+  api.get("/api/v1/tce/:id/pdf", {
+    schema: { tags: ["termos"], params: z.object({ id: z.string().uuid() }) },
+  }, async (request, reply) => {
+    const pdf = await services.tce.lerPdf(request.params.id);
+    return reply.type("application/pdf").header("Content-Disposition", "inline").send(pdf);
+  });
+  api.post("/api/v1/tce/:id/enviar", {
+    schema: { tags: ["termos"], params: z.object({ id: z.string().uuid() }) },
+  }, async (request) => ok(await services.tce.enviar(request.params.id)));
   api.post("/api/v1/zapsign/webhook", async (request) => {
     const payload = request.body && typeof request.body === "object" ? request.body as Record<string, unknown> : {};
     return ok(await services.termos.receberWebhook(payload));

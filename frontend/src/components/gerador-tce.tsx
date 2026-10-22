@@ -207,7 +207,7 @@ export function GeradorTce() {
         </section>
       ))}
       {erro ? <p className="text-sm text-rose-600">{erro}</p> : null}
-      <Button type="submit" disabled={gerar.isPending || !empresaId}>{gerar.isPending ? "Gerando…" : "Gerar TCE e enviar para assinatura"}</Button>
+      <Button type="submit" disabled={gerar.isPending || !empresaId}>{gerar.isPending ? "Gerando…" : "Gerar TCE"}</Button>
     </form>
   );
 }

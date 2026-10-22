@@ -15,6 +15,7 @@ type Termo = {
 };
 
 const labels: Record<string, string> = {
+  gerado: "Gerado",
   enviado: "Aguardando",
   assinado: "Assinado",
   recusado: "Recusado",
@@ -26,8 +27,12 @@ export function GerarTcePage() {
     <div className="grid gap-5">
       <div>
         <h1 className="text-2xl font-extrabold">Gerar TCE</h1>
-        <p className="text-sm text-slate-500">Preencha o termo e envie para assinatura na ZapSign.</p>
+        <p className="text-sm text-slate-500">Primeiro o PDF é gerado para conferência. A assinatura só é enviada no passo seguinte.</p>
       </div>
+      <ol className="flex flex-wrap gap-3 text-sm font-semibold">
+        <li className="rounded-full bg-navy-900 px-3 py-1.5 text-white">1. Gerar o TCE</li>
+        <li className="rounded-full bg-slate-100 px-3 py-1.5 text-slate-500">2. Enviar para assinatura</li>
+      </ol>
       <Card><GeradorTce /></Card>
     </div>
   );
@@ -48,7 +53,7 @@ export function TermosPage() {
         <p className="text-sm text-slate-500">Documentos enviados à ZapSign e os que já foram assinados.</p>
       </div>
       <div className="flex flex-wrap gap-2">
-        {["", "enviado", "assinado", "recusado"].map((value) => (
+        {["", "gerado", "enviado", "assinado", "recusado"].map((value) => (
           <button key={value || "todos"} type="button" onClick={() => setParams(value ? { status: value } : {})}
             className={`rounded-full px-3 py-1.5 text-sm font-semibold ${status === value ? "bg-navy-900 text-white" : "bg-white text-slate-600 ring-1 ring-slate-200"}`}>
             {value ? labels[value] : "Todos"}
