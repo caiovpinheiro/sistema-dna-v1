@@ -22,6 +22,7 @@ import { CandidatoService } from "./services/candidato.service.js";
 import { ContratacaoService } from "./services/contratacao.service.js";
 import { DashboardService } from "./services/dashboard.service.js";
 import { EmpresaService } from "./services/empresa.service.js";
+import { TceService } from "./services/tce.service.js";
 import { TermoService } from "./services/termo.service.js";
 import { VagaService } from "./services/vaga.service.js";
 
@@ -87,13 +88,15 @@ export async function buildApp(context: AppContext): Promise<FastifyInstance> {
   const empresas = new EmpresaRepository();
   const vagas = new VagaRepository(context.config.CONTRATACAO_STATUS_ATIVO, context.config.vagaStatusBloqueadas);
   const contratacoes = new ContratacaoRepository();
+  const termos = new TermoService(context.db, context.config);
   const services = {
     candidatos: new CandidatoService(context.db, candidatos),
     empresas: new EmpresaService(context.db, empresas),
     vagas: new VagaService(context.db, vagas, empresas, context.config, context.capabilities),
     contratacoes: new ContratacaoService(context.db, contratacoes, vagas, candidatos, context.config, context.capabilities),
     dashboard: new DashboardService(context.db, contratacoes, context.config, context.capabilities),
-    termos: new TermoService(context.db, context.config),
+    termos,
+    tce: new TceService(context.db, context.config, termos),
   };
 
   app.addHook("onRequest", async (request) => {

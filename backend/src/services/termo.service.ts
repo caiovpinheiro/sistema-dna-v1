@@ -28,7 +28,7 @@ export type Signatario = { nome: string; email: string; status: string; url: str
 
 export type TermoRow = {
   id: string;
-  id_contratacao: number;
+  id_contratacao: number | null;
   nome: string;
   status: string;
   arquivo_assinado: string | null;
@@ -66,8 +66,8 @@ export class TermoService {
     const where = status ? (params.push(status), "WHERE t.status = $1") : "";
     return many<TermoRow>(this.db, `
       SELECT t.id, t.id_contratacao, t.nome, t.status, t.arquivo_assinado, t.signatarios,
-             t.criado_em, t.zapsign_token, c.nome AS candidato_nome,
-             coalesce(e.nome_fantasia, e.razao_social) AS empresa_nome
+             t.criado_em, t.zapsign_token, coalesce(c.nome, t.candidato_nome) AS candidato_nome,
+             coalesce(e.nome_fantasia, e.razao_social, t.empresa_nome) AS empresa_nome
       FROM dna_work.termo_estagio t
       LEFT JOIN dna_work.conratacaovaga cv ON cv.id_contratacao = t.id_contratacao
       LEFT JOIN dna_work.candidato c ON c.id_candidato = cv.id_candidato
@@ -81,8 +81,8 @@ export class TermoService {
   async get(id: string): Promise<TermoRow> {
     const row = await one<TermoRow>(this.db, `
       SELECT t.id, t.id_contratacao, t.nome, t.status, t.arquivo_assinado, t.signatarios,
-             t.criado_em, t.zapsign_token, c.nome AS candidato_nome,
-             coalesce(e.nome_fantasia, e.razao_social) AS empresa_nome
+             t.criado_em, t.zapsign_token, coalesce(c.nome, t.candidato_nome) AS candidato_nome,
+             coalesce(e.nome_fantasia, e.razao_social, t.empresa_nome) AS empresa_nome
       FROM dna_work.termo_estagio t
       LEFT JOIN dna_work.conratacaovaga cv ON cv.id_contratacao = t.id_contratacao
       LEFT JOIN dna_work.candidato c ON c.id_candidato = cv.id_candidato

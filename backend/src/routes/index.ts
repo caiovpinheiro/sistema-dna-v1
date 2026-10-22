@@ -15,7 +15,9 @@ import type { CandidatoService } from "../services/candidato.service.js";
 import type { ContratacaoService } from "../services/contratacao.service.js";
 import type { DashboardService } from "../services/dashboard.service.js";
 import type { EmpresaService } from "../services/empresa.service.js";
+import { camposFromBody, type TceService } from "../services/tce.service.js";
 import type { TermoService } from "../services/termo.service.js";
+import { MANUAL_FIELDS } from "../lib/tce-fields.js";
 import type { VagaService } from "../services/vaga.service.js";
 import { sessionCookie } from "../plugins/auth.js";
 
@@ -29,6 +31,7 @@ type Services = {
   contratacoes: ContratacaoService;
   dashboard: DashboardService;
   termos: TermoService;
+  tce: TceService;
 };
 
 function idempotencyKey(header: string | string[] | undefined): string {
@@ -178,6 +181,39 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
   api.post("/api/v1/termos", {
     schema: { tags: ["termos"], body: z.object({ id_contratacao: z.number().int().positive() }) },
   }, async (request, reply) => reply.code(201).send(ok(await services.termos.criar(request.body.id_contratacao))));
+  api.get("/api/v1/tce/empresas", { schema: { tags: ["termos"] } }, async () => ok(await services.tce.listarEmpresas()));
+  api.get("/api/v1/tce/escolas", {
+    schema: { tags: ["termos"], querystring: z.object({ q: z.string().max(120).optional() }) },
+  }, async (request) => ok(await services.tce.buscarEscolas(request.query.q ?? "")));
+  api.post("/api/v1/tce/gerar", {
+    schema: {
+      tags: ["termos"],
+      body: z.object({
+        empresa_id: z.string().uuid(),
+        escola_id: z.string().max(255).optional().nullable(),
+        concedente: z.object({
+          razao_social: z.string().max(200).optional().default(""),
+          cnpj: z.string().max(30).optional().default(""),
+          endereco: z.string().max(300).optional().default(""),
+          cep: z.string().max(20).optional().default(""),
+          cidade: z.string().max(80).optional().default(""),
+          estado: z.string().max(40).optional().default(""),
+          email: z.string().max(160).optional().default(""),
+          representante: z.string().max(160).optional().default(""),
+        }),
+        campos: z.record(z.string().max(4000)),
+      }),
+    },
+  }, async (request, reply) => {
+    const known = Object.fromEntries(MANUAL_FIELDS.map((key) => [key, request.body.campos[key] ?? ""]));
+    const termo = await services.tce.gerar({
+      empresaId: request.body.empresa_id,
+      escolaId: request.body.escola_id || null,
+      concedente: request.body.concedente,
+      campos: camposFromBody(known),
+    });
+    return reply.code(201).send(ok(termo));
+  });
   api.post("/api/v1/zapsign/webhook", async (request) => {
     const payload = request.body && typeof request.body === "object" ? request.body as Record<string, unknown> : {};
     return ok(await services.termos.receberWebhook(payload));

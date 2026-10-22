@@ -6,7 +6,7 @@ import { api } from "@/lib/api";
 type Signatario = { nome: string; email: string; status: string; url: string | null };
 type Termo = {
   id: string;
-  id_contratacao: number;
+  id_contratacao: number | null;
   nome: string;
   status: string;
   arquivo_assinado: string | null;
@@ -54,7 +54,7 @@ export function TermoDetailPage() {
         {data.arquivo_assinado ? (
           <a className="font-semibold text-cyan-800" href={data.arquivo_assinado} target="_blank" rel="noreferrer">Baixar PDF assinado</a>
         ) : null}
-        <Link className="text-sm font-semibold text-cyan-800" to={`/contratacoes/${data.id_contratacao}`}>Abrir contratação</Link>
+        {data.id_contratacao ? <Link className="text-sm font-semibold text-cyan-800" to={`/contratacoes/${data.id_contratacao}`}>Abrir contratação</Link> : null}
       </Card>
     </div>
   );

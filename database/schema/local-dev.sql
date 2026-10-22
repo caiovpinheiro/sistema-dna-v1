@@ -168,7 +168,10 @@ CREATE TABLE IF NOT EXISTS dna_work.app_usuario (
 
 CREATE TABLE IF NOT EXISTS dna_work.termo_estagio (
   id uuid PRIMARY KEY,
-  id_contratacao integer NOT NULL,
+  id_contratacao integer,
+  tce_id text,
+  candidato_nome character varying(200),
+  empresa_nome character varying(200),
   id_candidato character varying,
   id_empresa character varying,
   nome character varying(200) NOT NULL,

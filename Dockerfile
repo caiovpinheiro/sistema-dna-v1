@@ -23,6 +23,7 @@ RUN npm ci --omit=dev
 COPY --from=build /app/backend/dist ./backend/dist
 COPY --from=build /app/frontend/dist ./frontend/dist
 COPY prisma ./prisma
+COPY templates ./templates
 COPY scripts/migrate-production.mjs ./scripts/migrate-production.mjs
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
 RUN chmod +x docker-entrypoint.sh
