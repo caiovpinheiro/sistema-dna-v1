@@ -12,7 +12,9 @@ import { DashboardPage } from "@/pages/DashboardPage";
 import { EmpresaDetailPage } from "@/pages/EmpresaDetailPage";
 import { EmpresaFormPage } from "@/pages/EmpresaFormPage";
 import { EmpresasPage } from "@/pages/EmpresasPage";
+import { ComissaoConsultarPage, ComissaoEmpresasPage, ContasReceberPage, GerarFaturamentoPage, GerarHoleritePage, RelatorioProcfyPage } from "@/pages/FinanceiroPage";
 import { LoginPage } from "@/pages/LoginPage";
+import { CadastrarInstituicaoPage, CadastrarModeloPage, ConsultarInstituicoesPage, ConsultarModelosPage, DocumentosPendentesPage } from "@/pages/NovasAbasPage";
 import { NovaContratacaoPage } from "@/pages/NovaContratacaoPage";
 import { VagaDetailPage } from "@/pages/VagaDetailPage";
 import { VagaFormPage } from "@/pages/VagaFormPage";
@@ -57,6 +59,8 @@ export function App() {
             <Route path="/empresas/:id" element={<EmpresaDetailPage />} />
             <Route path="/empresas/:id/editar" element={<EmpresaFormPage />} />
             <Route path="/vagas" element={<VagasPage />} />
+            <Route path="/vagas/modelos" element={<ConsultarModelosPage />} />
+            <Route path="/vagas/modelos/novo" element={<CadastrarModeloPage />} />
             <Route path="/vagas/nova" element={<VagaFormPage />} />
             <Route path="/vagas/:id" element={<VagaDetailPage />} />
             <Route path="/vagas/:id/editar" element={<VagaFormPage />} />
@@ -65,6 +69,15 @@ export function App() {
             <Route path="/contratacoes/:id" element={<ContratacaoDetailPage />} />
             <Route path="/termos" element={<TermosPage />} />
             <Route path="/termos/:id" element={<TermoDetailPage />} />
+            <Route path="/financeiro/faturamento" element={<GerarFaturamentoPage />} />
+            <Route path="/financeiro/contas-a-receber" element={<ContasReceberPage />} />
+            <Route path="/financeiro/relatorio-procfy" element={<RelatorioProcfyPage />} />
+            <Route path="/financeiro/comissao" element={<ComissaoConsultarPage />} />
+            <Route path="/financeiro/comissao/empresas" element={<ComissaoEmpresasPage />} />
+            <Route path="/financeiro/holerite" element={<GerarHoleritePage />} />
+            <Route path="/documentos-pendentes" element={<DocumentosPendentesPage />} />
+            <Route path="/instituicoes" element={<ConsultarInstituicoesPage />} />
+            <Route path="/instituicoes/nova" element={<CadastrarInstituicaoPage />} />
           </Route>
         </Routes>
       </BrowserRouter>
