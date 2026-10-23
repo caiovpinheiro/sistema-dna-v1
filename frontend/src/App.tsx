@@ -14,6 +14,7 @@ import { EmpresaFormPage } from "@/pages/EmpresaFormPage";
 import { EmpresasPage } from "@/pages/EmpresasPage";
 import { ComissaoConsultarPage, ComissaoEmpresasPage, GerarFaturamentoPage, GerarHoleritePage, RelatorioProcfyPage } from "@/pages/FinanceiroPage";
 import { ContasReceberPage } from "@/pages/ContasReceberPage";
+import { ReguaCobrancaPage } from "@/pages/ReguaCobrancaPage";
 import { LoginPage } from "@/pages/LoginPage";
 import { CadastrarInstituicaoPage, CadastrarModeloPage, ConsultarInstituicoesPage, ConsultarModelosPage, DocumentosPendentesPage } from "@/pages/NovasAbasPage";
 import { NovaContratacaoPage } from "@/pages/NovaContratacaoPage";
@@ -73,6 +74,7 @@ export function App() {
             <Route path="/termos/:id" element={<TermoDetailPage />} />
             <Route path="/financeiro/faturamento" element={<GerarFaturamentoPage />} />
             <Route path="/financeiro/contas-a-receber" element={<ContasReceberPage />} />
+            <Route path="/financeiro/regua" element={<ReguaCobrancaPage />} />
             <Route path="/financeiro/relatorio-procfy" element={<RelatorioProcfyPage />} />
             <Route path="/financeiro/comissao" element={<ComissaoConsultarPage />} />
             <Route path="/financeiro/comissao/empresas" element={<ComissaoEmpresasPage />} />

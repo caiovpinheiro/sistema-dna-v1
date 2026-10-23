@@ -37,6 +37,8 @@ const envSchema = z.object({
   ASAAS_API_KEY: z.string().optional().default(""),
   ASAAS_API_URL: z.string().optional().default("https://api.asaas.com"),
   ASAAS_WEBHOOK_TOKEN: z.string().optional().default(""),
+  EMPRESAS_API_URL: z.string().optional().default(""),
+  SERVICE_TOKEN: z.string().optional().default(""),
 });
 
 export type AppConfig = z.infer<typeof envSchema> & {
@@ -62,3 +64,4 @@ export function loadConfig(): AppConfig {
     vagaStatusBloqueadas,
   };
 }
+

@@ -33,6 +33,7 @@ const instituicaoLinks: Array<{ to: string; label: string; end?: boolean }> = [
 const financeLinks = [
   { to: "/financeiro/faturamento", label: "Gerar Faturamento" },
   { to: "/financeiro/contas-a-receber", label: "Contas a Receber" },
+  { to: "/financeiro/regua", label: "Régua de cobrança" },
   { to: "/financeiro/relatorio-procfy", label: "Relatório Procfy" },
 ];
 

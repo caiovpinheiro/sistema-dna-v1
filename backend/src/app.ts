@@ -23,6 +23,7 @@ import { ContratacaoService } from "./services/contratacao.service.js";
 import { DashboardService } from "./services/dashboard.service.js";
 import { EmpresaService } from "./services/empresa.service.js";
 import { AsaasService } from "./services/asaas.service.js";
+import { ReguaService } from "./services/regua.service.js";
 import { TceService } from "./services/tce.service.js";
 import { TermoService } from "./services/termo.service.js";
 import { VagaService } from "./services/vaga.service.js";
@@ -99,16 +100,34 @@ export async function buildApp(context: AppContext): Promise<FastifyInstance> {
     termos,
     tce: new TceService(context.db, context.config, termos),
     asaas: new AsaasService(context.db, context.config),
+    regua: new ReguaService(context.db),
   };
 
   app.addHook("onRequest", async (request) => {
     const path = request.url.split("?")[0];
     if (request.method === "OPTIONS") return;
-    if (path === "/health" || path === "/api/v1/auth/login" || path === "/api/v1/zapsign/webhook" || path === "/api/v1/asaas/webhook" || path.startsWith("/docs")) return;
+    if (path === "/health" || path === "/api/v1/auth/login" || path === "/api/v1/zapsign/webhook" || path === "/api/v1/asaas/webhook" || path === "/api/v1/servico/ping" || path === "/api/v1/servico/empresas" || path.startsWith("/docs")) return;
     if (path.startsWith("/api/")) await app.authenticate(request);
   });
 
   await registerRoutes(app, context.config, services, context.db);
+  const { pingServico, tokenDoServico } = await import("./lib/servico.js");
+  app.get("/api/v1/servico/ping", async (request, reply) => {
+    if (!tokenDoServico(request.headers["x-service-token"], context.config.SERVICE_TOKEN)) {
+      return reply.code(401).send({ success: false, error: { code: "SERVICO_NEGADO", message: "Serviço não autorizado." } });
+    }
+    return { success: true, data: { servico: "interno" } };
+  });
+  app.get("/api/v1/servico/empresas", async (request, reply) => {
+    if (!tokenDoServico(request.headers["x-service-token"], context.config.SERVICE_TOKEN)) {
+      return reply.code(401).send({ success: false, error: { code: "SERVICO_NEGADO", message: "Serviço não autorizado." } });
+    }
+    if (!context.config.EMPRESAS_API_URL) {
+      return reply.code(503).send({ success: false, error: { code: "SERVICO_NAO_CONFIGURADO", message: "EMPRESAS_API_URL não está definido." } });
+    }
+    const empresas = await pingServico(context.config.EMPRESAS_API_URL, context.config.SERVICE_TOKEN);
+    return { success: true, data: empresas };
+  });
   await serveFrontend(app);
   return app;
 }

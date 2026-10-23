@@ -12,6 +12,7 @@ import { empresaCreateSchema, empresaListSchema, empresaPatchSchema } from "../s
 import { pageSchema } from "../schemas/common.js";
 import { vagaCreateSchema, vagaListSchema, vagaPatchSchema } from "../schemas/vaga.js";
 import type { AsaasService } from "../services/asaas.service.js";
+import type { ReguaService } from "../services/regua.service.js";
 import type { CandidatoService } from "../services/candidato.service.js";
 import type { ContratacaoService } from "../services/contratacao.service.js";
 import type { DashboardService } from "../services/dashboard.service.js";
@@ -34,6 +35,7 @@ type Services = {
   termos: TermoService;
   tce: TceService;
   asaas: AsaasService;
+  regua: ReguaService;
 };
 
 function idempotencyKey(header: string | string[] | undefined): string {
@@ -225,6 +227,30 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
   api.post("/api/v1/tce/:id/enviar", {
     schema: { tags: ["termos"], params: z.object({ id: z.string().uuid() }) },
   }, async (request) => ok(await services.tce.enviar(request.params.id)));
+  api.get("/api/v1/asaas/regua", {
+    schema: { tags: ["asaas"], querystring: z.object({ competencia: z.string().regex(/^\d{4}-\d{2}$/) }) },
+  }, async (request) => ok(await services.regua.listar(request.query.competencia)));
+  api.get("/api/v1/asaas/regua/:id/relatorio", {
+    schema: {
+      tags: ["asaas"],
+      params: z.object({ id: z.string().uuid() }),
+      querystring: z.object({ competencia: z.string().regex(/^\d{4}-\d{2}$/) }),
+    },
+  }, async (request) => ok(await services.regua.relatorio(request.params.id, request.query.competencia)));
+  api.post("/api/v1/asaas/regua/envios/:id", {
+    schema: {
+      tags: ["asaas"],
+      params: z.object({ id: z.string().uuid() }),
+      body: z.object({ status: z.enum(["enviado", "escalar", "encaminhado"]) }),
+    },
+  }, async (request) => ok(await services.regua.registrarEnvio(request.params.id, request.user.email, request.body.status)));
+  api.post("/api/v1/asaas/regua/:id/comprovante", {
+    schema: {
+      tags: ["asaas"],
+      params: z.object({ id: z.string().uuid() }),
+      body: z.object({ data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }),
+    },
+  }, async (request) => ok(await services.regua.registrarComprovante(request.params.id, request.body.data)));
   api.post("/api/v1/asaas/cobrancas", {
     schema: {
       tags: ["asaas"],
