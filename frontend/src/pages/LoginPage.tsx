@@ -1,5 +1,4 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Check } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button, Card, Field, Input } from "@/components/ui";
@@ -24,22 +23,22 @@ export function LoginPage() {
 
   useEffect(() => {
     if (!entrou) return;
-    const reduzido = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const timer = window.setTimeout(() => navigate("/"), reduzido ? 350 : 1100);
+    const timer = window.setTimeout(() => navigate("/"), 8000);
     return () => window.clearTimeout(timer);
   }, [entrou, navigate]);
 
   if (entrou) {
     return (
       <FundoLiquido>
-        <div className="login-ok" role="status">
-          <span className="login-badge">
-            <span className="login-ring" />
-            <Check size={36} strokeWidth={2.6} />
-          </span>
-          <p className="login-title">Login realizado</p>
-          <p className="login-sub">{entrou}</p>
-        </div>
+        <video
+          className="w-full max-w-lg rounded-3xl shadow-2xl"
+          src="/login-sucesso.webm"
+          autoPlay
+          muted
+          playsInline
+          aria-label={`Login realizado, ${entrou}`}
+          onEnded={() => navigate("/")}
+        />
       </FundoLiquido>
     );
   }
