@@ -140,7 +140,13 @@ export function Shell({ email, notify }: { email: string; notify: (message: stri
           </div>
         </div>
         <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-2">{nav}</div>
-        <div className={cn("overflow-hidden px-4 py-4 text-xs text-slate-400", expanded ? "opacity-100" : "h-0 opacity-0")}>{email}</div>
+        <div className="border-t border-white/10 p-2">
+          <button type="button" title="Sair" onClick={() => void logout()} className="flex h-11 w-full items-center gap-3 rounded-xl px-3 text-sm font-semibold text-slate-300 transition duration-200 hover:bg-white/10 hover:text-white">
+            <LogOut size={18} className="shrink-0" />
+            <span className={cn("overflow-hidden whitespace-nowrap transition-all duration-300", expanded ? "max-w-40 opacity-100" : "max-w-0 opacity-0")}>Sair</span>
+          </button>
+          <p className={cn("truncate px-3 pt-2 text-xs text-slate-400", expanded ? "" : "hidden")}>{email}</p>
+        </div>
       </aside>
       {open ? <div className="fixed inset-0 z-40 bg-navy-950/50 lg:hidden" onClick={() => setOpen(false)} /> : null}
       <aside className={cn("fixed inset-y-0 left-0 z-50 w-72 bg-navy-900 p-4 text-white lg:hidden", open ? "translate-x-0" : "hidden")}>
@@ -149,6 +155,10 @@ export function Shell({ email, notify }: { email: string; notify: (message: stri
           <button aria-label="Fechar menu" onClick={() => setOpen(false)}><X /></button>
         </div>
         {nav}
+        <button type="button" onClick={() => void logout()} className="mt-4 flex h-11 w-full items-center gap-3 rounded-xl px-3 text-sm font-semibold text-slate-300 hover:bg-white/10 hover:text-white">
+          <LogOut size={18} /> Sair
+        </button>
+        <p className="truncate px-3 pt-2 text-xs text-slate-400">{email}</p>
       </aside>
       <div className="min-w-0 flex-1">
         <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-slate-200 bg-white/90 px-4 py-3 backdrop-blur">
