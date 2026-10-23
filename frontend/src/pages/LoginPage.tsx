@@ -30,15 +30,19 @@ export function LoginPage() {
   if (entrou) {
     return (
       <FundoLiquido>
-        <video
-          className="w-full max-w-lg rounded-3xl shadow-2xl"
-          src="/login-sucesso.webm"
-          autoPlay
-          muted
-          playsInline
-          aria-label={`Login realizado, ${entrou}`}
-          onEnded={() => navigate("/")}
-        />
+        <div className="grid w-full max-w-xs justify-items-center rounded-[2rem] bg-white px-8 py-8 text-center shadow-2xl" role="status">
+          <video
+            className="h-44 w-44 rounded-2xl object-contain"
+            src="/login-sucesso.webm"
+            autoPlay
+            muted
+            playsInline
+            aria-label={`Login realizado, ${entrou}`}
+            onEnded={() => navigate("/")}
+          />
+          <p className="mt-4 text-lg font-extrabold text-navy-900">Login realizado</p>
+          <p className="text-sm text-slate-500">{entrou}</p>
+        </div>
       </FundoLiquido>
     );
   }
