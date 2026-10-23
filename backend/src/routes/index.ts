@@ -11,6 +11,7 @@ import { contratacaoCreateSchema, contratacaoEncerrarSchema, contratacaoListSche
 import { empresaCreateSchema, empresaListSchema, empresaPatchSchema } from "../schemas/empresa.js";
 import { pageSchema } from "../schemas/common.js";
 import { vagaCreateSchema, vagaListSchema, vagaPatchSchema } from "../schemas/vaga.js";
+import type { AsaasService } from "../services/asaas.service.js";
 import type { CandidatoService } from "../services/candidato.service.js";
 import type { ContratacaoService } from "../services/contratacao.service.js";
 import type { DashboardService } from "../services/dashboard.service.js";
@@ -32,6 +33,7 @@ type Services = {
   dashboard: DashboardService;
   termos: TermoService;
   tce: TceService;
+  asaas: AsaasService;
 };
 
 function idempotencyKey(header: string | string[] | undefined): string {
@@ -223,6 +225,84 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
   api.post("/api/v1/tce/:id/enviar", {
     schema: { tags: ["termos"], params: z.object({ id: z.string().uuid() }) },
   }, async (request) => ok(await services.tce.enviar(request.params.id)));
+  api.post("/api/v1/asaas/cobrancas", {
+    schema: {
+      tags: ["asaas"],
+      body: z.object({
+        id_empresa: z.string().min(1),
+        valor: z.number().positive(),
+        vencimento: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        descricao: z.string().trim().min(3).max(200),
+        forma: z.enum(["UNDEFINED", "BOLETO", "PIX", "CREDIT_CARD"]).default("UNDEFINED"),
+      }),
+    },
+  }, async (request, reply) => reply.code(201).send(ok(await services.asaas.criar({
+    idEmpresa: request.body.id_empresa,
+    valor: request.body.valor,
+    vencimento: request.body.vencimento,
+    descricao: request.body.descricao,
+    forma: request.body.forma,
+  }))));
+  api.get("/api/v1/asaas/cobrancas", {
+    schema: {
+      tags: ["asaas"],
+      querystring: z.object({
+        situacao: z.enum(["aberta", "paga", "cancelada"]).optional(),
+        de: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        ate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        id_empresa: z.string().optional(),
+      }),
+    },
+  }, async (request) => ok(await services.asaas.listar({
+    situacao: request.query.situacao,
+    de: request.query.de,
+    ate: request.query.ate,
+    idEmpresa: request.query.id_empresa,
+  })));
+  api.post("/api/v1/asaas/cobrancas/:id/sincronizar", {
+    schema: { tags: ["asaas"], params: z.object({ id: z.string().uuid() }) },
+  }, async (request) => ok(await services.asaas.sincronizar(request.params.id)));
+  api.post("/api/v1/asaas/cobrancas/:id/receber", {
+    schema: {
+      tags: ["asaas"],
+      params: z.object({ id: z.string().uuid() }),
+      body: z.object({ data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), valor: z.number().positive().optional() }),
+    },
+  }, async (request) => ok(await services.asaas.receber(request.params.id, request.body.data, request.body.valor)));
+  api.delete("/api/v1/asaas/cobrancas/:id", {
+    schema: { tags: ["asaas"], params: z.object({ id: z.string().uuid() }) },
+  }, async (request) => ok(await services.asaas.excluir(request.params.id)));
+  api.post("/api/v1/asaas/cobrancas/:id/nota", {
+    schema: {
+      tags: ["asaas"],
+      params: z.object({ id: z.string().uuid() }),
+      body: z.object({
+        tipo: z.string().trim().min(1).max(40),
+        valor: z.number().positive(),
+        codigo_servico: z.string().trim().min(1).max(40),
+        iss: z.number().min(0).max(100),
+        descricao: z.string().trim().min(3).max(500),
+      }),
+    },
+  }, async (request) => ok(await services.asaas.emitirNota(request.params.id, {
+    tipo: request.body.tipo,
+    valor: request.body.valor,
+    codigoServico: request.body.codigo_servico,
+    iss: request.body.iss,
+    descricao: request.body.descricao,
+  })));
+  api.post("/api/v1/asaas/notas/:id/cancelar", {
+    schema: { tags: ["asaas"], params: z.object({ id: z.string().uuid() }) },
+  }, async (request) => ok(await services.asaas.cancelarNota(request.params.id)));
+  api.post("/api/v1/asaas/webhook", async (request, reply) => {
+    const esperado = config.ASAAS_WEBHOOK_TOKEN;
+    const recebido = request.headers["asaas-access-token"];
+    if (esperado && recebido !== esperado) {
+      return reply.code(401).send({ success: false, error: { code: "NAO_AUTORIZADO", message: "Webhook recusado." } });
+    }
+    const payload = request.body && typeof request.body === "object" ? request.body as Record<string, unknown> : {};
+    return ok(await services.asaas.receberWebhook(payload));
+  });
   api.post("/api/v1/zapsign/webhook", async (request) => {
     const payload = request.body && typeof request.body === "object" ? request.body as Record<string, unknown> : {};
     return ok(await services.termos.receberWebhook(payload));

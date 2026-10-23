@@ -34,6 +34,9 @@ const envSchema = z.object({
   SUPABASE_URL: z.string().optional().default(""),
   SUPABASE_SERVICE_ROLE_KEY: z.string().optional().default(""),
   PDF_STORAGE_DIR: z.string().optional().default(""),
+  ASAAS_API_KEY: z.string().optional().default(""),
+  ASAAS_API_URL: z.string().optional().default("https://api.asaas.com"),
+  ASAAS_WEBHOOK_TOKEN: z.string().optional().default(""),
 });
 
 export type AppConfig = z.infer<typeof envSchema> & {

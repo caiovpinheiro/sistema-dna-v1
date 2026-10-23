@@ -22,6 +22,7 @@ import { CandidatoService } from "./services/candidato.service.js";
 import { ContratacaoService } from "./services/contratacao.service.js";
 import { DashboardService } from "./services/dashboard.service.js";
 import { EmpresaService } from "./services/empresa.service.js";
+import { AsaasService } from "./services/asaas.service.js";
 import { TceService } from "./services/tce.service.js";
 import { TermoService } from "./services/termo.service.js";
 import { VagaService } from "./services/vaga.service.js";
@@ -97,12 +98,13 @@ export async function buildApp(context: AppContext): Promise<FastifyInstance> {
     dashboard: new DashboardService(context.db, contratacoes, context.config, context.capabilities),
     termos,
     tce: new TceService(context.db, context.config, termos),
+    asaas: new AsaasService(context.db, context.config),
   };
 
   app.addHook("onRequest", async (request) => {
     const path = request.url.split("?")[0];
     if (request.method === "OPTIONS") return;
-    if (path === "/health" || path === "/api/v1/auth/login" || path === "/api/v1/zapsign/webhook" || path.startsWith("/docs")) return;
+    if (path === "/health" || path === "/api/v1/auth/login" || path === "/api/v1/zapsign/webhook" || path === "/api/v1/asaas/webhook" || path.startsWith("/docs")) return;
     if (path.startsWith("/api/")) await app.authenticate(request);
   });
 

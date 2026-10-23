@@ -146,41 +146,6 @@ export function GerarFaturamentoPage() {
   );
 }
 
-export function ContasReceberPage() {
-  return (
-    <Screen title="Contas" subtitle="Contas a Receber">
-      <Card className="grid items-end gap-3 md:grid-cols-2 xl:grid-cols-6">
-        <EmpresaField />
-        <Field label="Tipo data">
-          <Select aria-label="Tipo data" defaultValue="vencimento_fatura">
-            <option value="vencimento_fatura">Vencimento</option>
-            <option value="data_pg">Pagamento</option>
-            <option value="data_cadastro">Cadastro da cobrança</option>
-          </Select>
-        </Field>
-        <MonthRange />
-        <Field label="Status">
-          <Select aria-label="Status" defaultValue="0">
-            <option value="">Selecione</option>
-            <option value="0">Aberta</option>
-            <option value="1">Paga</option>
-            <option value="2">Cancelada</option>
-          </Select>
-        </Field>
-        <div className="flex flex-wrap gap-2 xl:col-span-6">
-          <SearchButton />
-          <ExcelButton />
-        </div>
-      </Card>
-      <DataTable
-        columns={["Razão Social", "Nome Fantasia", "CNPJ", "Mês Referência", "Vencimento", "Valor da Fatura", "Forma de Pagamento", "Data de Pagamento", "Status", "Detalhes", "Nota Fiscal", "Reenviar e-mail", "Verificar pagamento", "Copiar link", "Excluir"]}
-        rows={[]}
-      />
-      <ListingFooter count={0} total="R$ 0,00" />
-    </Screen>
-  );
-}
-
 export function RelatorioProcfyPage() {
   return (
     <Screen title="Contas" subtitle="Contas a Receber DNA + DISC">
