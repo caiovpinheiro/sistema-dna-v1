@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { Check } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button, Card, Field, Input } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
@@ -8,16 +9,39 @@ export function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [entrou, setEntrou] = useState("");
   const navigate = useNavigate();
   const client = useQueryClient();
   const login = useMutation({
-    mutationFn: () => api("/api/v1/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
-    onSuccess: async () => {
+    mutationFn: () => api<{ nome?: string }>("/api/v1/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
+    onSuccess: async (resposta) => {
       await client.invalidateQueries({ queryKey: ["me"] });
-      navigate("/");
+      setEntrou(resposta.data.nome || email);
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : "Falha no login."),
   });
+
+  useEffect(() => {
+    if (!entrou) return;
+    const reduzido = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const timer = window.setTimeout(() => navigate("/"), reduzido ? 350 : 1100);
+    return () => window.clearTimeout(timer);
+  }, [entrou, navigate]);
+
+  if (entrou) {
+    return (
+      <div className="login-veil" role="status">
+        <div className="login-ok">
+          <span className="login-badge">
+            <span className="login-ring" />
+            <Check size={36} strokeWidth={2.6} />
+          </span>
+          <p className="login-title">Login realizado</p>
+          <p className="login-sub">{entrou}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="grid min-h-screen place-items-center bg-navy-950 px-4">
