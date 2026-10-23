@@ -3,6 +3,7 @@ import { Check } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button, Card, Field, Input } from "@/components/ui";
+import { FundoLiquido } from "@/components/fundo-liquido";
 import { ApiError, api } from "@/lib/api";
 
 export function LoginPage() {
@@ -30,8 +31,8 @@ export function LoginPage() {
 
   if (entrou) {
     return (
-      <div className="login-veil" role="status">
-        <div className="login-ok">
+      <FundoLiquido>
+        <div className="login-ok" role="status">
           <span className="login-badge">
             <span className="login-ring" />
             <Check size={36} strokeWidth={2.6} />
@@ -39,15 +40,15 @@ export function LoginPage() {
           <p className="login-title">Login realizado</p>
           <p className="login-sub">{entrou}</p>
         </div>
-      </div>
+      </FundoLiquido>
     );
   }
 
   return (
-    <div className="grid min-h-screen place-items-center bg-navy-950 px-4">
+    <FundoLiquido>
       <Card className="w-full max-w-md p-8">
         <div className="mb-6 flex items-center gap-3">
-          <span className="grid h-12 w-12 place-items-center rounded-2xl bg-navy-900 font-extrabold text-cyan-300">DW</span>
+          <img src="/logo-mono.png" alt="DNAWORK" className="h-12 w-20 object-contain" />
           <div>
             <h1 className="text-2xl font-extrabold text-navy-900">DNAWORK</h1>
             <p className="text-sm text-slate-500">Acesso administrativo</p>
@@ -60,6 +61,6 @@ export function LoginPage() {
           <Button type="submit" disabled={login.isPending}>{login.isPending ? "Entrando…" : "Entrar"}</Button>
         </form>
       </Card>
-    </div>
+    </FundoLiquido>
   );
 }
