@@ -133,7 +133,7 @@ export function Shell({ email, notify }: { email: string; notify: (message: stri
         className={cn("hidden overflow-x-hidden bg-gradient-to-b from-navy-900 to-navy-950 text-white transition-[width] duration-300 ease-out lg:flex lg:min-h-screen lg:flex-col", hover ? "lg:w-72" : "lg:w-[76px]")}
       >
         <div className={cn("flex items-center py-5", expanded ? "gap-3 px-4" : "justify-center px-2")}>
-          <img src="/logo-mono.png" alt="DNA Work" className={cn("shrink-0 object-contain", expanded ? "h-9 w-16" : "h-8 w-12")} />
+          <img src="/logo-laranja.png" alt="DNA Work" className={cn("shrink-0 object-contain", expanded ? "h-9 w-16" : "h-8 w-12")} />
           <div className={cn("overflow-hidden whitespace-nowrap transition-all duration-300", expanded ? "w-auto opacity-100" : "w-0 opacity-0")}>
             <div className="text-sm font-extrabold tracking-wide">DNAWORK</div>
             <div className="text-xs text-slate-400">Recrutamento</div>

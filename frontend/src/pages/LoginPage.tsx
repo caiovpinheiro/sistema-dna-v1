@@ -51,7 +51,7 @@ export function LoginPage() {
     <FundoLiquido>
       <Card className="w-full max-w-md p-8">
         <div className="mb-6 flex items-center gap-4">
-          <img src="/logo-mono.png" alt="DNA Work" className="h-14 w-24 object-contain" />
+          <img src="/logo-laranja.png" alt="DNA Work" className="h-14 w-24 object-contain" />
           <h1 className="text-sm font-semibold text-slate-500">Acesso administrativo</h1>
         </div>
         <form className="grid gap-4" onSubmit={(event) => { event.preventDefault(); setError(""); login.mutate(); }}>
