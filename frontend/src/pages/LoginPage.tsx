@@ -48,7 +48,7 @@ export function LoginPage() {
     <FundoLiquido>
       <Card className="w-full max-w-md p-8">
         <div className="mb-6 flex items-center gap-3">
-          <img src="/logo-mono.png" alt="DNAWORK" className="h-12 w-20 object-contain" />
+          <img src="/logo-mono.png" alt="DNA Work" className="h-12 w-20 object-contain" />
           <div>
             <h1 className="text-2xl font-extrabold text-navy-900">DNAWORK</h1>
             <p className="text-sm text-slate-500">Acesso administrativo</p>
