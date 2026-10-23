@@ -24,3 +24,39 @@ body {
 button, a, input, select, textarea {
   font: inherit;
 }
+
+button, a {
+  transition: background-color 180ms ease, color 180ms ease, transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+}
+
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+.nav-sub,
+.motion-pop {
+  animation: rise-in 180ms ease-out;
+}
+
+.acao {
+  border-radius: 0.6rem;
+  padding: 0.3rem 0.65rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.acao:hover { transform: translateY(-1px); }
+.acao:active { transform: scale(0.96); }
+
+.acao-cyan { background: #ecfeff; color: #155e75; }
+.acao-cyan:hover { background: #cffafe; box-shadow: 0 6px 16px rgb(8 145 178 / 16%); }
+.acao-rose { background: #fff1f2; color: #be123c; }
+.acao-rose:hover { background: #ffe4e6; box-shadow: 0 6px 16px rgb(225 29 72 / 14%); }
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-sub,
+  .motion-pop { animation: none; }
+  button, a { transition: none; }
+  .acao:hover, .acao:active { transform: none; }
+}

@@ -113,7 +113,7 @@ export function ContasReceberPage() {
           {empresas.data?.data.length ? (
             <div className="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-xl border border-slate-200 bg-white shadow-lg">
               {empresas.data.data.map((empresa) => (
-                <button key={empresa.id_empresa} type="button" className="block w-full px-3 py-2 text-left text-sm hover:bg-slate-50" onClick={() => { setEmpresaId(empresa.id_empresa); setBusca(empresa.nome_fantasia || empresa.razao_social || ""); }}>
+                <button key={empresa.id_empresa} type="button" className="block w-full px-3 py-2 text-left text-sm transition duration-150 hover:bg-cyan-50 active:bg-cyan-100" onClick={() => { setEmpresaId(empresa.id_empresa); setBusca(empresa.nome_fantasia || empresa.razao_social || ""); }}>
                   {empresa.razao_social} · {empresa.cnpj}
                 </button>
               ))}
@@ -159,7 +159,7 @@ export function ContasReceberPage() {
           </thead>
           <tbody>
             {rows.map((row) => (
-              <tr key={row.id} className="border-t border-slate-100">
+              <tr key={row.id} className="border-t border-slate-100 transition duration-150 hover:bg-slate-50">
                 <td className="px-4 py-3 font-semibold">{row.empresa_fantasia || row.empresa_razao}</td>
                 <td className="px-4 py-3">{row.descricao}</td>
                 <td className="px-4 py-3">{row.vencimento.split("-").reverse().join("/")}</td>
@@ -167,12 +167,12 @@ export function ContasReceberPage() {
                 <td className="px-4 py-3"><Badge value={row.situacao === "paga" ? "ativa" : row.situacao === "aberta" ? "aberta" : "encerrada"}>{situacaoLabel[row.situacao] ?? row.situacao}</Badge></td>
                 <td className="px-4 py-3">
                   <div className="flex flex-wrap gap-2">
-                    {row.url_pagamento ? <a className="font-semibold text-cyan-800" href={row.url_pagamento} target="_blank" rel="noreferrer">Link</a> : null}
-                    <button type="button" className="font-semibold text-cyan-800" onClick={() => sincronizar.mutate(row.id)}>Verificar</button>
-                    {row.situacao === "aberta" ? <button type="button" className="font-semibold text-cyan-800" onClick={() => setPagamento({ id: row.id, data: new Date().toISOString().slice(0, 10) })}>Baixar</button> : null}
-                    {row.situacao === "aberta" ? <button type="button" className="font-semibold text-cyan-800" onClick={() => setNota({ id: row.id, valor: String(row.valor), codigo: "", iss: "0", descricao: row.descricao })}>Nota</button> : null}
-                    {row.situacao === "aberta" ? <button type="button" className="font-semibold text-rose-700" onClick={() => excluir.mutate(row.id)}>Excluir</button> : null}
-                    {row.notas.map((item) => item.pdf_url ? <a key={item.id} className="font-semibold text-cyan-800" href={item.pdf_url} target="_blank" rel="noreferrer">PDF da nota</a> : <span key={item.id}>{item.status}</span>)}
+                    {row.url_pagamento ? <a className="acao acao-cyan" href={row.url_pagamento} target="_blank" rel="noreferrer">Link</a> : null}
+                    <button type="button" className="acao acao-cyan" onClick={() => sincronizar.mutate(row.id)}>Verificar</button>
+                    {row.situacao === "aberta" ? <button type="button" className="acao acao-cyan" onClick={() => setPagamento({ id: row.id, data: new Date().toISOString().slice(0, 10) })}>Baixar</button> : null}
+                    {row.situacao === "aberta" ? <button type="button" className="acao acao-cyan" onClick={() => setNota({ id: row.id, valor: String(row.valor), codigo: "", iss: "0", descricao: row.descricao })}>Nota</button> : null}
+                    {row.situacao === "aberta" ? <button type="button" className="acao acao-rose" onClick={() => excluir.mutate(row.id)}>Excluir</button> : null}
+                    {row.notas.map((item) => item.pdf_url ? <a key={item.id} className="acao acao-cyan" href={item.pdf_url} target="_blank" rel="noreferrer">PDF da nota</a> : <span key={item.id}>{item.status}</span>)}
                   </div>
                 </td>
               </tr>
@@ -183,7 +183,7 @@ export function ContasReceberPage() {
       <p className="text-sm text-slate-500">{rows.length === 0 ? "Nenhuma cobrança neste período." : `${rows.length} cobranças`} · em aberto {money(total)}</p>
       {pagamento ? (
         <div className="fixed inset-0 z-50 grid place-items-center bg-navy-950/40 p-4">
-          <Card className="w-full max-w-md">
+          <Card className="motion-pop w-full max-w-md">
             <h2 className="text-lg font-bold">Data do recebimento</h2>
             <div className="mt-4"><Field label="Data"><Input type="date" value={pagamento.data} onChange={(event) => setPagamento({ ...pagamento, data: event.target.value })} /></Field></div>
             <div className="mt-4 flex justify-end gap-2">
@@ -195,7 +195,7 @@ export function ContasReceberPage() {
       ) : null}
       {nota ? (
         <div className="fixed inset-0 z-50 grid place-items-center bg-navy-950/40 p-4">
-          <Card className="grid w-full max-w-lg gap-3">
+          <Card className="motion-pop grid w-full max-w-lg gap-3">
             <h2 className="text-lg font-bold">Emitir nota fiscal</h2>
             <Field label="Código do serviço municipal"><Input value={nota.codigo} onChange={(event) => setNota({ ...nota, codigo: event.target.value })} /></Field>
             <Field label="ISS (%)"><Input value={nota.iss} onChange={(event) => setNota({ ...nota, iss: event.target.value })} /></Field>

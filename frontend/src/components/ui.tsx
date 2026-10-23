@@ -8,13 +8,13 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 const buttonStyles = cva(
-  "inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50",
+  "inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:shadow-sm",
   {
     variants: {
       variant: {
         primary: "bg-cyan-700 text-white hover:bg-cyan-800",
         secondary: "bg-white text-navy-900 ring-1 ring-slate-200 hover:bg-slate-50",
-        ghost: "text-slate-600 hover:bg-slate-100",
+        ghost: "text-slate-600 shadow-none hover:bg-slate-100 hover:shadow-none",
         danger: "bg-rose-600 text-white hover:bg-rose-700",
       },
     },

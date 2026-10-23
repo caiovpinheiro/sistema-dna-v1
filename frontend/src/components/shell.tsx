@@ -51,19 +51,19 @@ function SideGroup({ label, icon: Icon, active, links, onNavigate }: {
   const [open, setOpen] = useState(active);
   useEffect(() => { if (active) setOpen(true); }, [active]);
   const subClass = ({ isActive }: { isActive: boolean }) => cn(
-    "block rounded-xl px-3 py-2 text-sm font-semibold",
-    isActive ? "bg-white/10 text-white" : "text-slate-300 hover:bg-white/5 hover:text-white",
+    "block rounded-xl px-3 py-2 text-sm font-semibold transition duration-200 active:scale-[0.98]",
+    isActive ? "bg-white/15 text-white shadow-[inset_3px_0_0_#22d3ee]" : "text-slate-300 hover:translate-x-1 hover:bg-white/10 hover:text-white",
   );
   return (
     <div className="grid gap-1">
       <button type="button" aria-expanded={open} onClick={() => setOpen((value) => !value)}
-        className={cn("flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold", active ? "bg-white/10 text-white" : "text-slate-300 hover:bg-white/5 hover:text-white")}>
+        className={cn("flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition duration-200 active:scale-[0.98]", active ? "bg-white/15 text-white shadow-[inset_3px_0_0_#22d3ee]" : "text-slate-300 hover:translate-x-1 hover:bg-white/10 hover:text-white")}>
         <Icon size={18} />
         <span className="flex-1 text-left">{label}</span>
-        <ChevronDown size={16} className={cn("transition", open ? "" : "-rotate-90")} />
+        <ChevronDown size={16} className={cn("transition duration-200", open ? "" : "-rotate-90")} />
       </button>
       {open ? (
-        <div className="grid gap-1 pl-7">
+        <div className="nav-sub grid gap-1 pl-7">
           {links.map((item) => (
             <NavLink key={item.to} to={item.to} end={item.end} onClick={onNavigate} className={subClass}>{item.label}</NavLink>
           ))}
@@ -83,7 +83,7 @@ export function Shell({ email, notify }: { email: string; notify: (message: stri
   const vagaActive = pathname.startsWith("/vagas");
   const instituicaoActive = pathname.startsWith("/instituicoes");
   const termoActive = pathname.startsWith("/termos");
-  const linkClass = ({ isActive }: { isActive: boolean }) => cn("flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold", isActive ? "bg-white/10 text-white" : "text-slate-300 hover:bg-white/5 hover:text-white");
+  const linkClass = ({ isActive }: { isActive: boolean }) => cn("flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition duration-200 active:scale-[0.98]", isActive ? "bg-white/15 text-white shadow-[inset_3px_0_0_#22d3ee]" : "text-slate-300 hover:translate-x-1 hover:bg-white/10 hover:text-white");
 
   async function logout() {
     await api("/api/v1/auth/logout", { method: "POST" });
@@ -119,7 +119,7 @@ export function Shell({ email, notify }: { email: string; notify: (message: stri
 
   return (
     <div className="min-h-screen lg:grid lg:grid-cols-[260px_1fr]">
-      <aside className="hidden bg-navy-900 text-white lg:flex lg:flex-col lg:px-4 lg:py-6">
+      <aside className="hidden bg-gradient-to-b from-navy-900 to-navy-950 text-white lg:flex lg:flex-col lg:px-4 lg:py-6">
         <div className="mb-8 flex items-center gap-3 px-2">
           <span className="grid h-10 w-10 place-items-center rounded-2xl bg-cyan-400 font-extrabold text-navy-950">DW</span>
           <div>
@@ -145,7 +145,7 @@ export function Shell({ email, notify }: { email: string; notify: (message: stri
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
             <input aria-label="Buscar candidatos" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar candidato por nome" className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-3 text-sm" />
           </form>
-          <button className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100" onClick={() => void logout()}><LogOut size={16} /> Sair</button>
+          <button className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-slate-600 transition duration-200 hover:bg-slate-100 active:scale-95" onClick={() => void logout()}><LogOut size={16} /> Sair</button>
         </header>
         <main className="mx-auto max-w-7xl p-4 md:p-6"><Outlet /></main>
       </div>
