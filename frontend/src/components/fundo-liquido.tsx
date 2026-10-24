@@ -79,8 +79,11 @@ export function FundoLiquido({ children, className = "" }: { children: ReactNode
   }, []);
 
   return (
-    <div className={`relative min-h-screen overflow-hidden ${className}`}>
+    <div className={`login-liquido relative min-h-screen overflow-hidden ${className}`}>
       <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" aria-hidden="true" />
+      <span className="login-orb login-orb-a" aria-hidden="true" />
+      <span className="login-orb login-orb-b" aria-hidden="true" />
+      <span className="login-orb login-orb-c" aria-hidden="true" />
       <div className="relative z-10 flex min-h-screen items-center justify-center px-4">{children}</div>
     </div>
   );
