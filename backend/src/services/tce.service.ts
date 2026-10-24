@@ -10,7 +10,9 @@ import { getEscola, mensagemEscola, searchEscolas } from "../lib/escolas.js";
 import { getEmpresaCadastro, listEmpresasCadastro } from "../lib/supabase-empresas.js";
 import { fillTceTemplate } from "../lib/tce-pdf.js";
 import { APOLICE_SEGURO, CAMPOS_DATA, dataParaPdf, emptyManual, ESCOLA_KEYS, type Concedente, type ManualData } from "../lib/tce-fields.js";
+import { enviarModelo, textoHtml } from "../lib/email-modelo.js";
 import { criarDocumentoZapSign } from "../lib/zapsign.js";
+import { enviarEmailMailjet } from "../lib/mailjet.js";
 import type { TermoService } from "./termo.service.js";
 
 export type GerarTceInput = {
@@ -166,7 +168,117 @@ export class TceService {
         url: signer.sign_url ?? null,
       }))),
     ]);
+    try {
+      await this.enviarAssinaturas(id);
+    } catch (error) {
+      const mensagem = error instanceof AppError ? error.message : "A Mailjet não enviou o e-mail.";
+      throw new AppError(502, "EMAIL_ASSINATURA", `O TCE foi enviado para assinatura, mas o e-mail não saiu. ${mensagem}`);
+    }
     return this.termos.get(id);
+  }
+
+  async enviarAssinaturas(id: string) {
+    const dados = await this.dadosTermo(id);
+    const enviados: string[] = [];
+    const papeis: Array<[string, string]> = [
+      ["Assinatura Digital Candidato", dados.campos.email],
+      ["Assinatura Digital Responsável Candidato", dados.campos.email_responsavel],
+      ["Assinatura Digital Empresa", dados.concedente.email],
+      ["Assinatura Digital Instituição de Ensino", dados.campos.escola_email],
+    ];
+    for (const [modelo, email] of papeis) {
+      const alvo = texto(email).toLowerCase();
+      const signer = dados.signatarios.find((item) => item.email.toLowerCase() === alvo);
+      if (!alvo || !signer?.url) continue;
+      await enviarModelo(this.db, this.config, modelo, { email: alvo, nome: signer.nome }, {
+        ...variaveisDoTermo(dados.campos, dados.concedente),
+        "@Nome-Assinatura-Digital": textoHtml(signer.nome),
+        "@Link-Assinatura-Digital": signer.url,
+      });
+      enviados.push(alvo);
+    }
+    if (!enviados.length) throw new AppError(422, "EMAIL_AUSENTE", "Nenhum signatário com link de assinatura.");
+    return { enviados };
+  }
+
+  async enviarAssinaturaEscola(id: string) {
+    const dados = await this.dadosTermo(id);
+    const email = texto(dados.campos.escola_email).toLowerCase();
+    if (!email) throw new AppError(422, "EMAIL_AUSENTE", "A instituição de ensino está sem e-mail.");
+    const escola = dados.signatarios.find((item) => item.email.toLowerCase() === email);
+    const link = dados.termo.arquivo_assinado || escola?.url || "";
+    const pdf = link ? null : await this.lerPdf(id);
+    const nome = dados.campos.nome || "estagiário";
+    return enviarModelo(this.db, this.config, "Assinatura manual instituição", {
+      email,
+      nome: dados.campos.nome_escola || "Instituição de ensino",
+    }, {
+      ...variaveisDoTermo(dados.campos, dados.concedente),
+      "@Link-Assinatura-Digital": link || "documento em anexo",
+    }, {
+      copia: { email: "documentos@dnawork.ai", nome: "DNA Work" },
+      attachments: pdf ? [{
+        filename: `TCE-${nome}.pdf`.replace(/[^\w.\- ]+/g, ""),
+        contentType: "application/pdf",
+        base64: pdf.toString("base64"),
+      }] : undefined,
+    });
+  }
+
+  async enviarDocumento(id: string) {
+    const termo = await this.termos.get(id);
+    const saved = await this.db.query<{ payload: { campos?: ManualData; empresa?: Concedente } }>(
+      "SELECT payload FROM public.tces WHERE id = $1",
+      [id],
+    );
+    const campos = saved.rows[0]?.payload?.campos;
+    const concedente = saved.rows[0]?.payload?.empresa;
+    const pdf = await this.lerPdf(id);
+    const vistos = new Set<string>();
+    const destinatarios = [
+      { nome: campos?.nome || termo.candidato_nome || "Estagiário", email: (campos?.email || "").toLowerCase() },
+      { nome: concedente?.representante || concedente?.razao_social || termo.empresa_nome || "Empresa", email: (concedente?.email || "").toLowerCase() },
+      { nome: campos?.nome_escola || "Instituição de ensino", email: (campos?.escola_email || "").toLowerCase() },
+    ].filter((item) => item.email.includes("@") && !vistos.has(item.email) && vistos.add(item.email));
+    const nome = campos?.nome || termo.candidato_nome || "estagiário";
+    const enviados: string[] = [];
+    for (const destino of destinatarios) {
+      await enviarEmailMailjet({
+        apiKey: this.config.MAILJET_API_KEY,
+        secret: this.config.MAILJET_SECRET_KEY,
+        fromEmail: this.config.MAILJET_FROM,
+        fromName: this.config.MAILJET_FROM_NAME,
+        to: [destino],
+        subject: `TCE - ${nome}`,
+        html: `<p>Olá,</p><p>A DNA Work envia o Termo de Compromisso de Estágio de <strong>${nome}</strong> em anexo.</p><p>Em caso de dúvida, responda este e-mail.</p>`,
+        attachments: [{ filename: `TCE-${nome}.pdf`.replace(/[^\w.\- ]+/g, ""), contentType: "application/pdf", base64: pdf.toString("base64") }],
+      });
+      enviados.push(destino.email);
+    }
+    return { enviados };
+  }
+
+  private async dadosTermo(id: string) {
+    const termo = await this.termos.get(id);
+    const saved = await this.db.query<{ payload: { campos?: ManualData; empresa?: Concedente } }>(
+      "SELECT payload FROM public.tces WHERE id = $1",
+      [id],
+    );
+    const campos = saved.rows[0]?.payload?.campos;
+    const concedente = saved.rows[0]?.payload?.empresa;
+    if (!campos || !concedente) throw new AppError(404, "NAO_ENCONTRADO", "Dados do TCE não encontrados.");
+    const bruto = termo.signatarios as unknown;
+    const lista = typeof bruto === "string" ? JSON.parse(bruto) as unknown : bruto;
+    const signatarios = Array.isArray(lista)
+      ? lista.flatMap((item) => {
+        if (!item || typeof item !== "object") return [];
+        const signer = item as { nome?: string; email?: string; url?: string | null };
+        const email = texto(signer.email).toLowerCase();
+        if (!email) return [];
+        return [{ nome: signer.nome || email, email, url: signer.url ?? null }];
+      })
+      : [];
+    return { termo, campos, concedente, signatarios };
   }
 }
 
@@ -210,11 +322,30 @@ function erroGravacao(error: unknown): AppError {
 function signatariosDe(campos: ManualData, concedente: Concedente) {
   const lista = [
     { nome: campos.nome, email: texto(campos.email).toLowerCase(), status: "pendente", url: null as string | null },
-    { nome: concedente.representante || concedente.razao_social, email: texto(concedente.email).toLowerCase(), status: "pendente", url: null },
   ];
+  const responsavel = texto(campos.email_responsavel).toLowerCase();
+  if (responsavel && responsavel !== lista[0].email) {
+    lista.push({ nome: campos.nome_responsavel || "Responsável", email: responsavel, status: "pendente", url: null });
+  }
+  lista.push({ nome: concedente.representante || concedente.razao_social, email: texto(concedente.email).toLowerCase(), status: "pendente", url: null });
   const escolaEmail = texto(campos.escola_email).toLowerCase();
   if (escolaEmail) lista.push({ nome: campos.nome_escola || "Instituição de ensino", email: escolaEmail, status: "pendente", url: null });
   return lista;
+}
+
+function variaveisDoTermo(campos: ManualData, concedente: Concedente) {
+  const nome = textoHtml(campos.nome);
+  const empresa = textoHtml(concedente.razao_social);
+  return {
+    "@Documento-Nome": textoHtml(`TCE - ${campos.nome}`),
+    "@Nome-Candidato": nome,
+    "@Semestre-Candidato": textoHtml(campos.periodo),
+    "@Ano-Escolar": textoHtml(campos.ano),
+    "@Turno-Candidato": textoHtml(campos.turno),
+    "@Variaveis-Candidato": `<br> Nome do candidato: ${nome}.`,
+    "@Variaveis-vaga": "<br> Vaga: Estágio",
+    "@Variaveis-Empresa": `<br><br> Razão Social: ${empresa}. <br> Nome Fantasia: ${empresa}. <br> CNPJ: ${textoHtml(concedente.cnpj)}`,
+  };
 }
 
 export function camposFromBody(raw: Record<string, unknown>): ManualData {

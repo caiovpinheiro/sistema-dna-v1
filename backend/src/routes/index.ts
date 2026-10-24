@@ -227,6 +227,15 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
   api.post("/api/v1/tce/:id/enviar", {
     schema: { tags: ["termos"], params: z.object({ id: z.string().uuid() }) },
   }, async (request) => ok(await services.tce.enviar(request.params.id)));
+  api.post("/api/v1/tce/:id/email", {
+    schema: { tags: ["termos"], params: z.object({ id: z.string().uuid() }) },
+  }, async (request) => ok(await services.tce.enviarDocumento(request.params.id)));
+  api.post("/api/v1/tce/:id/email-assinatura", {
+    schema: { tags: ["termos"], params: z.object({ id: z.string().uuid() }) },
+  }, async (request) => ok(await services.tce.enviarAssinaturas(request.params.id)));
+  api.post("/api/v1/tce/:id/email-escola", {
+    schema: { tags: ["termos"], params: z.object({ id: z.string().uuid() }) },
+  }, async (request) => ok(await services.tce.enviarAssinaturaEscola(request.params.id)));
   api.get("/api/v1/asaas/regua", {
     schema: { tags: ["asaas"], querystring: z.object({ competencia: z.string().regex(/^\d{4}-\d{2}$/) }) },
   }, async (request) => ok(await services.regua.listar(request.query.competencia)));
@@ -244,6 +253,13 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
       body: z.object({ status: z.enum(["enviado", "escalar", "encaminhado"]) }),
     },
   }, async (request) => ok(await services.regua.registrarEnvio(request.params.id, request.user.email, request.body.status)));
+  api.post("/api/v1/asaas/regua/:id/relatorio/email", {
+    schema: {
+      tags: ["asaas"],
+      params: z.object({ id: z.string().uuid() }),
+      body: z.object({ competencia: z.string().regex(/^\d{4}-\d{2}$/) }),
+    },
+  }, async (request) => ok(await services.regua.enviarRelatorio(request.params.id, request.body.competencia, request.user.email)));
   api.post("/api/v1/asaas/regua/:id/comprovante", {
     schema: {
       tags: ["asaas"],
@@ -285,6 +301,9 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
     ate: request.query.ate,
     idEmpresa: request.query.id_empresa,
   })));
+  api.post("/api/v1/asaas/cobrancas/:id/email", {
+    schema: { tags: ["asaas"], params: z.object({ id: z.string().uuid() }) },
+  }, async (request) => ok(await services.asaas.enviarFatura(request.params.id)));
   api.post("/api/v1/asaas/cobrancas/:id/sincronizar", {
     schema: { tags: ["asaas"], params: z.object({ id: z.string().uuid() }) },
   }, async (request) => ok(await services.asaas.sincronizar(request.params.id)));

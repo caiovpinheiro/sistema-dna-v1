@@ -55,15 +55,35 @@ export function TermoDetailPage() {
   const { id } = useParams();
   const client = useQueryClient();
   const [erro, setErro] = useState("");
+  const [aviso, setAviso] = useState("");
   const query = useQuery({ queryKey: ["termo", id], queryFn: () => api<Termo>(`/api/v1/termos/${id}`) });
+  const email = useMutation({
+    mutationFn: () => api(`/api/v1/tce/${id}/email`, { method: "POST" }),
+    onSuccess: () => { setErro(""); setAviso("PDF enviado por documentos@dnawork.ai."); },
+    onError: (error) => setErro(error instanceof ApiError ? error.message : "Não foi possível enviar o e-mail."),
+  });
+  const assinatura = useMutation({
+    mutationFn: () => api(`/api/v1/tce/${id}/email-assinatura`, { method: "POST" }),
+    onSuccess: () => { setErro(""); setAviso("E-mails de assinatura enviados por contratos@dnawork.ai."); },
+    onError: (error) => setErro(error instanceof ApiError ? error.message : "Não foi possível enviar os e-mails de assinatura."),
+  });
+  const escola = useMutation({
+    mutationFn: () => api(`/api/v1/tce/${id}/email-escola`, { method: "POST" }),
+    onSuccess: () => { setErro(""); setAviso("Pedido de assinatura enviado para a escola, com cópia para documentos@dnawork.ai."); },
+    onError: (error) => setErro(error instanceof ApiError ? error.message : "Não foi possível enviar o pedido para a escola."),
+  });
   const enviar = useMutation({
     mutationFn: () => api<Termo>(`/api/v1/tce/${id}/enviar`, { method: "POST" }),
     onSuccess: async () => {
       setErro("");
+      setAviso("TCE enviado para assinatura e os e-mails saíram por contratos@dnawork.ai.");
       await client.invalidateQueries({ queryKey: ["termo", id] });
       await client.invalidateQueries({ queryKey: ["termos"] });
     },
-    onError: (error) => setErro(error instanceof ApiError ? error.message : "Não foi possível enviar para assinatura."),
+    onError: async (error) => {
+      setErro(error instanceof ApiError ? error.message : "Não foi possível enviar para assinatura.");
+      await client.invalidateQueries({ queryKey: ["termo", id] });
+    },
   });
   if (query.isLoading) return <Skeleton className="h-64" />;
   if (!query.data) return <p className="text-rose-600">Termo não encontrado.</p>;
@@ -90,14 +110,19 @@ export function TermoDetailPage() {
         <Card className="grid gap-4">
           <div>
             <h2 className="font-bold">Conferir o TCE</h2>
-            <p className="text-sm text-slate-500">Se estiver certo, envie para os signatários. Nada é mandado para a ZapSign antes deste botão.</p>
+            <p className="text-sm text-slate-500">Se estiver certo, envie para os signatários. A ZapSign recebe o documento e cada pessoa recebe o e-mail de assinatura da DNA Work.</p>
           </div>
           <PdfPreview id={data.id} />
           {signers.map((signer) => (
             <p key={`${signer.nome}-${signer.email}`} className="text-sm"><span className="font-semibold">{signer.nome || "Signatário"}</span> · {signer.email || "sem e-mail"}</p>
           ))}
           {erro ? <p className="text-sm text-rose-600">{erro}</p> : null}
-          <Button type="button" disabled={enviar.isPending} onClick={() => enviar.mutate()}>{enviar.isPending ? "Enviando…" : "Enviar para assinatura"}</Button>
+          {aviso ? <p className="text-sm text-emerald-700">{aviso}</p> : null}
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="secondary" disabled={escola.isPending} onClick={() => escola.mutate()}>{escola.isPending ? "Enviando…" : "Pedir assinatura da escola"}</Button>
+            <Button type="button" variant="secondary" disabled={email.isPending} onClick={() => email.mutate()}>{email.isPending ? "Enviando e-mail…" : "Enviar PDF por e-mail"}</Button>
+            <Button type="button" disabled={enviar.isPending} onClick={() => enviar.mutate()}>{enviar.isPending ? "Enviando…" : "Enviar para assinatura"}</Button>
+          </div>
         </Card>
       ) : null}
       {!gerado ? <Card className="grid gap-3">
@@ -116,6 +141,13 @@ export function TermoDetailPage() {
           <a className="font-semibold text-cyan-800" href={data.arquivo_assinado} target="_blank" rel="noreferrer">Baixar PDF assinado</a>
         ) : null}
         {data.id_contratacao ? <Link className="text-sm font-semibold text-cyan-800" to={`/contratacoes/${data.id_contratacao}`}>Abrir contratação</Link> : null}
+        {erro ? <p className="text-sm text-rose-600">{erro}</p> : null}
+        {aviso ? <p className="text-sm text-emerald-700">{aviso}</p> : null}
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="secondary" disabled={assinatura.isPending} onClick={() => assinatura.mutate()}>{assinatura.isPending ? "Enviando…" : "Reenviar e-mails de assinatura"}</Button>
+          <Button type="button" variant="secondary" disabled={escola.isPending} onClick={() => escola.mutate()}>{escola.isPending ? "Enviando…" : "Pedir assinatura da escola"}</Button>
+          <Button type="button" variant="secondary" disabled={email.isPending} onClick={() => email.mutate()}>{email.isPending ? "Enviando e-mail…" : "Enviar PDF por e-mail"}</Button>
+        </div>
       </Card> : null}
     </div>
   );

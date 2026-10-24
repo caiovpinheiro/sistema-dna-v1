@@ -100,7 +100,7 @@ export async function buildApp(context: AppContext): Promise<FastifyInstance> {
     termos,
     tce: new TceService(context.db, context.config, termos),
     asaas: new AsaasService(context.db, context.config),
-    regua: new ReguaService(context.db),
+    regua: new ReguaService(context.db, context.config),
   };
 
   app.addHook("onRequest", async (request) => {

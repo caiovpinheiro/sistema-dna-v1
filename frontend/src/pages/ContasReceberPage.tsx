@@ -69,11 +69,21 @@ export function ContasReceberPage() {
     await client.invalidateQueries({ queryKey: ["cobrancas"] });
   }
   const criar = useMutation({
-    mutationFn: () => api("/api/v1/asaas/cobrancas", {
+    mutationFn: () => api<{ emailEnviado?: boolean }>("/api/v1/asaas/cobrancas", {
       method: "POST",
       body: JSON.stringify({ id_empresa: empresaId, valor: Number(valor.replace(",", ".")), vencimento, descricao, forma }),
     }),
-    onSuccess: async () => { setErro(""); setValor(""); setDescricao(""); await atualizar(); },
+    onSuccess: async (resultado) => {
+      setValor("");
+      setDescricao("");
+      setErro(resultado.data.emailEnviado === false ? "Cobrança gerada, mas o e-mail da fatura não foi enviado." : "");
+      await atualizar();
+    },
+    onError: falha,
+  });
+  const faturaEmail = useMutation({
+    mutationFn: (id: string) => api(`/api/v1/asaas/cobrancas/${id}/email`, { method: "POST" }),
+    onSuccess: () => setErro(""),
     onError: falha,
   });
   const sincronizar = useMutation({ mutationFn: (id: string) => api(`/api/v1/asaas/cobrancas/${id}/sincronizar`, { method: "POST" }), onSuccess: atualizar, onError: falha });
@@ -168,6 +178,7 @@ export function ContasReceberPage() {
                 <td className="px-4 py-3">
                   <div className="flex flex-wrap gap-2">
                     {row.url_pagamento ? <a className="acao acao-cyan" href={row.url_pagamento} target="_blank" rel="noreferrer">Link</a> : null}
+                    <button type="button" className="acao acao-cyan" disabled={faturaEmail.isPending} onClick={() => faturaEmail.mutate(row.id)}>Enviar fatura</button>
                     <button type="button" className="acao acao-cyan" onClick={() => sincronizar.mutate(row.id)}>Verificar</button>
                     {row.situacao === "aberta" ? <button type="button" className="acao acao-cyan" onClick={() => setPagamento({ id: row.id, data: new Date().toISOString().slice(0, 10) })}>Baixar</button> : null}
                     {row.situacao === "aberta" ? <button type="button" className="acao acao-cyan" onClick={() => setNota({ id: row.id, valor: String(row.valor), codigo: "", iss: "0", descricao: row.descricao })}>Nota</button> : null}

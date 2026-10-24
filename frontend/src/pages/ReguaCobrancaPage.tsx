@@ -69,6 +69,11 @@ export function ReguaCobrancaPage() {
     onSuccess: atualizar,
     onError: (error) => setErro(error instanceof ApiError ? error.message : "Não foi possível registrar o envio."),
   });
+  const relatorioEmail = useMutation({
+    mutationFn: (id: string) => api(`/api/v1/asaas/regua/${id}/relatorio/email`, { method: "POST", body: JSON.stringify({ competencia }) }),
+    onSuccess: atualizar,
+    onError: (error) => setErro(error instanceof ApiError ? error.message : "Não foi possível enviar o relatório."),
+  });
   const comprovante = useMutation({
     mutationFn: (id: string) => api(`/api/v1/asaas/regua/${id}/comprovante`, { method: "POST", body: JSON.stringify({ data: new Date().toISOString().slice(0, 10) }) }),
     onSuccess: atualizar,
@@ -127,9 +132,13 @@ export function ReguaCobrancaPage() {
                     <td>{statusEnvio[item.status] ?? item.status}</td>
                     <td className="text-slate-500">{item.enviado_em ? `${new Date(item.enviado_em).toLocaleString("pt-BR")} · ${item.responsavel ?? ""}` : "—"}</td>
                     <td className="py-2">
-                      {!item.marco && item.status === "a_enviar" && fatura.status_pagamento !== "pago" ? (
+                      {(item.etapa === "relatorio" || (!item.marco && item.status === "a_enviar")) && fatura.status_pagamento !== "pago" ? (
                         <div className="flex flex-wrap gap-2">
-                          <button type="button" className="acao acao-cyan" onClick={() => envio.mutate({ id: item.id, status: "enviado" })}>Registrar envio</button>
+                          {item.etapa === "relatorio" ? (
+                            <button type="button" className="acao acao-cyan" disabled={relatorioEmail.isPending} onClick={() => relatorioEmail.mutate(fatura.id)}>Enviar relatório</button>
+                          ) : (
+                            <button type="button" className="acao acao-cyan" onClick={() => envio.mutate({ id: item.id, status: "enviado" })}>Registrar envio</button>
+                          )}
                           {item.pendentes && item.etapa !== "encaminhar" ? <button type="button" className="acao acao-rose" onClick={() => envio.mutate({ id: item.id, status: "escalar" })}>Escalar</button> : null}
                           {item.etapa === "encaminhar" ? <button type="button" className="acao acao-rose" onClick={() => envio.mutate({ id: item.id, status: "encaminhado" })}>Encaminhar</button> : null}
                         </div>

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Pool } from "pg";
 import type { AppConfig } from "../config.js";
 import { AsaasClient } from "../lib/asaas.js";
+import { enviarModelo, textoHtml } from "../lib/email-modelo.js";
 import { AppError } from "../lib/errors.js";
 import { onlyDigits } from "../lib/normalize.js";
 
@@ -109,7 +110,42 @@ export class AsaasService {
       input.vencimento, input.forma, payment.status ?? "PENDING", situacaoDe(payment.status ?? "PENDING"),
       payment.invoiceUrl ?? null, payment.invoiceNumber ?? null,
     ]);
-    return (await this.listar({})).find((item) => item.id === id);
+    const cobranca = (await this.listar({ idEmpresa: input.idEmpresa })).find((item) => item.id === id);
+    if (!cobranca) throw new AppError(404, "NAO_ENCONTRADO", "Cobrança não encontrada.");
+    try {
+      await this.enviarFatura(id);
+      return { ...cobranca, emailEnviado: true };
+    } catch {
+      return { ...cobranca, emailEnviado: false };
+    }
+  }
+
+  async enviarFatura(id: string) {
+    const result = await this.db.query<{
+      valor: number; vencimento: string; url_pagamento: string | null;
+      nome_fantasia: string | null; razao_social: string | null; cnpj: string | null;
+      email_financeiro: string | null; email: string | null; nome_financeiro: string | null;
+    }>(`
+      SELECT c.valor::float8 AS valor, c.vencimento::text AS vencimento, c.url_pagamento,
+             e.nome_fantasia, e.razao_social, e.cnpj, e.email_financeiro, e.email, e.nome_financeiro
+      FROM dna_work.cobranca_asaas c
+      JOIN dna_work.empresa e ON e.id_empresa = c.id_empresa
+      WHERE c.id = $1
+    `, [id]);
+    const fatura = result.rows[0];
+    if (!fatura) throw new AppError(404, "NAO_ENCONTRADO", "Cobrança não encontrada.");
+    const email = (fatura.email_financeiro || fatura.email || "").trim().toLowerCase();
+    if (!email.includes("@")) throw new AppError(422, "EMAIL_AUSENTE", "A empresa não tem e-mail financeiro.");
+    const nome = fatura.nome_fantasia || fatura.razao_social || "Empresa";
+    return enviarModelo(this.db, this.config, "Geração de cobrança Asaas", {
+      email,
+      nome: fatura.nome_financeiro || nome,
+    }, {
+      "@Nome-Fantasia-Empresa": textoHtml(nome),
+      "@Valor": fatura.valor.toFixed(2).replace(".", ","),
+      "@Vencimento": dataBr(fatura.vencimento),
+      "@link-pg": fatura.url_pagamento || "",
+    });
   }
 
   async sincronizar(id: string) {
@@ -235,4 +271,9 @@ export class AsaasService {
     await this.db.query("UPDATE dna_work.empresa SET id_asaas = $2 WHERE id_empresa = $1", [empresa.id_empresa, criado.id]);
     return criado.id;
   }
+}
+
+function dataBr(iso: string) {
+  const [ano, mes, dia] = iso.slice(0, 10).split("-");
+  return dia && mes && ano ? `${dia}/${mes}/${ano}` : iso;
 }

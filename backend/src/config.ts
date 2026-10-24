@@ -39,6 +39,10 @@ const envSchema = z.object({
   ASAAS_WEBHOOK_TOKEN: z.string().optional().default(""),
   EMPRESAS_API_URL: z.string().optional().default(""),
   SERVICE_TOKEN: z.string().optional().default(""),
+  MAILJET_API_KEY: z.string().optional().default(""),
+  MAILJET_SECRET_KEY: z.string().optional().default(""),
+  MAILJET_FROM: z.string().optional().default("documentos@dnawork.ai"),
+  MAILJET_FROM_NAME: z.string().optional().default("DNA Work"),
 });
 
 export type AppConfig = z.infer<typeof envSchema> & {

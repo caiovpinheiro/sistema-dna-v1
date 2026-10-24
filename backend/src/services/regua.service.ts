@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Pool } from "pg";
+import type { AppConfig } from "../config.js";
+import { enviarModelo, textoHtml } from "../lib/email-modelo.js";
 import { AppError } from "../lib/errors.js";
 import { datasDaRegua, LINK_CENTRAL, competenciaDe, dataIso } from "../lib/regua.js";
 
@@ -38,7 +40,7 @@ export type FaturaRegua = {
 const LABELS = new Map(datasDaRegua(2000, 1).map((etapa) => [etapa.etapa, etapa]));
 
 export class ReguaService {
-  constructor(private readonly db: Pool) {}
+  constructor(private readonly db: Pool, private readonly config: AppConfig) {}
 
   async listar(competencia: string): Promise<FaturaRegua[]> {
     const { ano, mes } = this.competencia(competencia);
@@ -160,6 +162,48 @@ export class ReguaService {
     if (!result.rowCount) throw new AppError(404, "FATURA_NAO_ENCONTRADA", "Fatura não encontrada.");
     await this.parar(idFatura);
     return { id: idFatura, comprovante: true };
+  }
+
+  async enviarRelatorio(idFatura: string, competencia: string, responsavel: string) {
+    const { ano, mes } = this.competencia(competencia);
+    const fatura = await this.db.query<{
+      empresa: string; cnpj: string | null; email_cobranca: string | null; contato: string | null; valor: string;
+    }>(`
+      select coalesce(e.nome_fantasia, e.razao_social) as empresa, e.cnpj, f.email_cobranca, f.contato, f.valor::text
+      from dna_work.fatura_regua f
+      join dna_work.empresa e on e.id_empresa = f.id_empresa
+      where f.id = $1
+    `, [idFatura]);
+    const atual = fatura.rows[0];
+    if (!atual) throw new AppError(404, "FATURA_NAO_ENCONTRADA", "Fatura não encontrada.");
+    const email = (atual.email_cobranca || "").trim().toLowerCase();
+    if (!email.includes("@")) throw new AppError(422, "EMAIL_AUSENTE", "A empresa não tem e-mail de cobrança.");
+    const linhas = await this.relatorio(idFatura, competencia);
+    const corpo = linhas.map((linha) => `
+      <tr>
+        <td>Mensalidade</td>
+        <td>${textoHtml(linha.nome ?? "")}</td>
+        <td>${textoHtml(linha.cargo ?? "")}</td>
+        <td>${textoHtml(linha.contrato ?? "")}</td>
+        <td>${textoHtml(linha.situacao)}</td>
+      </tr>
+    `).join("");
+    const valor = Number(atual.valor).toFixed(2).replace(".", ",");
+    const tabela = `<table style="width:1000px"><tr><td>Cobrança</td><td>Candidato</td><td>Cargo</td><td>Modalidade</td><td>Situação</td></tr>${corpo}<tr><td></td><td></td><td></td><td>Total</td><td>R$ ${valor}</td></tr></table>`;
+    const envio = await enviarModelo(this.db, this.config, "Relatorio cobrança", {
+      email,
+      nome: atual.contato || atual.empresa,
+    }, {
+      "@Nome-Fantasia-Empresa": textoHtml(atual.empresa),
+      "@CNPJ-Empresa": textoHtml(atual.cnpj ?? ""),
+      "@tabela-cobranca": tabela,
+    });
+    await this.db.query(`
+      update dna_work.fatura_envio
+      set status = 'enviado', enviado_em = now(), responsavel = $2
+      where id_fatura = $1 and etapa = 'relatorio'
+    `, [idFatura, responsavel]);
+    return { id: idFatura, competencia: `${ano}-${String(mes).padStart(2, "0")}`, enviados: envio.enviados };
   }
 
   private async garantir(cobranca: {
