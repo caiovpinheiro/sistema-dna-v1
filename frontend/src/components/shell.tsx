@@ -61,7 +61,7 @@ function SideGroup({ label, icon: Icon, active, expanded, links, onNavigate }: {
       <button type="button" aria-expanded={open && expanded} title={label} onClick={() => setOpen((value) => !value)}
         className={cn("flex h-11 w-full items-center gap-3 rounded-xl px-3 text-sm font-semibold transition duration-200", active ? "bg-white/10 text-white" : "text-slate-300 hover:bg-white/10 hover:text-white")}>
         <Icon size={18} className="shrink-0" />
-        <span className={cn("overflow-hidden whitespace-nowrap text-left transition-all duration-300", expanded ? "max-w-40 opacity-100" : "max-w-0 opacity-0")}>{label}</span>
+        <span className={cn("overflow-hidden whitespace-nowrap text-left transition-all duration-300", expanded ? "max-w-56 opacity-100" : "max-w-0 opacity-0")}>{label}</span>
         <ChevronDown size={16} className={cn("ml-auto shrink-0 transition duration-200", expanded ? "" : "w-0 opacity-0", open ? "" : "-rotate-90")} />
       </button>
       {open && expanded ? (
@@ -91,7 +91,7 @@ export function Shell({ email, notify }: { email: string; notify: (message: stri
     "flex h-11 items-center gap-3 rounded-xl px-3 text-sm font-semibold transition duration-200",
     isActive ? "bg-cyan-400 text-navy-950" : "text-slate-300 hover:bg-white/10 hover:text-white",
   );
-  const label = (text: string) => <span className={cn("overflow-hidden whitespace-nowrap transition-all duration-300", expanded ? "max-w-40 opacity-100" : "max-w-0 opacity-0")}>{text}</span>;
+  const label = (text: string) => <span className={cn("overflow-hidden whitespace-nowrap transition-all duration-300", expanded ? "max-w-56 opacity-100" : "max-w-0 opacity-0")}>{text}</span>;
 
   async function logout() {
     await api("/api/v1/auth/logout", { method: "POST" });
@@ -133,7 +133,7 @@ export function Shell({ email, notify }: { email: string; notify: (message: stri
       <aside
         onMouseEnter={() => setHover(true)}
         onMouseLeave={() => setHover(false)}
-        className={cn("hidden overflow-x-hidden bg-gradient-to-b from-navy-900 to-navy-950 text-white transition-[width] duration-300 ease-out lg:flex lg:min-h-screen lg:flex-col", hover ? "lg:w-72" : "lg:w-[76px]")}
+        className={cn("hidden overflow-x-hidden bg-gradient-to-b from-navy-900 to-navy-950 text-white transition-[width] duration-300 ease-out lg:flex lg:min-h-screen lg:flex-col", hover ? "lg:w-80" : "lg:w-[76px]")}
       >
         <div className={cn("flex items-center py-5", expanded ? "gap-3 px-4" : "justify-center px-2")}>
           <img src="/logo-laranja.png" alt="DNA Work" className={cn("shrink-0 object-contain", expanded ? "h-9 w-16" : "h-8 w-12")} />
@@ -146,13 +146,13 @@ export function Shell({ email, notify }: { email: string; notify: (message: stri
         <div className="mt-auto border-t border-white/10 p-2">
           <button type="button" title="Sair" onClick={() => void logout()} className="flex h-11 w-full items-center gap-3 rounded-xl bg-white/10 px-3 text-sm font-semibold text-white transition duration-200 hover:bg-cyan-400 hover:text-navy-950">
             <LogOut size={18} className="shrink-0" />
-            <span className={cn("overflow-hidden whitespace-nowrap transition-all duration-300", expanded ? "max-w-40 opacity-100" : "max-w-0 opacity-0")}>Sair</span>
+            <span className={cn("overflow-hidden whitespace-nowrap transition-all duration-300", expanded ? "max-w-56 opacity-100" : "max-w-0 opacity-0")}>Sair</span>
           </button>
           <p className={cn("truncate px-3 pt-2 text-xs text-slate-400", expanded ? "" : "hidden")}>{email}</p>
         </div>
       </aside>
       {open ? <div className="fixed inset-0 z-40 bg-navy-950/50 lg:hidden" onClick={() => setOpen(false)} /> : null}
-      <aside className={cn("fixed inset-y-0 left-0 z-50 flex w-72 flex-col bg-navy-900 p-4 text-white lg:hidden", open ? "translate-x-0" : "hidden")}>
+      <aside className={cn("fixed inset-y-0 left-0 z-50 flex w-80 flex-col bg-navy-900 p-4 text-white lg:hidden", open ? "translate-x-0" : "hidden")}>
         <div className="mb-6 flex items-center justify-between">
           <strong>DNAWORK</strong>
           <button aria-label="Fechar menu" onClick={() => setOpen(false)}><X /></button>

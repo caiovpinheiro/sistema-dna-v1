@@ -77,35 +77,42 @@ export function EmailsPage() {
       </div>
       {lista.isLoading ? <p className="text-sm text-slate-500">Carregando modelos…</p> : null}
       {lista.isError ? <p className="text-sm text-rose-600">Não foi possível carregar os modelos.</p> : null}
-      <div className="grid gap-5 xl:grid-cols-[280px_1fr]">
-        <Card className="grid max-h-[70vh] content-start gap-1 overflow-auto p-2">
+      <div className="grid items-start gap-5 lg:grid-cols-[240px_minmax(0,1fr)]">
+        <Card className="grid max-h-[78vh] content-start gap-1 overflow-auto p-2">
           {modelos.map((item) => (
-            <button key={`${item.descricao}-${item.id}`} type="button" onClick={() => setId(item.id)} className={`rounded-xl px-3 py-2 text-left text-sm font-semibold ${item.id === atual?.id ? "bg-navy-900 text-white" : "hover:bg-slate-50"}`}>
+            <button key={`${item.descricao}-${item.id}`} type="button" onClick={() => setId(item.id)} className={`rounded-xl px-3 py-2.5 text-left text-sm font-semibold leading-5 ${item.id === atual?.id ? "bg-navy-900 text-white" : "text-slate-700 hover:bg-slate-50"}`}>
               {item.descricao}
             </button>
           ))}
         </Card>
         {atual ? (
-          <div className="grid gap-5">
+          <div className="grid items-start gap-5 xl:grid-cols-2">
+            <Card className="grid gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Como o e-mail sai</p>
+                <h2 className="text-lg font-extrabold">{atual.descricao}</h2>
+              </div>
+              <div className="grid gap-1 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm">
+                <p><span className="mr-2 text-slate-400">De</span>{atual.remetente || "documentos@dnawork.ai"}</p>
+                <p><span className="mr-2 text-slate-400">Para</span>maria.souza@exemplo.com</p>
+                <p><span className="mr-2 text-slate-400">Assunto</span>{previewAssunto}</p>
+              </div>
+              <iframe title="Prévia do e-mail" sandbox="" srcDoc={previewHtml} className="h-[520px] w-full rounded-2xl border border-slate-200 bg-white" />
+              <p className="text-xs text-slate-500">A prévia troca as variáveis por um exemplo. O envio real usa os dados da pessoa.</p>
+            </Card>
             <Card className="grid gap-4">
-              <p className="text-sm text-slate-500">Remetente <strong className="text-slate-800">{atual.remetente || "documentos@dnawork.ai"}</strong></p>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Ajustar a mensagem</p>
+                <h2 className="text-lg font-extrabold">Texto enviado</h2>
+              </div>
               <Field label="Assunto"><Input value={assunto} onChange={(event) => setAssunto(event.target.value)} /></Field>
               <Field label="Mensagem">
-                <Textarea className="min-h-64 font-mono text-xs" value={texto} onChange={(event) => setTexto(event.target.value)} />
+                <Textarea className="min-h-[420px] font-mono text-xs leading-5" value={texto} onChange={(event) => setTexto(event.target.value)} />
               </Field>
-              {variaveis.length ? <p className="text-xs text-slate-500">Variáveis: {variaveis.join(", ")}</p> : null}
+              {variaveis.length ? <p className="text-xs leading-5 text-slate-500">Variáveis neste texto: {variaveis.join(", ")}</p> : null}
               {erro ? <p className="text-sm text-rose-600">{erro}</p> : null}
               {aviso ? <p className="text-sm text-emerald-700">{aviso}</p> : null}
               <Button type="button" disabled={salvar.isPending || !assunto.trim() || !texto.trim()} onClick={() => salvar.mutate()}>{salvar.isPending ? "Salvando…" : "Salvar modelo"}</Button>
-            </Card>
-            <Card className="grid gap-3">
-              <h2 className="font-extrabold">Prévia do envio</h2>
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm">
-                <p><span className="text-slate-400">De</span> {atual.remetente || "documentos@dnawork.ai"}</p>
-                <p><span className="text-slate-400">Para</span> maria.souza@exemplo.com</p>
-                <p><span className="text-slate-400">Assunto</span> {previewAssunto}</p>
-              </div>
-              <iframe title="Prévia do e-mail" sandbox="" srcDoc={previewHtml} className="h-[480px] w-full rounded-2xl border border-slate-200 bg-white" />
             </Card>
           </div>
         ) : null}
