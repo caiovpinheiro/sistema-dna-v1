@@ -1,4 +1,4 @@
-import { Briefcase, Building2, ChevronDown, FileSignature, FileWarning, GraduationCap, Handshake, LayoutDashboard, LogOut, Menu, Percent, Receipt, Search, Users, Wallet, X } from "lucide-react";
+import { Briefcase, Building2, ChevronDown, FileSignature, FileWarning, GraduationCap, Handshake, LayoutDashboard, LogOut, Mail, Menu, Percent, Receipt, Search, Users, Wallet, X } from "lucide-react";
 import { useEffect, useState, type ComponentType } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
@@ -118,6 +118,9 @@ export function Shell({ email, notify }: { email: string; notify: (message: stri
       <SideGroup label="Comissão" icon={Percent} active={comissaoActive} expanded={expanded} links={comissaoLinks} onNavigate={() => setOpen(false)} />
       <NavLink to="/financeiro/holerite" onClick={() => setOpen(false)} title="Holerite" className={linkClass}>
         <Receipt size={18} className="shrink-0" /> {label("Holerite")}
+      </NavLink>
+      <NavLink to="/emails" onClick={() => setOpen(false)} title="E-mails" className={linkClass}>
+        <Mail size={18} className="shrink-0" /> {label("E-mails")}
       </NavLink>
       <NavLink to="/documentos-pendentes" onClick={() => setOpen(false)} title="Documentos Pendentes" className={linkClass}>
         <FileWarning size={18} className="shrink-0" /> {label("Documentos Pendentes")}

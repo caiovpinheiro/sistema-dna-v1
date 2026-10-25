@@ -9,6 +9,7 @@ import { CandidatosPage } from "@/pages/CandidatosPage";
 import { ContratacaoDetailPage } from "@/pages/ContratacaoDetailPage";
 import { ContratacoesPage } from "@/pages/ContratacoesPage";
 import { DashboardPage } from "@/pages/DashboardPage";
+import { EmailsPage } from "@/pages/EmailsPage";
 import { EmpresaDetailPage } from "@/pages/EmpresaDetailPage";
 import { EmpresaFormPage } from "@/pages/EmpresaFormPage";
 import { EmpresasPage } from "@/pages/EmpresasPage";
@@ -80,6 +81,7 @@ export function App() {
             <Route path="/financeiro/comissao/empresas" element={<ComissaoEmpresasPage />} />
             <Route path="/financeiro/holerite" element={<GerarHoleritePage />} />
             <Route path="/documentos-pendentes" element={<DocumentosPendentesPage />} />
+            <Route path="/emails" element={<EmailsPage />} />
             <Route path="/instituicoes" element={<ConsultarInstituicoesPage />} />
             <Route path="/instituicoes/nova" element={<CadastrarInstituicaoPage />} />
           </Route>

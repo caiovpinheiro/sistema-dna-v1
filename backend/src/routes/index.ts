@@ -20,6 +20,7 @@ import type { EmpresaService } from "../services/empresa.service.js";
 import { camposFromBody, type TceService } from "../services/tce.service.js";
 import type { TermoService } from "../services/termo.service.js";
 import { MANUAL_FIELDS } from "../lib/tce-fields.js";
+import { listarModelosEmail, salvarModeloEmail } from "../lib/email-modelo.js";
 import type { VagaService } from "../services/vaga.service.js";
 import { sessionCookie } from "../plugins/auth.js";
 
@@ -236,6 +237,17 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
   api.post("/api/v1/tce/:id/email-escola", {
     schema: { tags: ["termos"], params: z.object({ id: z.string().uuid() }) },
   }, async (request) => ok(await services.tce.enviarAssinaturaEscola(request.params.id)));
+  api.get("/api/v1/emails", { schema: { tags: ["emails"] } }, async () => ok(await listarModelosEmail(db)));
+  api.patch("/api/v1/emails/:id", {
+    schema: {
+      tags: ["emails"],
+      params: z.object({ id: z.coerce.number().int().positive() }),
+      body: z.object({
+        assunto: z.string().trim().min(1).max(300),
+        texto: z.string().min(1).max(100_000),
+      }),
+    },
+  }, async (request) => ok(await salvarModeloEmail(db, request.params.id, request.body.assunto, request.body.texto)));
   api.get("/api/v1/asaas/regua", {
     schema: { tags: ["asaas"], querystring: z.object({ competencia: z.string().regex(/^\d{4}-\d{2}$/) }) },
   }, async (request) => ok(await services.regua.listar(request.query.competencia)));

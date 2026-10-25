@@ -57,3 +57,29 @@ export async function enviarModelo(
   }
   return { enviados, remetente };
 }
+
+export async function listarModelosEmail(db: Pool) {
+  const rows = await db.query<{
+    id: number;
+    descricao: string;
+    assunto: string | null;
+    texto: string | null;
+    remetente: string | null;
+  }>(`
+    SELECT e.id_email AS id, v.descricao, e.assunto, e.texto, s.remetente_jetmail AS remetente
+    FROM dna_work.emailsvinculo v
+    JOIN dna_work.emails e ON e.id_email = v.id_email
+    LEFT JOIN dna_work.servidor_email s ON s.id::text = v.conta_email::text
+    WHERE v.id_email IS NOT NULL AND v.id_email <> 0 AND coalesce(e.texto, '') <> ''
+    ORDER BY v.descricao
+  `);
+  return rows.rows;
+}
+
+export async function salvarModeloEmail(db: Pool, id: number, assunto: string, texto: string) {
+  const result = await db.query(`
+    UPDATE dna_work.emails SET assunto = $2, texto = $3 WHERE id_email = $1
+  `, [id, assunto, texto]);
+  if (!result.rowCount) throw new AppError(404, "MODELO_NAO_ENCONTRADO", "Modelo de e-mail não encontrado.");
+  return { id, assunto };
+}
