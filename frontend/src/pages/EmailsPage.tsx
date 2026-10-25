@@ -5,40 +5,117 @@ import { ApiError, api } from "@/lib/api";
 
 type Modelo = { id: number; vinculo: number; descricao: string; assunto: string | null; texto: string | null; remetente: string | null };
 
-const EXEMPLOS: Record<string, string> = {
-  "@Nome-Assinatura-Digital": "Maria Souza",
-  "@Documento-Nome": "TCE - Maria Souza",
-  "@Link-Assinatura-Digital": "https://app.zapsign.com.br/verificar/exemplo",
-  "@Nome-Candidato": "Maria Souza",
-  "@Semestre-Candidato": "3º",
-  "@Ano-Escolar": "2026",
-  "@Turno-Candidato": "Manhã",
-  "@Nome-Fantasia-Empresa": "Empresa Exemplo",
-  "@Razao-Social-Empresa": "Empresa Exemplo Ltda",
-  "@CNPJ-Empresa": "00.000.000/0001-00",
-  "@Cargo-Vaga": "Estágio",
-  "@Valor": "1.250,00",
-  "@Vencimento": "10/11/2026",
-  "@Data": "24/10/2026",
-  "@link-pg": "https://www.asaas.com/i/exemplo",
-  "@Variaveis-Candidato": "Nome do candidato: Maria Souza.",
-  "@Variaveis-vaga": "Vaga: Estágio",
-  "@Variaveis-Empresa": "Razão Social: Empresa Exemplo Ltda. Nome Fantasia: Empresa Exemplo. CNPJ: 00.000.000/0001-00",
-  "@tabela-cobranca": "Tabela de cobrança do mês",
-};
+const CAMPOS = [
+  { token: "@Nome-Candidato", nome: "Nome do candidato", exemplo: "Maria Souza" },
+  { token: "@Primeiro-Nome-Candidato", nome: "Primeiro nome do candidato", exemplo: "Maria" },
+  { token: "@Nome-Fantasia-Empresa", nome: "Nome da empresa", exemplo: "Empresa Exemplo" },
+  { token: "@Razao-Social-Empresa", nome: "Razão social da empresa", exemplo: "Empresa Exemplo Ltda" },
+  { token: "@CNPJ-Empresa", nome: "CNPJ da empresa", exemplo: "00.000.000/0001-00" },
+  { token: "@Responsavel-RH-Empresa", nome: "Responsável da empresa", exemplo: "João Lima" },
+  { token: "@Nome-Fantasia-Escola", nome: "Nome da escola", exemplo: "Escola Estadual Exemplo" },
+  { token: "@Semestre-Candidato", nome: "Semestre do candidato", exemplo: "3º" },
+  { token: "@Ano-Escolar", nome: "Ano escolar", exemplo: "2026" },
+  { token: "@Turno-Candidato", nome: "Turno do candidato", exemplo: "Manhã" },
+  { token: "@Cargo-Vaga", nome: "Cargo da vaga", exemplo: "Estágio" },
+  { token: "@Codigo-Vaga", nome: "Código da vaga", exemplo: "1042" },
+  { token: "@Bolsa-Auxilio-Vaga", nome: "Bolsa da vaga", exemplo: "R$ 800,00" },
+  { token: "@Beneficios-Vaga", nome: "Benefícios da vaga", exemplo: "Vale-transporte" },
+  { token: "@Carga-Horaria-Vaga", nome: "Carga horária da vaga", exemplo: "6 horas" },
+  { token: "@Atividades-Vaga", nome: "Atividades da vaga", exemplo: "Apoio administrativo" },
+  { token: "@Dados-Vaga", nome: "Dados da vaga", exemplo: "Estágio, 6 horas, bolsa R$ 800" },
+  { token: "@Documento-Nome", nome: "Nome do documento", exemplo: "TCE - Maria Souza" },
+  { token: "@Nome-Assinatura-Digital", nome: "Nome de quem assina", exemplo: "Maria Souza" },
+  { token: "@Link-Assinatura-Digital", nome: "Link de assinatura", exemplo: "https://app.zapsign.com.br/verificar/exemplo" },
+  { token: "@Link-Login-Sistema", nome: "Link de acesso", exemplo: "https://empresas.dnawork.ai" },
+  { token: "@Link-Video-Chamada", nome: "Link da videochamada", exemplo: "https://meet.example.com/sala" },
+  { token: "@Link-Confirma-Entrevista", nome: "Link para confirmar a entrevista", exemplo: "https://empresas.dnawork.ai/confirmar" },
+  { token: "@Confirma-dados-link", nome: "Link para confirmar os dados", exemplo: "https://empresas.dnawork.ai/dados" },
+  { token: "@Avaliacoes-link", nome: "Link da avaliação", exemplo: "https://empresas.dnawork.ai/avaliacao" },
+  { token: "@Data-Entrevista", nome: "Data da entrevista", exemplo: "24/10/2026" },
+  { token: "@Hora-Entrevista", nome: "Hora da entrevista", exemplo: "14:00" },
+  { token: "@Valor", nome: "Valor", exemplo: "1.250,00" },
+  { token: "@Vencimento", nome: "Vencimento", exemplo: "10/11/2026" },
+  { token: "@link-pg", nome: "Link de pagamento", exemplo: "https://www.asaas.com/i/exemplo" },
+  { token: "@tabela-cobranca", nome: "Tabela da cobrança", exemplo: "Tabela de cobrança do mês" },
+  { token: "@tabela-encaminhados", nome: "Tabela de encaminhados", exemplo: "Lista de candidatos encaminhados" },
+  { token: "@Usuario-Empresa", nome: "Usuário da empresa", exemplo: "contato@empresa.com" },
+  { token: "@Usuario-Senha-Empresa", nome: "Senha de acesso da empresa", exemplo: "senha temporária" },
+  { token: "@Nome-Quem-Preenche", nome: "Nome de quem preenche", exemplo: "Ana Costa" },
+  { token: "@Variaveis-Candidato", nome: "Dados do candidato", exemplo: "Nome do candidato: Maria Souza." },
+  { token: "@Variaveis-vaga", nome: "Resumo da vaga", exemplo: "Vaga: Estágio" },
+  { token: "@Variaveis-Empresa", nome: "Dados da empresa", exemplo: "Empresa Exemplo Ltda" },
+  { token: "@Dados-VagaSegue", nome: "Continuação dos dados da vaga", exemplo: "Horário comercial" },
+  { token: "@Link", nome: "Link", exemplo: "https://empresas.dnawork.ai" },
+  { token: "@Hora", nome: "Hora", exemplo: "14:00" },
+  { token: "@Endereco-Agente", nome: "Endereço da DNA Work", exemplo: "Rua Exemplo" },
+  { token: "@Numero-Endereco-Agente", nome: "Número do endereço da DNA Work", exemplo: "100" },
+  { token: "@Bairro-Agente", nome: "Bairro da DNA Work", exemplo: "Centro" },
+  { token: "@Complemento-Endereco-Agente", nome: "Complemento da DNA Work", exemplo: "Sala 2" },
+  { token: "@Bairro-Empresa", nome: "Bairro da empresa", exemplo: "Centro" },
+  { token: "@Entrevista-Endereco-Empresa", nome: "Endereço da entrevista", exemplo: "Rua da Empresa" },
+  { token: "@Entrevista-Numero-Empresa", nome: "Número da entrevista", exemplo: "50" },
+  { token: "@Entrevista-Bairro-Empresa", nome: "Bairro da entrevista", exemplo: "Centro" },
+  { token: "@Entrevista-Complemento-Empresa", nome: "Complemento da entrevista", exemplo: "Sala 1" },
+  { token: "@Nome-Assinatura-Digita", nome: "Nome de quem assina no texto antigo", exemplo: "Maria Souza" },
+] as const;
 
-function variaveisDe(texto: string) {
-  return [...new Set(texto.match(/(?<![A-Za-z0-9._%+-])@[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ0-9-]*/g) ?? [])];
+const campoClasse = "h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:ring-4 focus:ring-cyan-700/30";
+
+function marcador(nome: string) {
+  return `{{${nome}}}`;
 }
 
-function tokenDe(valor: string) {
-  const limpo = valor.trim().replace(/^@/, "").replace(/[^A-Za-zÀ-ÿ0-9-]/g, "");
-  return limpo ? `@${limpo}` : "";
+function paraOperacao(texto: string) {
+  return [...CAMPOS].sort((a, b) => b.token.length - a.token.length).reduce((saida, campo) => saida.split(campo.token).join(marcador(campo.nome)), texto);
+}
+
+function paraSistema(texto: string) {
+  return [...CAMPOS].sort((a, b) => b.nome.length - a.nome.length).reduce((saida, campo) => saida.split(marcador(campo.nome)).join(campo.token), texto);
+}
+
+function variaveisDe(texto: string) {
+  return [...new Set(texto.match(/\{\{[^}]+\}\}/g) ?? [])].map((item) => item.slice(2, -2));
 }
 
 function aplicar(texto: string, exemplos: Record<string, string>) {
-  const mapa = { ...EXEMPLOS, ...exemplos };
-  return Object.keys(mapa).sort((a, b) => b.length - a.length).reduce((saida, chave) => saida.split(chave).join(mapa[chave] || chave), texto);
+  return variaveisDe(texto).sort((a, b) => b.length - a.length).reduce((saida, nome) => {
+    const padrao = CAMPOS.find((campo) => campo.nome === nome)?.exemplo ?? nome;
+    return saida.split(marcador(nome)).join(exemplos[nome] || padrao);
+  }, texto);
+}
+
+function htmlParaTexto(html: string) {
+  const comQuebras = html
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n\n")
+    .replace(/<\/div>/gi, "\n")
+    .replace(/<\/tr>/gi, "\n")
+    .replace(/<\/h[1-6]>/gi, "\n\n")
+    .replace(/<li>/gi, "• ")
+    .replace(/<\/li>/gi, "\n");
+  const semTags = comQuebras.replace(/<[^>]+>/g, "");
+  const texto = semTags
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, "\"")
+    .replace(/&#39;/gi, "'");
+  return texto.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function textoParaHtml(texto: string) {
+  const escapado = texto
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+  const blocos = escapado.split(/\n{2,}/).map((bloco) => bloco.trim()).filter(Boolean);
+  if (!blocos.length) return "<p></p>";
+  return blocos.map((bloco) => `<p>${bloco.replace(/\n/g, "<br>")}</p>`).join("");
+}
+
+function abrirModelo(valor: string) {
+  return htmlParaTexto(paraOperacao(valor));
 }
 
 export function EmailsPage() {
@@ -52,6 +129,7 @@ export function EmailsPage() {
   const [exemplos, setExemplos] = useState<Record<string, string>>({});
   const [aviso, setAviso] = useState("");
   const [erro, setErro] = useState("");
+  const [campoNovo, setCampoNovo] = useState<string>(CAMPOS[0].nome);
   const mensagem = useRef<HTMLTextAreaElement>(null);
   const atual = modelos.find((item) => item.vinculo === id) ?? modelos[0];
 
@@ -59,8 +137,8 @@ export function EmailsPage() {
     if (!atual) return;
     setId(atual.vinculo);
     setNome(atual.descricao);
-    setAssunto(atual.assunto ?? "");
-    setTexto(atual.texto ?? "");
+    setAssunto(abrirModelo(atual.assunto ?? ""));
+    setTexto(abrirModelo(atual.texto ?? ""));
     setAviso("");
     setErro("");
   }, [atual?.vinculo]);
@@ -68,7 +146,7 @@ export function EmailsPage() {
   const salvar = useMutation({
     mutationFn: () => api(`/api/v1/emails/${atual?.id}`, {
       method: "PATCH",
-      body: JSON.stringify({ assunto, texto, descricao: nome, vinculo: atual?.vinculo }),
+      body: JSON.stringify({ assunto: paraSistema(assunto), texto: paraSistema(textoParaHtml(texto)), descricao: nome, vinculo: atual?.vinculo }),
     }),
     onSuccess: async () => {
       setErro("");
@@ -89,7 +167,7 @@ export function EmailsPage() {
 
   const variaveis = useMemo(() => variaveisDe(`${assunto}\n${texto}`), [assunto, texto]);
   const previewAssunto = useMemo(() => aplicar(assunto, exemplos), [assunto, exemplos]);
-  const previewHtml = useMemo(() => aplicar(texto, exemplos), [texto, exemplos]);
+  const previewHtml = useMemo(() => textoParaHtml(aplicar(texto, exemplos)), [texto, exemplos]);
 
   function inserir(token: string) {
     const campo = mensagem.current;
@@ -107,26 +185,21 @@ export function EmailsPage() {
     });
   }
 
-  function renomear(antigo: string, valor: string) {
-    const token = tokenDe(valor);
-    if (!token || token === antigo) return;
-    setAssunto((atualAssunto) => atualAssunto.split(antigo).join(token));
-    setTexto((atualTexto) => atualTexto.split(antigo).join(token));
-    setExemplos((atualExemplos) => {
-      const copia = { ...atualExemplos, [token]: atualExemplos[antigo] ?? EXEMPLOS[token] ?? "" };
-      delete copia[antigo];
-      return copia;
-    });
+  function inserirCampo(nomeCampo: string) {
+    inserir(marcador(nomeCampo));
   }
 
-  function novaVariavel() {
-    let indice = variaveis.length + 1;
-    let token = `@Nova-Variavel-${indice}`;
-    while (variaveis.includes(token)) {
-      indice += 1;
-      token = `@Nova-Variavel-${indice}`;
-    }
-    inserir(token);
+  function trocarCampo(atualNome: string, novoNome: string) {
+    if (!novoNome || novoNome === atualNome) return;
+    const antigo = marcador(atualNome);
+    const novo = marcador(novoNome);
+    setAssunto((valor) => valor.split(antigo).join(novo));
+    setTexto((valor) => valor.split(antigo).join(novo));
+    setExemplos((valor) => {
+      const copia = { ...valor, [novoNome]: valor[atualNome] ?? "" };
+      delete copia[atualNome];
+      return copia;
+    });
   }
 
   return (
@@ -163,21 +236,27 @@ export function EmailsPage() {
               <Field label="Nome do modelo"><Input value={nome} onChange={(event) => setNome(event.target.value)} /></Field>
               <Field label="Assunto"><Input value={assunto} onChange={(event) => setAssunto(event.target.value)} /></Field>
               <div className="grid gap-2 rounded-2xl border border-slate-200 p-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-sm font-semibold">Variáveis</p>
-                  <Button type="button" variant="secondary" onClick={novaVariavel}>Inserir variável</Button>
+                <p className="text-sm font-semibold">Campos da mensagem</p>
+                <p className="text-xs leading-5 text-slate-500">Escolha um campo, como nome do candidato ou nome da empresa, e coloque na mensagem. No envio ele é preenchido com o dado real.</p>
+                <div className="flex flex-wrap gap-2">
+                  <select aria-label="Campo para inserir" className={`${campoClasse} max-w-xs`} value={campoNovo} onChange={(event) => setCampoNovo(event.target.value)}>
+                    {CAMPOS.map((campo) => <option key={campo.token} value={campo.nome}>{campo.nome}</option>)}
+                  </select>
+                  <Button type="button" variant="secondary" onClick={() => inserirCampo(campoNovo)}>Colocar na mensagem</Button>
                 </div>
-                {variaveis.length === 0 ? <p className="text-sm text-slate-500">Nenhuma variável na mensagem. Use Inserir variável.</p> : null}
-                {variaveis.map((token) => (
-                  <div key={token} className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
-                    <Input aria-label={`Variável ${token}`} defaultValue={token} onBlur={(event) => renomear(token, event.target.value)} />
-                    <Input aria-label={`Exemplo de ${token}`} placeholder="Exemplo na prévia" value={exemplos[token] ?? EXEMPLOS[token] ?? ""} onChange={(event) => setExemplos((atualExemplos) => ({ ...atualExemplos, [token]: event.target.value }))} />
-                    <Button type="button" variant="secondary" onClick={() => inserir(token)}>Colocar</Button>
+                {variaveis.map((nomeCampo) => (
+                  <div key={nomeCampo} className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+                    <select aria-label={`Campo ${nomeCampo}`} className={campoClasse} value={CAMPOS.some((campo) => campo.nome === nomeCampo) ? nomeCampo : ""} onChange={(event) => trocarCampo(nomeCampo, event.target.value)}>
+                      {CAMPOS.some((campo) => campo.nome === nomeCampo) ? null : <option value="">{nomeCampo}</option>}
+                      {CAMPOS.map((campo) => <option key={campo.token} value={campo.nome}>{campo.nome}</option>)}
+                    </select>
+                    <Input aria-label={`Exemplo de ${nomeCampo}`} placeholder="Exemplo na prévia" value={exemplos[nomeCampo] ?? CAMPOS.find((campo) => campo.nome === nomeCampo)?.exemplo ?? ""} onChange={(event) => setExemplos((atualExemplos) => ({ ...atualExemplos, [nomeCampo]: event.target.value }))} />
+                    <Button type="button" variant="secondary" onClick={() => inserirCampo(nomeCampo)}>Colocar</Button>
                   </div>
                 ))}
               </div>
               <Field label="Mensagem">
-                <Textarea ref={mensagem} className="min-h-[280px] font-mono text-xs leading-5" value={texto} onChange={(event) => setTexto(event.target.value)} />
+                <Textarea ref={mensagem} className="min-h-[280px] text-sm leading-6" value={texto} onChange={(event) => setTexto(event.target.value)} />
               </Field>
               {erro ? <p className="text-sm text-rose-600">{erro}</p> : null}
               {aviso ? <p className="text-sm text-emerald-700">{aviso}</p> : null}
