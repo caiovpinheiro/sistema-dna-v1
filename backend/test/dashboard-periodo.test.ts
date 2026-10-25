@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { intervaloDe, VAGA_ABERTA } from "../src/lib/dashboard-periodo.js";
+import { intervaloDe } from "../src/lib/dashboard-periodo.js";
 
 test("intervalo de 30 dias termina no dia seguinte ao corrente", () => {
   const intervalo = intervaloDe({ dias: 30 }, new Date("2026-10-24T15:00:00Z"));
@@ -20,6 +20,11 @@ test("intervalo personalizado é inclusivo e rejeita ordem invertida", () => {
   assert.throws(() => intervaloDe({ de: "2026-02-31", ate: "2026-03-01" }));
 });
 
-test("vaga aberta no legado é somente o status zero", () => {
-  assert.equal(VAGA_ABERTA, 0);
+test("sete dias compara o bloco imediatamente anterior, sem sobrepor", () => {
+  const intervalo = intervaloDe({ dias: 7 }, new Date("2026-10-25T15:00:00Z"));
+  assert.equal(intervalo.inicio, "2026-10-19");
+  assert.equal(intervalo.fim, "2026-10-26");
+  assert.equal(intervalo.anteriorInicio, "2026-10-12");
+  assert.equal(intervalo.anteriorFim, "2026-10-19");
+  assert.equal(intervalo.anteriorFim, intervalo.inicio);
 });

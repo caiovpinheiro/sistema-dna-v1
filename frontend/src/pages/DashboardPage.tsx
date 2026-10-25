@@ -3,12 +3,13 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Badge, Skeleton, cn } from "@/components/ui";
+import { PreviewFlutuante } from "@/components/preview";
 import { api } from "@/lib/api";
 import { dateBr, regimeLabel } from "@/lib/format";
 
 type Contagem = { atual: number; anterior: number };
 type Dashboard = {
-  periodo: { inicio: string; fim: string; dias: number };
+  periodo: { inicio: string; fim: string; anteriorInicio: string; anteriorFim: string; dias: number };
   candidatos_base: number;
   candidatos_sem_data: number;
   empresas_base: number;
@@ -108,14 +109,14 @@ export function DashboardPage() {
                   <p className="text-[13px] text-slate-400">{item.titulo}</p>
                   <p className="mt-1 flex flex-wrap items-baseline gap-x-2">
                     <span className="text-2xl font-medium leading-none tabular-nums tracking-tight text-white">{item.valor.atual.toLocaleString("pt-BR")}</span>
-                    <span className="text-xs tabular-nums text-slate-500">{deltaDe(item.valor)} vs anterior</span>
+                    <Comparacao valor={item.valor} periodo={data.periodo} />
                   </p>
                 </article>
               ))}
             </div>
             <p className="flex flex-wrap gap-x-5 gap-y-1 border-t border-white/10 px-4 py-2 text-xs text-slate-400">
               <span><span className="tabular-nums text-slate-200">{data.vagas_abertas_agora.toLocaleString("pt-BR")}</span> {data.vagas_abertas_agora === 1 ? "vaga aberta agora" : "vagas abertas agora"}</span>
-              <span><span className="tabular-nums text-slate-200">{data.vagas_abertas_periodo.atual.toLocaleString("pt-BR")}</span> {data.vagas_abertas_periodo.atual === 1 ? "vaga aberta com cadastro no período" : "vagas abertas com cadastro no período"} <span className="text-slate-500">{deltaDe(data.vagas_abertas_periodo)} vs anterior</span></span>
+              <span><span className="tabular-nums text-slate-200">{data.vagas_abertas_periodo.atual.toLocaleString("pt-BR")}</span> {data.vagas_abertas_periodo.atual === 1 ? "vaga aberta com cadastro no período" : "vagas abertas com cadastro no período"} <Comparacao valor={data.vagas_abertas_periodo} periodo={data.periodo} /></span>
             </p>
           </section>
 
@@ -184,9 +185,9 @@ export function DashboardPage() {
           <section className="rounded-xl bg-[#12141a] ring-1 ring-white/10">
             <h2 className="px-4 pt-3 text-sm font-semibold text-white">Análise detalhada</h2>
             <dl className="grid gap-x-6 gap-y-3 px-4 py-3 sm:grid-cols-2 xl:grid-cols-3">
-              <Medida titulo="Encaminhados pela DNAWORK" valor={data.origem.encaminhados_dnawork} />
-              <Medida titulo="Candidatos recebidos das empresas" valor={data.origem.recebidos_empresa} />
-              <Medida titulo="Entrevistas realizadas" valor={data.origem.entrevistas} />
+              <Medida titulo="Encaminhados pela DNAWORK" valor={data.origem.encaminhados_dnawork} periodo={data.periodo} />
+              <Medida titulo="Candidatos recebidos das empresas" valor={data.origem.recebidos_empresa} periodo={data.periodo} />
+              <Medida titulo="Entrevistas realizadas" valor={data.origem.entrevistas} periodo={data.periodo} />
               <Conversao titulo="Conversão DNAWORK" taxa={data.origem.conversao_dnawork} />
               <Conversao titulo="Conversão da empresa" taxa={data.origem.conversao_empresa} />
               {data.posicoes.disponivel ? (
@@ -236,7 +237,7 @@ export function DashboardPage() {
               </div>
             </div>
             <p className="border-t border-white/10 px-4 py-2 text-xs text-slate-500">
-              Registro antigo de entrevistas, sem origem: <span className="tabular-nums text-slate-300">{data.encaminhamentos.atual.toLocaleString("pt-BR")}</span> no período ({deltaDe(data.encaminhamentos)} vs anterior).
+              Registro antigo de entrevistas, sem origem: <span className="tabular-nums text-slate-300">{data.encaminhamentos.atual.toLocaleString("pt-BR")}</span> no período (<Comparacao valor={data.encaminhamentos} periodo={data.periodo} />).
             </p>
             <p className="px-4 pb-3 text-xs text-slate-500">
               {contagem(data.candidatos_sem_data, "candidato sem data de inclusão fica fora do período", "candidatos sem data de inclusão ficam fora do período")}. A base tem {contagem(data.candidatos_base, "registro", "registros")} e {contagem(data.empresas_base, "empresa", "empresas")}. {contagem(data.contratacoes_ativas_agora, "vínculo ativo agora", "vínculos ativos agora")}.
@@ -278,15 +279,37 @@ export function DashboardPage() {
   );
 }
 
-function Medida({ titulo, valor }: { titulo: string; valor: Contagem }) {
+function Medida({ titulo, valor, periodo }: { titulo: string; valor: Contagem; periodo: Dashboard["periodo"] }) {
   return (
     <div className="min-w-0">
       <dt className="text-xs text-slate-400">{titulo}</dt>
       <dd className="mt-0.5 flex flex-wrap items-baseline gap-x-2">
         <span className="text-lg font-medium leading-none tabular-nums text-white">{valor.atual.toLocaleString("pt-BR")}</span>
-        <span className="text-xs tabular-nums text-slate-500">{deltaDe(valor)} vs anterior</span>
+        <Comparacao valor={valor} periodo={periodo} />
       </dd>
     </div>
+  );
+}
+
+function Comparacao({ valor, periodo }: { valor: Contagem; periodo: Dashboard["periodo"] }) {
+  const [box, setBox] = useState<{ top: number; left: number } | null>(null);
+  const atualAte = somar(periodo.fim, -1);
+  const anteriorAte = somar(periodo.anteriorFim, -1);
+  const pct = variacao(valor);
+  return (
+    <span
+      className="cursor-default text-xs tabular-nums text-slate-500"
+      onMouseEnter={(event) => setBox({ top: Math.min(event.clientY + 12, window.innerHeight - 120), left: Math.min(event.clientX + 12, window.innerWidth - 248) })}
+      onMouseLeave={() => setBox(null)}
+    >
+      {deltaDe(valor)}{pct == null ? "" : ` (${pct > 0 ? "+" : ""}${pct.toLocaleString("pt-BR")}%)`} em relação a {faixaCurta(periodo.anteriorInicio, anteriorAte)}
+      <PreviewFlutuante box={box}>
+        <p className="font-semibold text-white">{dateBr(periodo.inicio)} a {dateBr(atualAte)}</p>
+        <p className="tabular-nums">{valor.atual.toLocaleString("pt-BR")}</p>
+        <p className="mt-2 font-semibold text-white">{dateBr(periodo.anteriorInicio)} a {dateBr(anteriorAte)}</p>
+        <p className="tabular-nums">{valor.anterior.toLocaleString("pt-BR")}</p>
+      </PreviewFlutuante>
+    </span>
   );
 }
 
@@ -321,6 +344,19 @@ function contagem(valor: number, singular: string, plural: string) {
 function deltaDe(valor: Contagem) {
   const delta = valor.atual - valor.anterior;
   return `${delta > 0 ? "+" : ""}${delta.toLocaleString("pt-BR")}`;
+}
+
+function variacao(valor: Contagem) {
+  if (valor.anterior === 0) return null;
+  return Math.round(((valor.atual - valor.anterior) / valor.anterior) * 1000) / 10;
+}
+
+function faixaCurta(inicio: string, fim: string) {
+  const [anoInicio, mesInicio, diaInicio] = inicio.split("-");
+  const [anoFim, mesFim, diaFim] = fim.split("-");
+  if (anoInicio === anoFim && mesInicio === mesFim) return `${Number(diaInicio)}–${Number(diaFim)}/${mesFim}`;
+  if (anoInicio === anoFim) return `${Number(diaInicio)}/${mesInicio}–${Number(diaFim)}/${mesFim}`;
+  return `${Number(diaInicio)}/${mesInicio}/${anoInicio}–${Number(diaFim)}/${mesFim}/${anoFim}`;
 }
 
 function somar(iso: string, dias: number) {
