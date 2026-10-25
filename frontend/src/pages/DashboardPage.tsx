@@ -15,7 +15,7 @@ type Dashboard = {
 
 export function DashboardPage() {
   const query = useQuery({ queryKey: ["dashboard"], queryFn: () => api<Dashboard>("/api/v1/dashboard") });
-  if (query.isLoading) return <div className="grid gap-px overflow-hidden rounded-xl border border-slate-200 bg-slate-200 sm:grid-cols-2 xl:grid-cols-5">{Array.from({ length: 5 }).map((_, index) => <Skeleton key={index} className="h-16 rounded-none bg-white" />)}</div>;
+  if (query.isLoading) return <div className="grid gap-px overflow-hidden rounded-xl bg-white/10 sm:grid-cols-2 xl:grid-cols-5">{Array.from({ length: 5 }).map((_, index) => <Skeleton key={index} className="h-[4.5rem] rounded-none bg-[#12141a]" />)}</div>;
   if (query.isError || !query.data) return <p className="text-sm text-rose-600">Não foi possível carregar os indicadores.</p>;
   const data = query.data.data;
   const cards = [
@@ -28,21 +28,21 @@ export function DashboardPage() {
   return (
     <div className="grid gap-4">
       <div>
-        <h1 className="text-xl font-semibold tracking-tight text-navy-900">Painel</h1>
+        <h1 className="text-xl font-semibold tracking-tight text-white">Painel</h1>
         <p className="text-sm text-slate-500">Números lidos agora do banco.</p>
       </div>
-      <div className="grid gap-px overflow-hidden rounded-xl border border-slate-200 bg-slate-200 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-px overflow-hidden rounded-xl bg-white/10 sm:grid-cols-2 xl:grid-cols-5">
         {cards.map(([label, value]) => (
-          <div key={String(label)} className="bg-white px-4 py-3">
-            <p className="text-[13px] text-slate-500">{label}</p>
-            <p className="mt-1 text-[1.65rem] font-semibold tabular-nums tracking-tight text-navy-900">{value}</p>
+          <div key={String(label)} className="bg-[#12141a] px-5 py-4">
+            <p className="text-[13px] text-slate-400">{label}</p>
+            <p className="mt-2 text-[2rem] font-medium leading-none tabular-nums tracking-tight text-white">{value}</p>
           </div>
         ))}
       </div>
-      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-        <div className="flex items-center justify-between gap-3 px-4 py-3">
-          <h2 className="text-sm font-semibold text-navy-900">Últimas contratações</h2>
-          <Link className="text-sm font-semibold text-cyan-800" to="/contratacoes">Ver todas</Link>
+      <section className="overflow-hidden rounded-xl bg-[#12141a] ring-1 ring-white/10">
+        <div className="flex items-center justify-between gap-3 px-5 py-4">
+          <h2 className="text-sm font-semibold text-white">Últimas contratações</h2>
+          <Link className="text-sm font-semibold text-cyan-300" to="/contratacoes">Ver todas</Link>
         </div>
         <div className="overflow-x-auto">
           <table className="data-table">

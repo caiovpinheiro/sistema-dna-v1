@@ -147,11 +147,11 @@ export function Shell({ email, notify }: { email: string; notify: (message: stri
   );
 
   return (
-    <div className="flex min-h-screen">
+    <div className="app-canvas flex min-h-screen">
       <aside
         onMouseEnter={() => setHover(true)}
         onMouseLeave={() => setHover(false)}
-        className={cn("hidden overflow-x-hidden bg-gradient-to-b from-navy-900 to-navy-950 text-white transition-[width] duration-300 ease-out lg:flex lg:min-h-screen lg:flex-col", hover ? "lg:w-80" : "lg:w-[76px]")}
+        className={cn("hidden overflow-x-hidden border-r border-white/10 bg-[#0b0d12] text-white transition-[width] duration-300 ease-out lg:flex lg:min-h-screen lg:flex-col", hover ? "lg:w-80" : "lg:w-[76px]")}
       >
         <div className={cn("flex items-center py-5", expanded ? "gap-3 px-4" : "justify-center px-2")}>
           <img src="/logo-laranja.png" alt="DNA Work" className={cn("shrink-0 object-contain", expanded ? "h-9 w-16" : "h-8 w-12")} />
@@ -170,7 +170,7 @@ export function Shell({ email, notify }: { email: string; notify: (message: stri
         </div>
       </aside>
       {open ? <div className="fixed inset-0 z-40 bg-navy-950/50 lg:hidden" onClick={() => setOpen(false)} /> : null}
-      <aside className={cn("fixed inset-y-0 left-0 z-50 flex w-80 flex-col bg-navy-900 p-4 text-white lg:hidden", open ? "translate-x-0" : "hidden")}>
+      <aside className={cn("fixed inset-y-0 left-0 z-50 flex w-80 flex-col border-r border-white/10 bg-[#0b0d12] p-4 text-white lg:hidden", open ? "translate-x-0" : "hidden")}>
         <div className="mb-6 flex items-center justify-between">
           <strong>DNAWORK</strong>
           <button aria-label="Fechar menu" onClick={() => setOpen(false)}><X /></button>
@@ -182,13 +182,13 @@ export function Shell({ email, notify }: { email: string; notify: (message: stri
         <p className="truncate px-3 pt-2 text-xs text-slate-400">{email}</p>
       </aside>
       <div className="min-w-0 flex-1">
-        <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-slate-200/80 bg-white/85 px-4 backdrop-blur">
-          <button className="grid h-9 w-9 place-items-center rounded-lg hover:bg-slate-100 lg:hidden" aria-label="Abrir menu" onClick={() => setOpen(true)}><Menu size={18} /></button>
-          <p className="hidden text-sm font-semibold text-navy-900 sm:block">{tituloDaRota(pathname)}</p>
+        <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b border-white/10 bg-[#0e1014]/90 px-4 backdrop-blur">
+          <button className="grid h-9 w-9 place-items-center rounded-lg text-slate-300 hover:bg-white/10 lg:hidden" aria-label="Abrir menu" onClick={() => setOpen(true)}><Menu size={18} /></button>
+          <p className="hidden text-sm font-semibold text-white sm:block">{tituloDaRota(pathname)}</p>
           {pathname.startsWith("/emails") ? <div className="flex-1" /> : (
             <form className="relative ml-auto w-full max-w-md" onSubmit={(event) => { event.preventDefault(); navigate(`/candidatos?nome=${encodeURIComponent(query)}`); }}>
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
-              <input aria-label="Buscar candidatos" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar candidato por nome" className="h-9 w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-3 text-sm outline-none focus:bg-white focus:ring-4 focus:ring-cyan-700/20" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={15} />
+              <input aria-label="Buscar candidatos" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar candidato por nome" className="h-9 w-full rounded-lg border border-white/10 bg-white/5 pl-9 pr-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-cyan-400/40 focus:bg-white/10" />
             </form>
           )}
         </header>
