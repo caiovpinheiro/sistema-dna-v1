@@ -11,7 +11,12 @@ export const cnpjSchema = z.string().transform(onlyDigits).refine(isValidCnpj, "
 export const optionalPhone = z
   .string()
   .optional()
-  .transform((value) => (value ? onlyDigits(value) : undefined))
+  .transform((value) => {
+    if (!value) return undefined;
+    let digits = onlyDigits(value);
+    if ((digits.length === 12 || digits.length === 13) && digits.startsWith("55")) digits = digits.slice(2);
+    return digits || undefined;
+  })
   .refine((value) => value === undefined || isValidPhone(value), "Telefone inválido.");
 
 export const optionalCep = z

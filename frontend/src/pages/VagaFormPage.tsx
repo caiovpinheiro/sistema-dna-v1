@@ -24,9 +24,11 @@ export function VagaFormPage() {
   const { id } = useParams();
   const [params] = useSearchParams();
   const navigate = useNavigate();
+  const empresaId = params.get("empresa") ?? "";
   const companies = useQuery({ queryKey: ["empresas-opcoes"], queryFn: () => api<Company[]>("/api/v1/empresas?pageSize=100") });
+  const escolhida = useQuery({ queryKey: ["empresa", empresaId], enabled: Boolean(empresaId), queryFn: () => api<Company>(`/api/v1/empresas/${empresaId}`) });
   const modes = useQuery({ queryKey: ["modalidades"], queryFn: () => api<Mode[]>("/api/v1/modalidades") });
-  const current = useQuery({ queryKey: ["vaga", id], enabled: Boolean(id), queryFn: () => api<Form & { salario: number | null }>(`/api/v1/vagas/${id}`) });
+  const current = useQuery({ queryKey: ["vaga", id], enabled: Boolean(id), queryFn: () => api<Form & { salario: number | null; razao_social?: string | null; nome_fantasia?: string | null }>(`/api/v1/vagas/${id}`) });
   const form = useForm<Form>({ resolver: zodResolver(schema), defaultValues: { id_empresa: params.get("empresa") ?? "", quantidade_posicoes: 1, tipo_vaga: 2 } });
   useEffect(() => {
     if (!current.data) return;
@@ -42,15 +44,21 @@ export function VagaFormPage() {
     },
     onSuccess: (result) => navigate(`/vagas/${id ?? (result.data as { id_vaga: string }).id_vaga}`),
   });
+  const atuais = companies.data?.data ?? [];
+  const fixa = escolhida.data?.data;
+  const daVaga = current.data?.data;
+  const extras = [fixa, daVaga?.id_empresa ? { id_empresa: daVaga.id_empresa, razao_social: daVaga.razao_social ?? "", nome_fantasia: daVaga.nome_fantasia ?? null } : null]
+    .filter((item): item is Company => Boolean(item?.id_empresa));
+  const opcoes = [...extras, ...atuais].filter((item, index, lista) => lista.findIndex((outro) => outro.id_empresa === item.id_empresa) === index);
   return (
     <form className="grid gap-5" onSubmit={form.handleSubmit((values) => save.mutate(values))}>
       <div className="flex items-center justify-between"><h1 className="text-2xl font-extrabold">{id ? "Editar vaga" : "Nova vaga"}</h1><Button disabled={save.isPending}>Salvar</Button></div>
       {save.error instanceof ApiError ? <p className="text-sm text-rose-600">{save.error.message}</p> : null}
       <Card className="grid gap-4 md:grid-cols-2">
         <Field label="Empresa" error={form.formState.errors.id_empresa?.message}>
-          <Select disabled={Boolean(id)} {...form.register("id_empresa")}>
+          <Select disabled={Boolean(id) || Boolean(empresaId)} {...form.register("id_empresa")}>
             <option value="">Selecione</option>
-            {companies.data?.data.map((item) => <option key={item.id_empresa} value={item.id_empresa}>{item.nome_fantasia || item.razao_social}</option>)}
+            {opcoes.map((item) => <option key={item.id_empresa} value={item.id_empresa}>{item.nome_fantasia || item.razao_social}</option>)}
           </Select>
         </Field>
         <Field label="Cargo" error={form.formState.errors.cargo?.message}><Input {...form.register("cargo")} /></Field>

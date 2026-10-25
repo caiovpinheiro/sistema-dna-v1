@@ -1,6 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { useNavigate, useParams } from "react-router-dom";
 import { z } from "zod";
@@ -10,7 +10,7 @@ import { ApiError, api } from "@/lib/api";
 const schema = z.object({
   nome: z.string().min(3, "Informe o nome."),
   cpf: z.string().min(11, "Informe o CPF."),
-  email: z.string().email("E-mail inválido."),
+  email: z.string().trim().refine((value) => !value || z.string().email().safeParse(value).success, "E-mail inválido."),
   celular: z.string().optional(),
   telefonefixo: z.string().optional(),
   datanascimento: z.string().optional(),
@@ -36,6 +36,21 @@ function compact<T extends Record<string, unknown>>(values: T) {
   return Object.fromEntries(Object.entries(values).filter(([, value]) => value !== undefined && value !== null && value !== ""));
 }
 
+function diferencas<T extends Record<string, unknown>>(values: T, base: T | null) {
+  if (!base) return compact(values);
+  return Object.fromEntries(Object.entries(values).filter(([key, value]) => String(value ?? "") !== String(base[key] ?? "")));
+}
+
+function mensagemErro(error: unknown) {
+  if (!(error instanceof ApiError)) return "";
+  const details = error.details;
+  if (Array.isArray(details)) {
+    const item = details.find((entry) => entry && typeof entry === "object" && "message" in entry) as { message?: string } | undefined;
+    if (item?.message) return item.message;
+  }
+  return error.message;
+}
+
 export function CandidatoFormPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -45,14 +60,24 @@ export function CandidatoFormPage() {
     queryFn: () => api<Form & { id_candidato: string }>(`/api/v1/candidatos/${id}`),
   });
   const form = useForm<Form>({ resolver: zodResolver(schema) });
-  useEffect(() => { if (current.data) form.reset(current.data.data); }, [current.data, form]);
+  const base = useRef<Form | null>(null);
+  useEffect(() => {
+    if (!current.data || base.current) return;
+    const data = Object.fromEntries(Object.entries(current.data.data).map(([key, value]) => [key, value ?? ""])) as Form;
+    base.current = data;
+    form.reset(data);
+  }, [current.data, form]);
   const save = useMutation({
-    mutationFn: (values: Form) => id
-      ? api(`/api/v1/candidatos/${id}`, { method: "PATCH", body: JSON.stringify(compact(values)) })
-      : api<{ id_candidato: string }>("/api/v1/candidatos", { method: "POST", body: JSON.stringify(compact(values)) }),
+    mutationFn: (values: Form) => {
+      const payload = id ? diferencas(values, base.current) : compact(values);
+      if (id && Object.keys(payload).length === 0) throw new ApiError(400, "NADA_PARA_ATUALIZAR", "Nenhum campo foi alterado.");
+      return id
+        ? api(`/api/v1/candidatos/${id}`, { method: "PATCH", body: JSON.stringify(payload) })
+        : api<{ id_candidato: string }>("/api/v1/candidatos", { method: "POST", body: JSON.stringify(payload) });
+    },
     onSuccess: (result) => navigate(`/candidatos/${id ?? (result.data as { id_candidato: string }).id_candidato}`),
   });
-  const error = save.error instanceof ApiError ? save.error.message : "";
+  const error = mensagemErro(save.error) || (form.formState.submitCount > 0 && !form.formState.isValid ? "Revise os campos marcados antes de salvar." : "");
   return (
     <form className="grid gap-5" onSubmit={form.handleSubmit((values) => save.mutate(values))}>
       <div className="flex items-center justify-between"><h1 className="text-2xl font-extrabold">{id ? "Editar candidato" : "Novo candidato"}</h1><Button type="submit" disabled={save.isPending}>Salvar</Button></div>
@@ -87,6 +112,7 @@ export function CandidatoFormPage() {
         <Field label="Chave Pix"><Input {...form.register("chave_pix")} /></Field>
         <div className="md:col-span-2"><Field label="Observações"><Textarea {...form.register("obs")} /></Field></div>
       </Card>
+      <div className="flex justify-end"><Button type="submit" disabled={save.isPending}>Salvar</Button></div>
     </form>
   );
 }

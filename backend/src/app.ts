@@ -53,9 +53,11 @@ export async function buildApp(context: AppContext): Promise<FastifyInstance> {
     }
     const err = error as { message?: string; statusCode?: number; validation?: unknown };
     if (err.validation) {
+      const lista = err.validation as Array<{ message?: string }>;
+      const primeira = lista.find((item) => item?.message)?.message;
       return reply.code(422).send({
         success: false,
-        error: { code: "VALIDACAO", message: "Dados inválidos.", details: err.validation },
+        error: { code: "VALIDACAO", message: primeira || "Dados inválidos.", details: err.validation },
       });
     }
     if (err.statusCode === 429) {

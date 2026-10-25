@@ -55,6 +55,7 @@ export class EmpresaService {
         });
       }
     }
+    if (patch.matriz === id) delete patch.matriz;
     await this.assertMatriz(patch.matriz, id);
     await this.repo.update(this.db, id, patch);
     return presentEmpresa((await this.repo.findById(this.db, id))!);
