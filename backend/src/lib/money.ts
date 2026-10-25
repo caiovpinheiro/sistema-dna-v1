@@ -1,9 +1,14 @@
 export function parseMoney(value: string): number {
-  const trimmed = value.trim();
+  const trimmed = value.trim().replace(/\s/g, "");
   if (!trimmed) throw new Error("vazio");
-  const normalized = trimmed.includes(",")
-    ? trimmed.replace(/\./g, "").replace(",", ".")
-    : trimmed;
+  let normalized = trimmed;
+  if (trimmed.includes(",")) {
+    const [inteiro, frac = ""] = trimmed.split(",");
+    const milhar = frac.length === 3 && !inteiro.includes(".") && /^\d+$/.test(inteiro) && /^\d{3}$/.test(frac);
+    normalized = milhar ? `${inteiro}${frac}` : `${inteiro.replace(/\./g, "")}.${frac}`;
+  } else if (/^\d{1,3}(\.\d{3})+$/.test(trimmed)) {
+    normalized = trimmed.replace(/\./g, "");
+  }
   if (!/^\d+(\.\d{1,2})?$/.test(normalized)) throw new Error("invalido");
   return Number(normalized);
 }

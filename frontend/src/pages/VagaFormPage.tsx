@@ -65,7 +65,7 @@ export function VagaFormPage() {
         <Field label="Modalidade">
           <Select {...form.register("tipo_vaga")}>{modes.data?.data.map((item) => <option key={item.id} value={item.id}>{item.descricao}</option>)}</Select>
         </Field>
-        <Field label="Salário ou bolsa"><Input placeholder="1800,00" {...form.register("salario")} /></Field>
+        <Field label="Salário ou bolsa"><Input placeholder="2.000,00" {...form.register("salario")} /></Field>
         <Field label="Quantidade de posições" error={form.formState.errors.quantidade_posicoes?.message}><Input type="number" min={1} {...form.register("quantidade_posicoes")} /></Field>
         <Field label="Carga horária"><Input {...form.register("carga_horaria")} /></Field>
         <div className="md:col-span-2"><Field label="Observações"><Textarea {...form.register("obs")} /></Field></div>
