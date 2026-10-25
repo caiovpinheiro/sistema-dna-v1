@@ -219,51 +219,51 @@ export function EmailsPage() {
           ))}
         </Card>
         {atual ? (
-          <div className="grid items-start gap-5 xl:grid-cols-2">
-            <Card className="grid gap-3">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Como o e-mail sai</p>
-                <h2 className="text-lg font-extrabold">{nome || atual.descricao}</h2>
-              </div>
-              <div className="grid gap-1 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm">
-                <p><span className="mr-2 text-slate-400">De</span>{atual.remetente || "documentos@dnawork.ai"}</p>
-                <p><span className="mr-2 text-slate-400">Para</span>maria.souza@exemplo.com</p>
-                <p><span className="mr-2 text-slate-400">Assunto</span>{previewAssunto}</p>
-              </div>
-              <iframe title="Prévia do e-mail" sandbox="" srcDoc={previewHtml} className="h-[520px] w-full rounded-2xl border border-slate-200 bg-white" />
-            </Card>
-            <Card className="grid gap-4">
+          <div className="grid min-w-0 gap-5">
+            <Card className="grid min-w-0 gap-4">
               <Field label="Nome do modelo"><Input value={nome} onChange={(event) => setNome(event.target.value)} /></Field>
               <Field label="Assunto"><Input value={assunto} onChange={(event) => setAssunto(event.target.value)} /></Field>
-              <div className="grid gap-2 rounded-2xl border border-slate-200 p-3">
+              <Field label="Mensagem">
+                <Textarea ref={mensagem} className="min-h-[360px] w-full text-sm leading-6" value={texto} onChange={(event) => setTexto(event.target.value)} />
+              </Field>
+              <div className="grid gap-3">
                 <p className="text-sm font-semibold">Campos da mensagem</p>
                 <p className="text-xs leading-5 text-slate-500">Escolha um campo, como nome do candidato ou nome da empresa, e coloque na mensagem. No envio ele é preenchido com o dado real.</p>
                 <div className="flex flex-wrap gap-2">
-                  <select aria-label="Campo para inserir" className={`${campoClasse} max-w-xs`} value={campoNovo} onChange={(event) => setCampoNovo(event.target.value)}>
+                  <select aria-label="Campo para inserir" className={`${campoClasse} min-w-64 flex-1`} value={campoNovo} onChange={(event) => setCampoNovo(event.target.value)}>
                     {CAMPOS.map((campo) => <option key={campo.token} value={campo.nome}>{campo.nome}</option>)}
                   </select>
                   <Button type="button" variant="secondary" onClick={() => inserirCampo(campoNovo)}>Colocar na mensagem</Button>
                 </div>
                 {variaveis.map((nomeCampo) => (
-                  <div key={nomeCampo} className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+                  <div key={nomeCampo} className="grid gap-2 rounded-2xl border border-slate-100 p-3">
                     <select aria-label={`Campo ${nomeCampo}`} className={campoClasse} value={CAMPOS.some((campo) => campo.nome === nomeCampo) ? nomeCampo : ""} onChange={(event) => trocarCampo(nomeCampo, event.target.value)}>
                       {CAMPOS.some((campo) => campo.nome === nomeCampo) ? null : <option value="">{nomeCampo}</option>}
                       {CAMPOS.map((campo) => <option key={campo.token} value={campo.nome}>{campo.nome}</option>)}
                     </select>
                     <Input aria-label={`Exemplo de ${nomeCampo}`} placeholder="Exemplo na prévia" value={exemplos[nomeCampo] ?? CAMPOS.find((campo) => campo.nome === nomeCampo)?.exemplo ?? ""} onChange={(event) => setExemplos((atualExemplos) => ({ ...atualExemplos, [nomeCampo]: event.target.value }))} />
-                    <Button type="button" variant="secondary" onClick={() => inserirCampo(nomeCampo)}>Colocar</Button>
+                    <Button type="button" variant="secondary" className="justify-self-start" onClick={() => inserirCampo(nomeCampo)}>Colocar de novo</Button>
                   </div>
                 ))}
               </div>
-              <Field label="Mensagem">
-                <Textarea ref={mensagem} className="min-h-[280px] text-sm leading-6" value={texto} onChange={(event) => setTexto(event.target.value)} />
-              </Field>
               {erro ? <p className="text-sm text-rose-600">{erro}</p> : null}
               {aviso ? <p className="text-sm text-emerald-700">{aviso}</p> : null}
               <div className="flex flex-wrap gap-2">
                 <Button type="button" disabled={salvar.isPending || !nome.trim() || !assunto.trim() || !texto.trim()} onClick={() => salvar.mutate()}>{salvar.isPending ? "Salvando…" : "Salvar modelo"}</Button>
                 <Button type="button" variant="danger" disabled={excluir.isPending} onClick={() => { if (window.confirm(`Excluir o modelo ${nome}?`)) excluir.mutate(); }}>Excluir modelo</Button>
               </div>
+            </Card>
+            <Card className="grid min-w-0 gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Como o e-mail sai</p>
+                <h2 className="text-lg font-extrabold">{nome || atual.descricao}</h2>
+              </div>
+              <div className="grid gap-1 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm break-words">
+                <p><span className="mr-2 text-slate-400">De</span>{atual.remetente || "documentos@dnawork.ai"}</p>
+                <p><span className="mr-2 text-slate-400">Para</span>maria.souza@exemplo.com</p>
+                <p><span className="mr-2 text-slate-400">Assunto</span>{previewAssunto}</p>
+              </div>
+              <iframe title="Prévia do e-mail" sandbox="" srcDoc={previewHtml} className="h-[520px] w-full rounded-2xl border border-slate-200 bg-white" />
             </Card>
           </div>
         ) : null}
