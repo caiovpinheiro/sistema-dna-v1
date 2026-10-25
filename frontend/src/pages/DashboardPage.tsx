@@ -53,7 +53,7 @@ export function DashboardPage() {
   const data = query.data?.data;
   const primarios = data
     ? [
-        { titulo: "Vagas cadastradas", valor: data.vagas_cadastradas },
+        { titulo: "Vagas abertas no período", valor: data.vagas_cadastradas },
         { titulo: "Contratações realizadas", valor: data.contratacoes },
         { titulo: "Candidatos cadastrados", valor: data.cadastrados },
         { titulo: "Empresas com movimentação", valor: data.empresas_movimento },
@@ -125,7 +125,7 @@ export function DashboardPage() {
                 <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
                   <h2 className="text-sm font-semibold text-white">Vagas e contratações</h2>
                   <p className="flex flex-wrap gap-3 text-xs text-slate-400">
-                    <span className="inline-flex items-center gap-1.5"><i aria-hidden className="h-0.5 w-3 rounded-full bg-[#67e8f9]" /> Vagas cadastradas</span>
+                    <span className="inline-flex items-center gap-1.5"><i aria-hidden className="h-0.5 w-3 rounded-full bg-[#67e8f9]" /> Vagas pela data de abertura</span>
                     <span className="inline-flex items-center gap-1.5"><i aria-hidden className="h-0.5 w-3 rounded-full bg-[#d8b4fe]" /> Contratações</span>
                   </p>
                 </div>
@@ -137,7 +137,7 @@ export function DashboardPage() {
                         <XAxis dataKey="dia" {...eixo} minTickGap={28} />
                         <YAxis {...eixo} allowDecimals={false} width={28} />
                         <Tooltip contentStyle={tooltip} />
-                        <Line dataKey="vagas" name="Vagas cadastradas" stroke="#67e8f9" strokeWidth={2} dot={false} isAnimationActive={false} />
+                        <Line dataKey="vagas" name="Vagas pela data de abertura" stroke="#67e8f9" strokeWidth={2} dot={false} isAnimationActive={false} />
                         <Line dataKey="contratacoes" name="Contratações" stroke="#d8b4fe" strokeWidth={2} dot={false} isAnimationActive={false} />
                       </LineChart>
                     </ResponsiveContainer>

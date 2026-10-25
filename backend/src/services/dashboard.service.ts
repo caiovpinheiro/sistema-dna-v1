@@ -12,7 +12,7 @@ type Filtro = { dias?: number; de?: string; ate?: string };
 
 const CONTRATACAO = DATA_LEGADO("cv.data_contratacao");
 const CADASTRO_CANDIDATO = "c.data_adicao::date";
-const CADASTRO_VAGA = `COALESCE(v.data_adicao::date, ${DATA_LEGADO("v.dataabertura")})`;
+const CADASTRO_VAGA = `COALESCE(${DATA_LEGADO("v.dataabertura")}, v.data_adicao::date)`;
 const ENCAMINHAMENTO = DATA_LEGADO("e.data");
 
 export class DashboardService {
