@@ -114,8 +114,8 @@ export function DashboardPage() {
               ))}
             </div>
             <p className="flex flex-wrap gap-x-5 gap-y-1 border-t border-white/10 px-4 py-2 text-xs text-slate-400">
-              <span><span className="tabular-nums text-slate-200">{data.vagas_abertas_agora.toLocaleString("pt-BR")}</span> vagas abertas agora</span>
-              <span><span className="tabular-nums text-slate-200">{data.vagas_abertas_periodo.atual.toLocaleString("pt-BR")}</span> vagas abertas com cadastro no período <span className="text-slate-500">{deltaDe(data.vagas_abertas_periodo)} vs anterior</span></span>
+              <span><span className="tabular-nums text-slate-200">{data.vagas_abertas_agora.toLocaleString("pt-BR")}</span> {data.vagas_abertas_agora === 1 ? "vaga aberta agora" : "vagas abertas agora"}</span>
+              <span><span className="tabular-nums text-slate-200">{data.vagas_abertas_periodo.atual.toLocaleString("pt-BR")}</span> {data.vagas_abertas_periodo.atual === 1 ? "vaga aberta com cadastro no período" : "vagas abertas com cadastro no período"} <span className="text-slate-500">{deltaDe(data.vagas_abertas_periodo)} vs anterior</span></span>
             </p>
           </section>
 
@@ -193,7 +193,7 @@ export function DashboardPage() {
                 <div>
                   <dt className="text-xs text-slate-400">Posições disponíveis</dt>
                   <dd className="mt-0.5 text-lg font-medium leading-none tabular-nums text-white">{(data.posicoes.total ?? 0).toLocaleString("pt-BR")}</dd>
-                  {data.posicoes.sem_capacidade > 0 ? <p className="mt-1 text-xs text-slate-500">{data.posicoes.sem_capacidade.toLocaleString("pt-BR")} vagas abertas ainda sem quantidade definida.</p> : null}
+                  {data.posicoes.sem_capacidade > 0 ? <p className="mt-1 text-xs text-slate-500">{contagem(data.posicoes.sem_capacidade, "vaga aberta ainda sem quantidade definida", "vagas abertas ainda sem quantidade definida")}.</p> : null}
                 </div>
               ) : (
                 <Indisponivel titulo="Posições disponíveis" nota={data.posicoes.motivo ?? "Nenhuma vaga aberta tem a quantidade de posições preenchida."} />
@@ -239,7 +239,7 @@ export function DashboardPage() {
               Registro antigo de entrevistas, sem origem: <span className="tabular-nums text-slate-300">{data.encaminhamentos.atual.toLocaleString("pt-BR")}</span> no período ({deltaDe(data.encaminhamentos)} vs anterior).
             </p>
             <p className="px-4 pb-3 text-xs text-slate-500">
-              {data.candidatos_sem_data.toLocaleString("pt-BR")} candidatos sem data de inclusão ficam fora do período. A base tem {data.candidatos_base.toLocaleString("pt-BR")} registros e {data.empresas_base.toLocaleString("pt-BR")} empresas. {data.contratacoes_ativas_agora.toLocaleString("pt-BR")} vínculos ativos agora.
+              {contagem(data.candidatos_sem_data, "candidato sem data de inclusão fica fora do período", "candidatos sem data de inclusão ficam fora do período")}. A base tem {contagem(data.candidatos_base, "registro", "registros")} e {contagem(data.empresas_base, "empresa", "empresas")}. {contagem(data.contratacoes_ativas_agora, "vínculo ativo agora", "vínculos ativos agora")}.
             </p>
           </section>
 
@@ -312,6 +312,10 @@ function Indisponivel({ titulo, nota }: { titulo: string; nota: string }) {
 
 function Vazio() {
   return <p className="text-sm text-slate-400">Nenhum movimento neste período.</p>;
+}
+
+function contagem(valor: number, singular: string, plural: string) {
+  return `${valor.toLocaleString("pt-BR")} ${valor === 1 ? singular : plural}`;
 }
 
 function deltaDe(valor: Contagem) {
