@@ -56,7 +56,7 @@ export function VagaFormPage() {
       {save.error instanceof ApiError ? <p className="text-sm text-rose-600">{save.error.message}</p> : null}
       <Card className="grid gap-4 md:grid-cols-2">
         <Field label="Empresa" error={form.formState.errors.id_empresa?.message}>
-          <Select disabled={Boolean(id) || Boolean(empresaId)} {...form.register("id_empresa")}>
+          <Select disabled={Boolean(id)} {...form.register("id_empresa")}>
             <option value="">Selecione</option>
             {opcoes.map((item) => <option key={item.id_empresa} value={item.id_empresa}>{item.nome_fantasia || item.razao_social}</option>)}
           </Select>

@@ -78,7 +78,7 @@ export class VagaRepository {
       input.tipo_vaga,
       input.salario ? formatMoneyLegacy(parseMoney(input.salario)) : null,
       input.status ?? 0,
-      id,
+      String(Math.floor(Date.now() / 1000)),
       legacyToday(),
       input.publicar ?? 0,
       input.carga_horaria ?? null,

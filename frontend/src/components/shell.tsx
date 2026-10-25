@@ -1,6 +1,6 @@
-import { Briefcase, Building2, ChevronDown, FileSignature, FileWarning, GraduationCap, Handshake, LayoutDashboard, ListChecks, LogOut, Mail, Menu, Percent, Receipt, Search, Users, Wallet, X } from "lucide-react";
+import { Briefcase, Building2, ChevronDown, FileSignature, FileWarning, GraduationCap, Handshake, LayoutDashboard, ListChecks, LogOut, Mail, Menu, Percent, Receipt, Users, Wallet, X } from "lucide-react";
 import { useEffect, useState, type ComponentType } from "react";
-import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { api } from "@/lib/api";
 import { cn } from "./ui";
 
@@ -98,8 +98,6 @@ function tituloDaRota(pathname: string) {
 export function Shell({ email, notify }: { email: string; notify: (message: string, error?: boolean) => void }) {
   const [open, setOpen] = useState(false);
   const [hover, setHover] = useState(false);
-  const [query, setQuery] = useState("");
-  const navigate = useNavigate();
   const { pathname } = useLocation();
   const financeiroActive = pathname.startsWith("/financeiro") && !pathname.startsWith("/financeiro/comissao") && !pathname.startsWith("/financeiro/holerite");
   const comissaoActive = pathname.startsWith("/financeiro/comissao");
@@ -187,12 +185,6 @@ export function Shell({ email, notify }: { email: string; notify: (message: stri
         <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b border-white/10 bg-[#0e1014]/90 px-4 backdrop-blur">
           <button className="grid h-9 w-9 place-items-center rounded-lg text-slate-300 hover:bg-white/10 lg:hidden" aria-label="Abrir menu" onClick={() => setOpen(true)}><Menu size={18} /></button>
           <p className="hidden text-sm font-semibold text-white sm:block">{tituloDaRota(pathname)}</p>
-          {pathname.startsWith("/emails") ? <div className="flex-1" /> : (
-            <form className="relative ml-auto w-full max-w-md" onSubmit={(event) => { event.preventDefault(); navigate(`/candidatos?nome=${encodeURIComponent(query)}`); }}>
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={15} />
-              <input aria-label="Buscar candidatos" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar candidato por nome" className="h-9 w-full rounded-lg border border-white/10 bg-white/5 pl-9 pr-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-cyan-400/40 focus:bg-white/10" />
-            </form>
-          )}
         </header>
         <main className={cn("mx-auto p-4 md:p-6", pathname.startsWith("/emails") ? "max-w-none" : "max-w-7xl")}><Outlet /></main>
       </div>
