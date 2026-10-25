@@ -166,10 +166,12 @@ export function Shell({ email, notify }: { email: string; notify: (message: stri
       <div className="min-w-0 flex-1">
         <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-slate-200 bg-white/90 px-4 py-3 backdrop-blur">
           <button className="grid h-10 w-10 place-items-center rounded-xl hover:bg-slate-100 lg:hidden" aria-label="Abrir menu" onClick={() => setOpen(true)}><Menu /></button>
-          <form className="relative max-w-xl flex-1" onSubmit={(event) => { event.preventDefault(); navigate(`/candidatos?nome=${encodeURIComponent(query)}`); }}>
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-            <input aria-label="Buscar candidatos" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar candidato por nome" className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-3 text-sm" />
-          </form>
+          {pathname.startsWith("/emails") ? <div className="flex-1" /> : (
+            <form className="relative max-w-xl flex-1" onSubmit={(event) => { event.preventDefault(); navigate(`/candidatos?nome=${encodeURIComponent(query)}`); }}>
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+              <input aria-label="Buscar candidatos" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar candidato por nome" className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-3 text-sm" />
+            </form>
+          )}
         </header>
         <main className="mx-auto max-w-7xl p-4 md:p-6"><Outlet /></main>
       </div>

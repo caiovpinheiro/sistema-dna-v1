@@ -61,12 +61,13 @@ export async function enviarModelo(
 export async function listarModelosEmail(db: Pool) {
   const rows = await db.query<{
     id: number;
+    vinculo: number;
     descricao: string;
     assunto: string | null;
     texto: string | null;
     remetente: string | null;
   }>(`
-    SELECT e.id_email AS id, v.descricao, e.assunto, e.texto, s.remetente_jetmail AS remetente
+    SELECT e.id_email AS id, v.id AS vinculo, v.descricao, e.assunto, e.texto, s.remetente_jetmail AS remetente
     FROM dna_work.emailsvinculo v
     JOIN dna_work.emails e ON e.id_email = v.id_email
     LEFT JOIN dna_work.servidor_email s ON s.id::text = v.conta_email::text
@@ -76,10 +77,28 @@ export async function listarModelosEmail(db: Pool) {
   return rows.rows;
 }
 
-export async function salvarModeloEmail(db: Pool, id: number, assunto: string, texto: string) {
-  const result = await db.query(`
-    UPDATE dna_work.emails SET assunto = $2, texto = $3 WHERE id_email = $1
-  `, [id, assunto, texto]);
+export async function salvarModeloEmail(db: Pool, id: number, vinculo: number, descricao: string, assunto: string, texto: string) {
+  const repetido = await db.query(`
+    SELECT 1 FROM dna_work.emailsvinculo WHERE descricao = $1 AND id <> $2 LIMIT 1
+  `, [descricao, vinculo]);
+  if (repetido.rows.length) throw new AppError(409, "MODELO_REPETIDO", "Já existe um modelo com esse nome.");
+  const nome = await db.query(`UPDATE dna_work.emailsvinculo SET descricao = $2 WHERE id = $1`, [vinculo, descricao]);
+  if (!nome.rowCount) throw new AppError(404, "MODELO_NAO_ENCONTRADO", "Modelo de e-mail não encontrado.");
+  const result = await db.query(`UPDATE dna_work.emails SET assunto = $2, texto = $3 WHERE id_email = $1`, [id, assunto, texto]);
   if (!result.rowCount) throw new AppError(404, "MODELO_NAO_ENCONTRADO", "Modelo de e-mail não encontrado.");
-  return { id, assunto };
+  return { id, descricao, assunto };
+}
+
+export async function excluirModeloEmail(db: Pool, vinculo: number) {
+  const apagado = await db.query<{ id_email: number }>(`
+    DELETE FROM dna_work.emailsvinculo WHERE id = $1 RETURNING id_email
+  `, [vinculo]);
+  const idEmail = apagado.rows[0]?.id_email;
+  if (!idEmail) throw new AppError(404, "MODELO_NAO_ENCONTRADO", "Modelo de e-mail não encontrado.");
+  await db.query(`
+    DELETE FROM dna_work.emails e
+    WHERE e.id_email = $1
+      AND NOT EXISTS (SELECT 1 FROM dna_work.emailsvinculo v WHERE v.id_email = e.id_email)
+  `, [idEmail]);
+  return { id: vinculo };
 }
