@@ -219,7 +219,19 @@ export function EmailsPage() {
           ))}
         </Card>
         {atual ? (
-          <div className="grid min-w-0 gap-5">
+          <div className="grid min-w-0 items-start gap-5 xl:grid-cols-2">
+            <Card className="grid min-w-0 gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Como o e-mail sai</p>
+                <h2 className="text-lg font-extrabold">{nome || atual.descricao}</h2>
+              </div>
+              <div className="grid gap-1 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm break-words">
+                <p><span className="mr-2 text-slate-400">De</span>{atual.remetente || "documentos@dnawork.ai"}</p>
+                <p><span className="mr-2 text-slate-400">Para</span>maria.souza@exemplo.com</p>
+                <p><span className="mr-2 text-slate-400">Assunto</span>{previewAssunto}</p>
+              </div>
+              <iframe title="Prévia do e-mail" sandbox="" srcDoc={previewHtml} className="h-[640px] w-full rounded-2xl border border-slate-200 bg-white" />
+            </Card>
             <Card className="grid min-w-0 gap-4">
               <Field label="Nome do modelo"><Input value={nome} onChange={(event) => setNome(event.target.value)} /></Field>
               <Field label="Assunto"><Input value={assunto} onChange={(event) => setAssunto(event.target.value)} /></Field>
@@ -252,18 +264,6 @@ export function EmailsPage() {
                 <Button type="button" disabled={salvar.isPending || !nome.trim() || !assunto.trim() || !texto.trim()} onClick={() => salvar.mutate()}>{salvar.isPending ? "Salvando…" : "Salvar modelo"}</Button>
                 <Button type="button" variant="danger" disabled={excluir.isPending} onClick={() => { if (window.confirm(`Excluir o modelo ${nome}?`)) excluir.mutate(); }}>Excluir modelo</Button>
               </div>
-            </Card>
-            <Card className="grid min-w-0 gap-3">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Como o e-mail sai</p>
-                <h2 className="text-lg font-extrabold">{nome || atual.descricao}</h2>
-              </div>
-              <div className="grid gap-1 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm break-words">
-                <p><span className="mr-2 text-slate-400">De</span>{atual.remetente || "documentos@dnawork.ai"}</p>
-                <p><span className="mr-2 text-slate-400">Para</span>maria.souza@exemplo.com</p>
-                <p><span className="mr-2 text-slate-400">Assunto</span>{previewAssunto}</p>
-              </div>
-              <iframe title="Prévia do e-mail" sandbox="" srcDoc={previewHtml} className="h-[520px] w-full rounded-2xl border border-slate-200 bg-white" />
             </Card>
           </div>
         ) : null}

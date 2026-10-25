@@ -173,7 +173,7 @@ export function Shell({ email, notify }: { email: string; notify: (message: stri
             </form>
           )}
         </header>
-        <main className="mx-auto max-w-7xl p-4 md:p-6"><Outlet /></main>
+        <main className={cn("mx-auto p-4 md:p-6", pathname.startsWith("/emails") ? "max-w-none" : "max-w-7xl")}><Outlet /></main>
       </div>
     </div>
   );
