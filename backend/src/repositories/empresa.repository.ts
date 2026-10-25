@@ -116,7 +116,7 @@ export class EmpresaRepository {
     const rows = await many<EmpresaRow>(db, `
       SELECT ${COLUMNS} FROM dna_work.empresa
       ${clause}
-      ORDER BY ${order} NULLS LAST, id_empresa
+      ORDER BY CASE WHEN status = 1 THEN 0 ELSE 1 END, ${order} NULLS LAST, id_empresa
       LIMIT $${params.length + 1} OFFSET $${params.length + 2}
     `, [...params, query.pageSize, (query.page - 1) * query.pageSize]);
     return { rows, total: totalRow?.total ?? 0 };

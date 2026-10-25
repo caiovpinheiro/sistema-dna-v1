@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { LinhaPreview, PreviewFlutuante, useLinhaPreview } from "@/components/preview";
-import { Button, Card, Empty, Input, Select, Skeleton } from "@/components/ui";
+import { Button, Badge, Card, Empty, Input, Select, Skeleton } from "@/components/ui";
 import { api } from "@/lib/api";
 import { formatCnpj, formatPhone } from "@/lib/format";
 
@@ -44,7 +44,9 @@ export function EmpresasPage() {
           <Input name="cidade" aria-label="Cidade" placeholder="Cidade" defaultValue={params.get("cidade") ?? ""} />
           <Input name="uf" aria-label="UF" placeholder="UF" maxLength={2} defaultValue={params.get("uf") ?? ""} />
           <Select name="status" aria-label="Status" defaultValue={params.get("status") ?? ""}>
-            <option value="">Status</option><option value="1">1</option><option value="0">0</option>
+            <option value="">Status</option>
+            <option value="1">Ativo</option>
+            <option value="0">Inativo</option>
           </Select>
           <Button type="submit">Pesquisar</Button>
         </form>
@@ -52,7 +54,7 @@ export function EmpresasPage() {
       {result.isLoading ? <Skeleton className="h-64" /> : result.isError ? <p className="text-rose-600">Erro ao pesquisar empresas.</p> : result.data?.data.length ? (
         <Card className="overflow-x-auto p-0">
           <table className="w-full text-left text-sm">
-            <thead className="text-slate-500"><tr className="border-b"><th className="px-4 py-3">Razão social</th><th>Fantasia</th><th>CNPJ</th><th>Cidade</th></tr></thead>
+            <thead className="text-slate-500"><tr className="border-b"><th className="px-4 py-3">Razão social</th><th>Fantasia</th><th>CNPJ</th><th>Cidade</th><th>Status</th></tr></thead>
             <tbody>
               {result.data.data.map((item) => (
                 <tr key={item.id_empresa} className="border-b border-slate-100 last:border-0 hover:bg-slate-50" onMouseEnter={(event) => preview.mostrar(item.id_empresa, event)} onMouseLeave={preview.esconder}>
@@ -60,6 +62,7 @@ export function EmpresasPage() {
                   <td>{item.nome_fantasia || "—"}</td>
                   <td>{formatCnpj(item.cnpj)}</td>
                   <td>{[item.cidade, item.uf].filter(Boolean).join(" / ") || "—"}</td>
+                  <td><Badge value={item.status === 1 ? "ativa" : "encerrada"}>{item.status === 1 ? "Ativo" : "Inativo"}</Badge></td>
                 </tr>
               ))}
             </tbody>
@@ -77,6 +80,7 @@ export function EmpresasPage() {
                   ficha?.celular ? formatPhone(ficha.celular) : null,
                   [ficha?.bairro, aberto.cidade, aberto.uf].filter(Boolean).join(" / ") || null,
                   ficha?.responsavel ? `Responsável ${ficha.responsavel}` : null,
+                  aberto.status === 1 ? "Ativo" : "Inativo",
                 ]}
               />
             ) : null}
