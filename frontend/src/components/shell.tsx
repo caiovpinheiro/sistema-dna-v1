@@ -53,13 +53,13 @@ function SideGroup({ label, icon: Icon, active, expanded, links, onNavigate }: {
   const [open, setOpen] = useState(false);
   useEffect(() => { if (!expanded) setOpen(false); }, [expanded]);
   const subClass = ({ isActive }: { isActive: boolean }) => cn(
-    "block rounded-xl px-3 py-2 text-sm font-semibold transition duration-200",
-    isActive ? "bg-cyan-400/20 text-cyan-100" : "text-slate-300 hover:bg-white/10 hover:text-white",
+    "block rounded-lg px-3 py-1.5 text-[13px] font-medium transition duration-150",
+    isActive ? "bg-white/10 text-cyan-100" : "text-slate-400 hover:bg-white/10 hover:text-white",
   );
   return (
     <div className="grid gap-1">
       <button type="button" aria-expanded={open && expanded} title={label} onClick={() => setOpen((value) => !value)}
-        className={cn("flex h-11 w-full items-center gap-3 rounded-xl px-3 text-sm font-semibold transition duration-200", active ? "bg-white/10 text-white" : "text-slate-300 hover:bg-white/10 hover:text-white")}>
+        className={cn("flex h-10 w-full items-center gap-3 rounded-lg px-2.5 text-[13px] font-semibold transition duration-150", active ? "bg-white/10 text-white" : "text-slate-300 hover:bg-white/10 hover:text-white")}>
         <Icon size={18} className="shrink-0" />
         <span className={cn("overflow-hidden whitespace-nowrap text-left transition-all duration-300", expanded ? "max-w-56 opacity-100" : "max-w-0 opacity-0")}>{label}</span>
         <ChevronDown size={16} className={cn("ml-auto shrink-0 transition duration-200", expanded ? "" : "w-0 opacity-0", open ? "" : "-rotate-90")} />
@@ -75,6 +75,24 @@ function SideGroup({ label, icon: Icon, active, expanded, links, onNavigate }: {
   );
 }
 
+function tituloDaRota(pathname: string) {
+  if (pathname === "/") return "Painel";
+  const rotas: Array<[string, string]> = [
+    ["/emails", "E-mails"],
+    ["/documentos-pendentes", "Documentos pendentes"],
+    ["/financeiro/comissao", "Comissão"],
+    ["/financeiro/holerite", "Holerite"],
+    ["/financeiro", "Financeiro"],
+    ["/instituicoes", "Instituições"],
+    ["/termos", "Termos"],
+    ["/vagas", "Vagas"],
+    ["/contratacoes", "Contratações"],
+    ["/candidatos", "Candidatos"],
+    ["/empresas", "Empresas"],
+  ];
+  return rotas.find(([prefixo]) => pathname.startsWith(prefixo))?.[1] ?? "Interno";
+}
+
 export function Shell({ email, notify }: { email: string; notify: (message: string, error?: boolean) => void }) {
   const [open, setOpen] = useState(false);
   const [hover, setHover] = useState(false);
@@ -88,8 +106,8 @@ export function Shell({ email, notify }: { email: string; notify: (message: stri
   const termoActive = pathname.startsWith("/termos");
   const expanded = open || hover;
   const linkClass = ({ isActive }: { isActive: boolean }) => cn(
-    "flex h-11 items-center gap-3 rounded-xl px-3 text-sm font-semibold transition duration-200",
-    isActive ? "bg-cyan-400 text-navy-950" : "text-slate-300 hover:bg-white/10 hover:text-white",
+    "flex h-10 items-center gap-3 rounded-lg px-2.5 text-[13px] font-semibold transition duration-150",
+    isActive ? "bg-white/10 text-white shadow-[inset_2px_0_0_#22d3ee]" : "text-slate-300 hover:bg-white/10 hover:text-white",
   );
   const label = (text: string) => <span className={cn("overflow-hidden whitespace-nowrap transition-all duration-300", expanded ? "max-w-56 opacity-100" : "max-w-0 opacity-0")}>{text}</span>;
 
@@ -144,7 +162,7 @@ export function Shell({ email, notify }: { email: string; notify: (message: stri
         </div>
         <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-2">{nav}</div>
         <div className="mt-auto border-t border-white/10 p-2">
-          <button type="button" title="Sair" onClick={() => void logout()} className="flex h-11 w-full items-center gap-3 rounded-xl bg-white/10 px-3 text-sm font-semibold text-white transition duration-200 hover:bg-cyan-400 hover:text-navy-950">
+          <button type="button" title="Sair" onClick={() => void logout()} className="flex h-10 w-full items-center gap-3 rounded-lg px-2.5 text-[13px] font-semibold text-slate-300 transition duration-150 hover:bg-white/10 hover:text-white">
             <LogOut size={18} className="shrink-0" />
             <span className={cn("overflow-hidden whitespace-nowrap transition-all duration-300", expanded ? "max-w-56 opacity-100" : "max-w-0 opacity-0")}>Sair</span>
           </button>
@@ -164,12 +182,13 @@ export function Shell({ email, notify }: { email: string; notify: (message: stri
         <p className="truncate px-3 pt-2 text-xs text-slate-400">{email}</p>
       </aside>
       <div className="min-w-0 flex-1">
-        <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-slate-200 bg-white/90 px-4 py-3 backdrop-blur">
-          <button className="grid h-10 w-10 place-items-center rounded-xl hover:bg-slate-100 lg:hidden" aria-label="Abrir menu" onClick={() => setOpen(true)}><Menu /></button>
+        <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-slate-200/80 bg-white/85 px-4 backdrop-blur">
+          <button className="grid h-9 w-9 place-items-center rounded-lg hover:bg-slate-100 lg:hidden" aria-label="Abrir menu" onClick={() => setOpen(true)}><Menu size={18} /></button>
+          <p className="hidden text-sm font-semibold text-navy-900 sm:block">{tituloDaRota(pathname)}</p>
           {pathname.startsWith("/emails") ? <div className="flex-1" /> : (
-            <form className="relative max-w-xl flex-1" onSubmit={(event) => { event.preventDefault(); navigate(`/candidatos?nome=${encodeURIComponent(query)}`); }}>
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-              <input aria-label="Buscar candidatos" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar candidato por nome" className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-3 text-sm" />
+            <form className="relative ml-auto w-full max-w-md" onSubmit={(event) => { event.preventDefault(); navigate(`/candidatos?nome=${encodeURIComponent(query)}`); }}>
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
+              <input aria-label="Buscar candidatos" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar candidato por nome" className="h-9 w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-3 text-sm outline-none focus:bg-white focus:ring-4 focus:ring-cyan-700/20" />
             </form>
           )}
         </header>

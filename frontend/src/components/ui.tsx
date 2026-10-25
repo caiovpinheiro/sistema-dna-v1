@@ -8,13 +8,13 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 const buttonStyles = cva(
-  "inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:shadow-sm",
+  "inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-semibold transition duration-150 disabled:cursor-not-allowed disabled:opacity-50",
   {
     variants: {
       variant: {
         primary: "bg-cyan-700 text-white hover:bg-cyan-800",
         secondary: "bg-white text-navy-900 ring-1 ring-slate-200 hover:bg-slate-50",
-        ghost: "text-slate-600 shadow-none hover:bg-slate-100 hover:shadow-none",
+        ghost: "text-slate-600 hover:bg-slate-100",
         danger: "bg-rose-600 text-white hover:bg-rose-700",
       },
     },
@@ -27,15 +27,15 @@ export function Button({ className, variant, ...props }: ButtonHTMLAttributes<HT
 }
 
 export function Input(props: InputHTMLAttributes<HTMLInputElement>) {
-  return <input {...props} className={cn("h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none ring-cyan-700/30 placeholder:text-slate-400 focus:ring-4", props.className)} />;
+  return <input {...props} className={cn("h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none ring-cyan-700/25 placeholder:text-slate-400 focus:ring-4", props.className)} />;
 }
 
 export function Select(props: SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select {...props} className={cn("h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:ring-4 focus:ring-cyan-700/30", props.className)} />;
+  return <select {...props} className={cn("h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:ring-4 focus:ring-cyan-700/25", props.className)} />;
 }
 
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<HTMLTextAreaElement>>(function Textarea(props, ref) {
-  return <textarea ref={ref} {...props} className={cn("min-h-28 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:ring-4 focus:ring-cyan-700/30", props.className)} />;
+  return <textarea ref={ref} {...props} className={cn("min-h-28 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm leading-6 outline-none focus:ring-4 focus:ring-cyan-700/25", props.className)} />;
 });
 
 export function Label({ children, hint }: { children: ReactNode; hint?: string }) {
@@ -57,7 +57,7 @@ export function Field({ label, error, children }: { label: string; error?: strin
 }
 
 export function Card({ className, children }: { className?: string; children: ReactNode }) {
-  return <section className={cn("rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm", className)}>{children}</section>;
+  return <section className={cn("rounded-xl border border-slate-200 bg-white p-4", className)}>{children}</section>;
 }
 
 const badgeStyles: Record<string, string> = {
@@ -77,7 +77,7 @@ const badgeStyles: Record<string, string> = {
 };
 
 export function Badge({ value, children }: { value?: string; children: ReactNode }) {
-  return <span className={cn("inline-flex rounded-full px-2.5 py-1 text-xs font-semibold", badgeStyles[value ?? ""] ?? "bg-slate-100 text-slate-700")}>{children}</span>;
+  return <span className={cn("inline-flex rounded-md px-2 py-0.5 text-xs font-semibold", badgeStyles[value ?? ""] ?? "bg-slate-100 text-slate-700")}>{children}</span>;
 }
 
 export function Skeleton({ className }: { className?: string }) {

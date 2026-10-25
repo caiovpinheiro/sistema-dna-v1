@@ -11,9 +11,11 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background: #f3f6fb;
+  background: #eef3f8;
   color: var(--color-ink);
   font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.45;
 }
 
 :focus-visible {
@@ -143,19 +145,44 @@ button, a {
 }
 
 .acao {
-  border-radius: 0.6rem;
-  padding: 0.3rem 0.65rem;
+  border-radius: 0.5rem;
+  padding: 0.25rem 0.55rem;
   font-size: 0.75rem;
-  font-weight: 700;
+  font-weight: 600;
 }
 
-.acao:hover { transform: translateY(-1px); }
-.acao:active { transform: scale(0.96); }
+.acao:hover { background-color: #e0f2fe; }
+.acao:active { transform: none; }
 
-.acao-cyan { background: #ecfeff; color: #155e75; }
-.acao-cyan:hover { background: #cffafe; box-shadow: 0 6px 16px rgb(8 145 178 / 16%); }
+.acao-cyan { background: #ecfeff; color: #0e7490; }
+.acao-cyan:hover { background: #cffafe; }
 .acao-rose { background: #fff1f2; color: #be123c; }
-.acao-rose:hover { background: #ffe4e6; box-shadow: 0 6px 16px rgb(225 29 72 / 14%); }
+.acao-rose:hover { background: #ffe4e6; }
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  text-align: left;
+}
+
+.data-table th {
+  padding: 0.55rem 0.75rem;
+  border-bottom: 1px solid #e2e8f0;
+  color: #64748b;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.data-table td {
+  padding: 0.65rem 0.75rem;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: middle;
+}
+
+.data-table tbody tr:hover { background: #f8fafc; }
+.data-table a { color: #0e7490; font-weight: 650; }
+.data-table a:hover { color: #155e75; }
 
 @media (prefers-reduced-motion: reduce) {
   .nav-sub,
