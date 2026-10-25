@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { Badge, Button, Card, Skeleton } from "@/components/ui";
 import { api } from "@/lib/api";
 import { dateBr, formatCpf, money, regimeLabel, situacaoLabel } from "@/lib/format";
+import { ProcessosRelacionados } from "@/pages/ProcessosPage";
 
 type Job = { id_vaga: string; cargo: string; id_empresa: string; nome_fantasia: string | null; razao_social: string | null; regime: string; situacao: string; quantidade_posicoes: number | null; ocupadas: number; disponiveis: number | null; salario: number | null; dataabertura: string | null; carga_horaria: string | null };
 type Contract = { id_contratacao: number; candidato_nome: string | null; candidato_cpf: string | null; situacao: string; data_inicio: string | null };
@@ -23,7 +24,7 @@ export function VagaDetailPage() {
           <h1 className="text-2xl font-extrabold">{data.cargo}</h1>
           <p className="text-sm text-slate-500"><Link className="text-cyan-800" to={`/empresas/${data.id_empresa}`}>{data.nome_fantasia || data.razao_social}</Link> · {regimeLabel[data.regime]} · {money(data.salario)}</p>
         </div>
-        <div className="flex gap-2"><Link to={`/contratacoes/nova?vaga=${id}&empresa=${data.id_empresa}`}><Button>Contratar</Button></Link><Link to={`/vagas/${id}/editar`}><Button variant="secondary">Editar</Button></Link></div>
+        <div className="flex gap-2"><Link to={`/processos/novo?vaga=${id}&empresa=${data.id_empresa}`}><Button variant="secondary">Novo processo</Button></Link><Link to={`/contratacoes/nova?vaga=${id}&empresa=${data.id_empresa}`}><Button>Contratar</Button></Link><Link to={`/vagas/${id}/editar`}><Button variant="secondary">Editar</Button></Link></div>
       </div>
       <Card>
         <div className="mb-2 flex items-center justify-between"><Badge value={data.situacao}>{situacaoLabel[data.situacao]}</Badge><span className="text-sm font-semibold">{data.quantidade_posicoes ?? "—"} posições · {data.ocupadas} preenchidas · {data.disponiveis ?? "—"} disponíveis</span></div>
@@ -39,6 +40,7 @@ export function VagaDetailPage() {
           </Link>
         )) : <p className="text-sm text-slate-500">Nenhum candidato contratado nesta vaga.</p>}</div>
       </Card>
+      <ProcessosRelacionados filtro={`id_vaga=${id}`} />
     </div>
   );
 }

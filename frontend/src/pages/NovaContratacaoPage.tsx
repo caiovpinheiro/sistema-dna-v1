@@ -17,7 +17,7 @@ export function NovaContratacaoPage() {
   const [companyId, setCompanyId] = useState(params.get("empresa") ?? "");
   const [jobId, setJobId] = useState(params.get("vaga") ?? "");
   const [personQuery, setPersonQuery] = useState("");
-  const [personId, setPersonId] = useState("");
+  const [personId, setPersonId] = useState(params.get("candidato") ?? "");
   const [start, setStart] = useState(new Date().toISOString().slice(0, 10));
   const [showCreate, setShowCreate] = useState(false);
   const [draft, setDraft] = useState({ nome: "", cpf: "", email: "" });
@@ -43,7 +43,7 @@ export function NovaContratacaoPage() {
     mutationFn: () => api<{ id_contratacao: number; id_colaborador: string; id_candidato: string; id_vaga: string; id_empresa: string }>("/api/v1/contratacoes", {
       method: "POST",
       headers: { "Idempotency-Key": idempotencyKey() },
-      body: JSON.stringify({ id_candidato: personId, id_vaga: jobId, data_inicio: start }),
+      body: JSON.stringify({ id_candidato: personId, id_vaga: jobId, data_inicio: start, id_processo: params.get("processo") || undefined }),
     }),
     onSuccess: (response) => setResult(response.data),
     onError: (err) => setError(err instanceof ApiError ? err.message : "Não foi possível contratar."),

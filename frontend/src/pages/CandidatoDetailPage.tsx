@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { Badge, Button, Card, Skeleton } from "@/components/ui";
 import { api } from "@/lib/api";
 import { dateBr, formatCpf, formatPhone, regimeLabel, situacaoLabel } from "@/lib/format";
+import { ProcessosRelacionados } from "@/pages/ProcessosPage";
 
 type Candidate = {
   id_candidato: string; nome: string; cpf: string; email: string; celular: string | null; telefonefixo: string | null;
@@ -21,7 +22,7 @@ export function CandidatoDetailPage() {
     <div className="grid gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div><h1 className="text-2xl font-extrabold">{data.nome}</h1><p className="text-sm text-slate-500">{formatCpf(data.cpf)} · {data.email}</p></div>
-        <Link to={`/candidatos/${id}/editar`}><Button variant="secondary">Editar</Button></Link>
+        <div className="flex gap-2"><Link to={`/processos/novo?candidato=${id}`}><Button variant="secondary">Novo processo</Button></Link><Link to={`/candidatos/${id}/editar`}><Button variant="secondary">Editar</Button></Link></div>
       </div>
       <div className="grid gap-4 md:grid-cols-3">
         <Card><p className="text-xs text-slate-500">Celular</p><p className="font-semibold">{formatPhone(data.celular)}</p></Card>
@@ -41,6 +42,7 @@ export function CandidatoDetailPage() {
           </div>
         ) : <p className="text-sm text-slate-500">Este candidato ainda não tem contratações.</p>}
       </Card>
+      <ProcessosRelacionados filtro={`id_candidato=${id}`} />
     </div>
   );
 }

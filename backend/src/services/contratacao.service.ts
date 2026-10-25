@@ -11,6 +11,7 @@ import { one } from "../repositories/sql.js";
 import { VagaRepository } from "../repositories/vaga.repository.js";
 import type { ContratacaoCreate, ContratacaoEncerrar, ContratacaoListQuery } from "../schemas/contratacao.js";
 import { presentContratacao, vagaSituacao } from "./presenters.js";
+import type { ProcessoService } from "./processo.service.js";
 
 type StoredResponse = { statusCode: number; body: unknown };
 
@@ -22,6 +23,7 @@ export class ContratacaoService {
     private readonly candidatos: CandidatoRepository,
     private readonly config: AppConfig,
     private readonly capabilities: SchemaCapabilities,
+    private readonly processos: ProcessoService,
   ) {}
 
   private ensureReady() {
@@ -147,6 +149,12 @@ export class ContratacaoService {
         idContratacao,
       });
       await this.repo.atualizarFlagCandidato(client, candidato.id_candidato, vaga.id_empresa, true, legacyToday());
+      await this.processos.vincularContratacao(client, {
+        idProcesso: input.id_processo,
+        idCandidato: candidato.id_candidato,
+        idVaga: vaga.id_vaga,
+        idContratacao,
+      });
       const depois = ocupadas.total + 1;
       if (vaga.quantidade_posicoes != null && depois >= vaga.quantidade_posicoes) {
         await this.vagas.setStatus(client, vaga.id_vaga, this.config.VAGA_STATUS_OCUPADA);

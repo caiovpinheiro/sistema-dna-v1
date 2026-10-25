@@ -19,6 +19,9 @@ import { ReguaCobrancaPage } from "@/pages/ReguaCobrancaPage";
 import { LoginPage } from "@/pages/LoginPage";
 import { CadastrarInstituicaoPage, CadastrarModeloPage, ConsultarInstituicoesPage, ConsultarModelosPage, DocumentosPendentesPage } from "@/pages/NovasAbasPage";
 import { NovaContratacaoPage } from "@/pages/NovaContratacaoPage";
+import { ProcessoDetailPage } from "@/pages/ProcessoDetailPage";
+import { ProcessoFormPage } from "@/pages/ProcessoFormPage";
+import { ProcessosPage } from "@/pages/ProcessosPage";
 import { VagaDetailPage } from "@/pages/VagaDetailPage";
 import { VagaFormPage } from "@/pages/VagaFormPage";
 import { TermoDetailPage } from "@/pages/TermoDetailPage";
@@ -67,6 +70,9 @@ export function App() {
             <Route path="/vagas/nova" element={<VagaFormPage />} />
             <Route path="/vagas/:id" element={<VagaDetailPage />} />
             <Route path="/vagas/:id/editar" element={<VagaFormPage />} />
+            <Route path="/processos" element={<ProcessosPage />} />
+            <Route path="/processos/novo" element={<ProcessoFormPage />} />
+            <Route path="/processos/:id" element={<ProcessoDetailPage />} />
             <Route path="/contratacoes" element={<ContratacoesPage />} />
             <Route path="/contratacoes/nova" element={<NovaContratacaoPage />} />
             <Route path="/contratacoes/:id" element={<ContratacaoDetailPage />} />

@@ -26,6 +26,8 @@ import { AsaasService } from "./services/asaas.service.js";
 import { ReguaService } from "./services/regua.service.js";
 import { TceService } from "./services/tce.service.js";
 import { TermoService } from "./services/termo.service.js";
+import { ProcessoService } from "./services/processo.service.js";
+import { ProcessoRepository } from "./repositories/processo.repository.js";
 import { VagaService } from "./services/vaga.service.js";
 
 export type AppContext = {
@@ -90,13 +92,15 @@ export async function buildApp(context: AppContext): Promise<FastifyInstance> {
   const empresas = new EmpresaRepository();
   const vagas = new VagaRepository(context.config.CONTRATACAO_STATUS_ATIVO, context.config.vagaStatusBloqueadas);
   const contratacoes = new ContratacaoRepository();
+  const processos = new ProcessoService(context.db, new ProcessoRepository(), vagas, candidatos, empresas);
   const termos = new TermoService(context.db, context.config);
   const services = {
     candidatos: new CandidatoService(context.db, candidatos),
     empresas: new EmpresaService(context.db, empresas),
     vagas: new VagaService(context.db, vagas, empresas, context.config, context.capabilities),
-    contratacoes: new ContratacaoService(context.db, contratacoes, vagas, candidatos, context.config, context.capabilities),
-    dashboard: new DashboardService(context.db, contratacoes, context.config, context.capabilities),
+    contratacoes: new ContratacaoService(context.db, contratacoes, vagas, candidatos, context.config, context.capabilities, processos),
+    processos,
+    dashboard: new DashboardService(context.db, contratacoes, context.config),
     termos,
     tce: new TceService(context.db, context.config, termos),
     asaas: new AsaasService(context.db, context.config),

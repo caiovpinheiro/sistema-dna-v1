@@ -227,6 +227,10 @@ export class ContratacaoRepository {
   }
 
   async recent(db: Db, limit: number): Promise<ContratacaoRow[]> {
-    return many<ContratacaoRow>(db, `${SELECT} ORDER BY cv.id_contratacao DESC LIMIT $1`, [limit]);
+    return many<ContratacaoRow>(db, `${SELECT} ORDER BY
+      CASE WHEN cv.data_contratacao ~ '^[0-9]{4}/[0-9]{2}/[0-9]{2}' THEN to_date(left(cv.data_contratacao, 10), 'YYYY/MM/DD') END DESC NULLS LAST,
+      CASE WHEN cv.datainicio ~ '^[0-9]{4}/[0-9]{2}/[0-9]{2}' THEN to_date(left(cv.datainicio, 10), 'YYYY/MM/DD') END DESC NULLS LAST,
+      cv.id_contratacao DESC
+      LIMIT $1`, [limit]);
   }
 }

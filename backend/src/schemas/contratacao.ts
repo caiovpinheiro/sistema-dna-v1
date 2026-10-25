@@ -7,6 +7,7 @@ export const contratacaoCreateSchema = z.object({
   id_empresa: z.string().trim().min(1).optional(),
   data_inicio: isoDateSchema,
   data_fim: isoDateSchema.optional(),
+  id_processo: z.string().uuid().optional(),
 });
 
 export const contratacaoEncerrarSchema = z.object({

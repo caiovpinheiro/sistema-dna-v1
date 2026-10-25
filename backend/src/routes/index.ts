@@ -10,6 +10,7 @@ import { candidatoCreateSchema, candidatoListSchema, candidatoPatchSchema } from
 import { contratacaoCreateSchema, contratacaoEncerrarSchema, contratacaoListSchema } from "../schemas/contratacao.js";
 import { empresaCreateSchema, empresaListSchema, empresaPatchSchema } from "../schemas/empresa.js";
 import { pageSchema } from "../schemas/common.js";
+import { processoCreateSchema, processoListSchema, processoMoverSchema } from "../schemas/processo.js";
 import { vagaCreateSchema, vagaListSchema, vagaPatchSchema } from "../schemas/vaga.js";
 import type { AsaasService } from "../services/asaas.service.js";
 import type { ReguaService } from "../services/regua.service.js";
@@ -21,6 +22,7 @@ import { camposFromBody, type TceService } from "../services/tce.service.js";
 import type { TermoService } from "../services/termo.service.js";
 import { MANUAL_FIELDS } from "../lib/tce-fields.js";
 import { listarModelosEmail, salvarModeloEmail, excluirModeloEmail } from "../lib/email-modelo.js";
+import type { ProcessoService } from "../services/processo.service.js";
 import type { VagaService } from "../services/vaga.service.js";
 import { sessionCookie } from "../plugins/auth.js";
 
@@ -32,6 +34,7 @@ type Services = {
   empresas: EmpresaService;
   vagas: VagaService;
   contratacoes: ContratacaoService;
+  processos: ProcessoService;
   dashboard: DashboardService;
   termos: TermoService;
   tce: TceService;
@@ -80,7 +83,16 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
     return ok({ encerrada: true });
   });
 
-  api.get("/api/v1/dashboard", { schema: { tags: ["dashboard"] } }, async () => ok(await services.dashboard.get()));
+  api.get("/api/v1/dashboard", {
+    schema: {
+      tags: ["dashboard"],
+      querystring: z.object({
+        dias: z.coerce.number().int().min(1).max(366).optional(),
+        de: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        ate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      }),
+    },
+  }, async (request) => ok(await services.dashboard.get(request.query)));
 
   api.get("/api/v1/modalidades", { schema: { tags: ["vagas"] } }, async () => {
     const rows = await many<{ id: number; descricao: string | null; descricaomenu: string | null; estudando: number | null }>(
@@ -176,6 +188,20 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
       body: contratacaoEncerrarSchema,
     },
   }, async (request) => ok(await services.contratacoes.encerrar(request.params.id, request.body)));
+
+  api.get("/api/v1/processos", { schema: { tags: ["processos"], querystring: processoListSchema } }, async (request) => {
+    const result = await services.processos.list(request.query);
+    return ok(result.data, result.meta);
+  });
+  api.post("/api/v1/processos", { schema: { tags: ["processos"], body: processoCreateSchema } }, async (request, reply) => {
+    return reply.code(201).send(ok(await services.processos.create(request.body)));
+  });
+  api.get("/api/v1/processos/:id", {
+    schema: { tags: ["processos"], params: z.object({ id: z.string().uuid() }) },
+  }, async (request) => ok(await services.processos.get(request.params.id)));
+  api.post("/api/v1/processos/:id/etapa", {
+    schema: { tags: ["processos"], params: z.object({ id: z.string().uuid() }), body: processoMoverSchema },
+  }, async (request) => ok(await services.processos.mover(request.params.id, request.body)));
 
   api.get("/api/v1/termos", {
     schema: { tags: ["termos"], querystring: z.object({ status: z.enum(["gerado", "enviado", "assinado", "recusado", "cancelado"]).optional() }) },

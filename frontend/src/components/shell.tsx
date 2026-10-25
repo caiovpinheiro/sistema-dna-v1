@@ -1,4 +1,4 @@
-import { Briefcase, Building2, ChevronDown, FileSignature, FileWarning, GraduationCap, Handshake, LayoutDashboard, LogOut, Mail, Menu, Percent, Receipt, Search, Users, Wallet, X } from "lucide-react";
+import { Briefcase, Building2, ChevronDown, FileSignature, FileWarning, GraduationCap, Handshake, LayoutDashboard, ListChecks, LogOut, Mail, Menu, Percent, Receipt, Search, Users, Wallet, X } from "lucide-react";
 import { useEffect, useState, type ComponentType } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
@@ -11,6 +11,7 @@ const items = [
 ];
 
 const afterVagas = [
+  { to: "/processos", label: "Processos", icon: ListChecks },
   { to: "/contratacoes", label: "Contratações", icon: Handshake },
 ];
 
@@ -85,6 +86,7 @@ function tituloDaRota(pathname: string) {
     ["/financeiro", "Financeiro"],
     ["/instituicoes", "Instituições"],
     ["/termos", "Termos"],
+    ["/processos", "Processos"],
     ["/vagas", "Vagas"],
     ["/contratacoes", "Contratações"],
     ["/candidatos", "Candidatos"],

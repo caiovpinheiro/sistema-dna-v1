@@ -34,6 +34,16 @@ export function dateBr(value: string | null | undefined): string {
 }
 
 export const regimeLabel: Record<string, string> = { clt: "CLT", estagio: "Estágio", outro: "Outro" };
+export const origemLabel: Record<string, string> = { dnawork: "DNAWORK", empresa: "Empresa" };
+export const etapaLabel: Record<string, string> = {
+  recebido: "Recebido",
+  encaminhado: "Encaminhado",
+  entrevista_agendada: "Entrevista agendada",
+  entrevista_realizada: "Entrevista realizada",
+  contratado: "Contratado",
+  reprovado: "Reprovado",
+  desistente: "Desistente",
+};
 export const situacaoLabel: Record<string, string> = {
   aberta: "Aberta",
   preenchida: "Preenchida",
