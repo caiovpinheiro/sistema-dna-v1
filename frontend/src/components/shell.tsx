@@ -191,11 +191,11 @@ export function Shell({ email, admin, paginas, notify }: { email: string; admin:
   );
 
   return (
-    <div className="app-canvas flex min-h-screen">
+    <div className="app-canvas flex h-screen overflow-hidden">
       <aside
         onMouseEnter={() => setHover(true)}
         onMouseLeave={() => setHover(false)}
-        className={cn("hidden overflow-x-hidden border-r border-white/10 bg-[#0b0d12] text-white transition-[width] duration-300 ease-out lg:flex lg:min-h-screen lg:flex-col", hover ? "lg:w-80" : "lg:w-[76px]")}
+        className={cn("sticky top-0 hidden h-screen shrink-0 overflow-x-hidden border-r border-white/10 bg-[#0b0d12] text-white transition-[width] duration-300 ease-out lg:flex lg:flex-col", hover ? "lg:w-80" : "lg:w-[76px]")}
       >
         <div className={cn("flex items-center py-5", expanded ? "gap-3 px-4" : "justify-center px-2")}>
           <img src="/logo-laranja.png" alt="DNA Work" className={cn("shrink-0 object-contain", expanded ? "h-9 w-16" : "h-8 w-12")} />
@@ -225,12 +225,12 @@ export function Shell({ email, admin, paginas, notify }: { email: string; admin:
         </button>
         <p className="truncate px-3 pt-2 text-xs text-slate-400">{email}</p>
       </aside>
-      <div className="min-w-0 flex-1">
-        <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b border-white/10 bg-[#0e1014]/90 px-4 backdrop-blur">
+      <div className="flex h-screen min-w-0 flex-1 flex-col overflow-hidden">
+        <header className="flex h-14 shrink-0 items-center gap-4 border-b border-white/10 bg-[#0e1014] px-4">
           <button className="grid h-9 w-9 place-items-center rounded-lg text-slate-300 hover:bg-white/10 lg:hidden" aria-label="Abrir menu" onClick={() => setOpen(true)}><Menu size={18} /></button>
           <p className="hidden text-sm font-semibold text-white sm:block">{tituloDaRota(pathname)}</p>
         </header>
-        <main className={cn("mx-auto p-4 md:p-6", pathname.startsWith("/emails") ? "max-w-none" : "max-w-7xl")}>
+        <main className={cn("min-h-0 flex-1 overflow-y-auto p-4 md:p-6", pathname.startsWith("/emails") ? "" : "mx-auto w-full max-w-7xl")}>
           {pathname.startsWith("/configuracoes") && !admin ? <p className="text-sm text-slate-300">Somente o administrador configura os acessos.</p> : paginaDoCaminho(pathname) && !permitido(paginaDoCaminho(pathname)!) ? <p className="text-sm text-slate-300">Você não tem acesso a esta página.</p> : <Outlet />}
         </main>
       </div>
