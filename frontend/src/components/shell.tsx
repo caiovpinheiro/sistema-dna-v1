@@ -1,47 +1,77 @@
-import { Briefcase, Building2, ChevronDown, FileSignature, FileWarning, GraduationCap, Handshake, LayoutDashboard, ListChecks, LogOut, Mail, Menu, Percent, Receipt, Users, Wallet, X } from "lucide-react";
+import { Briefcase, Building2, ChevronDown, FileSignature, FileWarning, GraduationCap, Handshake, LayoutDashboard, ListChecks, LogOut, Mail, Menu, Percent, Receipt, Settings, Users, Wallet, X } from "lucide-react";
 import { useEffect, useState, type ComponentType } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { api } from "@/lib/api";
 import { cn } from "./ui";
 
+type LinkItem = { id: string; to: string; label: string; end?: boolean };
+
 const items = [
-  { to: "/", label: "Painel", icon: LayoutDashboard, end: true },
-  { to: "/candidatos", label: "Candidatos", icon: Users },
-  { to: "/empresas", label: "Empresas", icon: Building2 },
+  { id: "painel", to: "/", label: "Painel", icon: LayoutDashboard, end: true },
+  { id: "candidatos", to: "/candidatos", label: "Candidatos", icon: Users },
+  { id: "empresas", to: "/empresas", label: "Empresas", icon: Building2 },
 ];
 
 const afterVagas = [
-  { to: "/processos", label: "Processos", icon: ListChecks },
-  { to: "/contratacoes", label: "Contratações", icon: Handshake },
+  { id: "processos", to: "/processos", label: "Processos", icon: ListChecks },
+  { id: "contratacoes", to: "/contratacoes", label: "Contratações", icon: Handshake },
 ];
 
-const termoLinks: Array<{ to: string; label: string; end?: boolean }> = [
-  { to: "/termos", label: "Consultar", end: true },
-  { to: "/termos/gerar", label: "Gerar TCE" },
+const termoLinks: LinkItem[] = [
+  { id: "termos", to: "/termos", label: "Consultar", end: true },
+  { id: "termos-gerar", to: "/termos/gerar", label: "Gerar TCE" },
 ];
 
-const vagaLinks: Array<{ to: string; label: string; end?: boolean }> = [
-  { to: "/vagas", label: "Consultar", end: true },
-  { to: "/vagas/modelos", label: "Consultar Modelos", end: true },
-  { to: "/vagas/modelos/novo", label: "Cadastrar Modelo" },
+const vagaLinks: LinkItem[] = [
+  { id: "vagas", to: "/vagas", label: "Consultar", end: true },
+  { id: "vagas-modelos", to: "/vagas/modelos", label: "Consultar Modelos", end: true },
+  { id: "vagas-modelo", to: "/vagas/modelos/novo", label: "Cadastrar Modelo" },
 ];
 
-const instituicaoLinks: Array<{ to: string; label: string; end?: boolean }> = [
-  { to: "/instituicoes", label: "Consultar", end: true },
-  { to: "/instituicoes/nova", label: "Cadastrar" },
+const instituicaoLinks: LinkItem[] = [
+  { id: "instituicoes", to: "/instituicoes", label: "Consultar", end: true },
+  { id: "instituicoes-nova", to: "/instituicoes/nova", label: "Cadastrar" },
 ];
 
-const financeLinks = [
-  { to: "/financeiro/faturamento", label: "Gerar Faturamento" },
-  { to: "/financeiro/contas-a-receber", label: "Contas a Receber" },
-  { to: "/financeiro/regua", label: "Régua de cobrança" },
-  { to: "/financeiro/relatorio-procfy", label: "Relatório Procfy" },
+const financeLinks: LinkItem[] = [
+  { id: "faturamento", to: "/financeiro/faturamento", label: "Gerar Faturamento" },
+  { id: "contas", to: "/financeiro/contas-a-receber", label: "Contas a Receber" },
+  { id: "regua", to: "/financeiro/regua", label: "Régua de cobrança" },
+  { id: "procfy", to: "/financeiro/relatorio-procfy", label: "Relatório Procfy" },
 ];
 
-const comissaoLinks: Array<{ to: string; label: string; end?: boolean }> = [
-  { to: "/financeiro/comissao", label: "Consultar", end: true },
-  { to: "/financeiro/comissao/empresas", label: "Empresas" },
+const comissaoLinks: LinkItem[] = [
+  { id: "comissao", to: "/financeiro/comissao", label: "Consultar", end: true },
+  { id: "comissao-empresas", to: "/financeiro/comissao/empresas", label: "Empresas" },
 ];
+
+const CAMINHOS: Array<[string, string]> = [
+  ["/financeiro/comissao/empresas", "comissao-empresas"],
+  ["/financeiro/comissao", "comissao"],
+  ["/financeiro/faturamento", "faturamento"],
+  ["/financeiro/contas-a-receber", "contas"],
+  ["/financeiro/regua", "regua"],
+  ["/financeiro/relatorio-procfy", "procfy"],
+  ["/financeiro/holerite", "holerite"],
+  ["/vagas/modelos/novo", "vagas-modelo"],
+  ["/vagas/modelos", "vagas-modelos"],
+  ["/vagas", "vagas"],
+  ["/termos/gerar", "termos-gerar"],
+  ["/termos", "termos"],
+  ["/instituicoes/nova", "instituicoes-nova"],
+  ["/instituicoes", "instituicoes"],
+  ["/candidatos", "candidatos"],
+  ["/empresas", "empresas"],
+  ["/processos", "processos"],
+  ["/contratacoes", "contratacoes"],
+  ["/emails", "emails"],
+  ["/documentos-pendentes", "documentos"],
+];
+
+export function paginaDoCaminho(pathname: string) {
+  if (pathname === "/") return "painel";
+  return CAMINHOS.find(([prefixo]) => pathname === prefixo || pathname.startsWith(`${prefixo}/`))?.[1] ?? null;
+}
 
 function SideGroup({ label, icon: Icon, active, expanded, links, onNavigate }: {
   label: string;
@@ -51,6 +81,7 @@ function SideGroup({ label, icon: Icon, active, expanded, links, onNavigate }: {
   links: Array<{ to: string; label: string; end?: boolean }>;
   onNavigate: () => void;
 }) {
+  if (!links.length) return null;
   const [open, setOpen] = useState(false);
   useEffect(() => { if (!expanded) setOpen(false); }, [expanded]);
   const subClass = ({ isActive }: { isActive: boolean }) => cn(
@@ -79,6 +110,7 @@ function SideGroup({ label, icon: Icon, active, expanded, links, onNavigate }: {
 function tituloDaRota(pathname: string) {
   if (pathname === "/") return "Painel";
   const rotas: Array<[string, string]> = [
+    ["/configuracoes", "Configurações"],
     ["/emails", "E-mails"],
     ["/documentos-pendentes", "Documentos pendentes"],
     ["/financeiro/comissao", "Comissão"],
@@ -95,7 +127,7 @@ function tituloDaRota(pathname: string) {
   return rotas.find(([prefixo]) => pathname.startsWith(prefixo))?.[1] ?? "Interno";
 }
 
-export function Shell({ email, notify }: { email: string; notify: (message: string, error?: boolean) => void }) {
+export function Shell({ email, admin, paginas, notify }: { email: string; admin: boolean; paginas: string[]; notify: (message: string, error?: boolean) => void }) {
   const [open, setOpen] = useState(false);
   const [hover, setHover] = useState(false);
   const { pathname } = useLocation();
@@ -117,32 +149,44 @@ export function Shell({ email, notify }: { email: string; notify: (message: stri
     window.location.href = "/login";
   }
 
+  const permitido = (id: string) => admin || paginas.includes(id);
   const nav = (
     <nav className="grid gap-1">
-      {items.map((item) => (
+      {items.filter((item) => permitido(item.id)).map((item) => (
         <NavLink key={item.to} to={item.to} end={item.end} onClick={() => setOpen(false)} title={item.label} className={linkClass}>
           <item.icon size={18} className="shrink-0" /> {label(item.label)}
         </NavLink>
       ))}
-      <SideGroup label="Vagas" icon={Briefcase} active={vagaActive} expanded={expanded} links={vagaLinks} onNavigate={() => setOpen(false)} />
-      {afterVagas.map((item) => (
+      <SideGroup label="Vagas" icon={Briefcase} active={vagaActive} expanded={expanded} links={vagaLinks.filter((item) => permitido(item.id))} onNavigate={() => setOpen(false)} />
+      {afterVagas.filter((item) => permitido(item.id)).map((item) => (
         <NavLink key={item.to} to={item.to} onClick={() => setOpen(false)} title={item.label} className={linkClass}>
           <item.icon size={18} className="shrink-0" /> {label(item.label)}
         </NavLink>
       ))}
-      <SideGroup label="Termos" icon={FileSignature} active={termoActive} expanded={expanded} links={termoLinks} onNavigate={() => setOpen(false)} />
-      <SideGroup label="Instituições" icon={GraduationCap} active={instituicaoActive} expanded={expanded} links={instituicaoLinks} onNavigate={() => setOpen(false)} />
-      <SideGroup label="Financeiro" icon={Wallet} active={financeiroActive} expanded={expanded} links={financeLinks} onNavigate={() => setOpen(false)} />
-      <SideGroup label="Comissão" icon={Percent} active={comissaoActive} expanded={expanded} links={comissaoLinks} onNavigate={() => setOpen(false)} />
-      <NavLink to="/financeiro/holerite" onClick={() => setOpen(false)} title="Holerite" className={linkClass}>
-        <Receipt size={18} className="shrink-0" /> {label("Holerite")}
-      </NavLink>
-      <NavLink to="/emails" onClick={() => setOpen(false)} title="E-mails" className={linkClass}>
-        <Mail size={18} className="shrink-0" /> {label("E-mails")}
-      </NavLink>
-      <NavLink to="/documentos-pendentes" onClick={() => setOpen(false)} title="Documentos Pendentes" className={linkClass}>
-        <FileWarning size={18} className="shrink-0" /> {label("Documentos Pendentes")}
-      </NavLink>
+      <SideGroup label="Termos" icon={FileSignature} active={termoActive} expanded={expanded} links={termoLinks.filter((item) => permitido(item.id))} onNavigate={() => setOpen(false)} />
+      <SideGroup label="Instituições" icon={GraduationCap} active={instituicaoActive} expanded={expanded} links={instituicaoLinks.filter((item) => permitido(item.id))} onNavigate={() => setOpen(false)} />
+      <SideGroup label="Financeiro" icon={Wallet} active={financeiroActive} expanded={expanded} links={financeLinks.filter((item) => permitido(item.id))} onNavigate={() => setOpen(false)} />
+      <SideGroup label="Comissão" icon={Percent} active={comissaoActive} expanded={expanded} links={comissaoLinks.filter((item) => permitido(item.id))} onNavigate={() => setOpen(false)} />
+      {permitido("holerite") ? (
+        <NavLink to="/financeiro/holerite" onClick={() => setOpen(false)} title="Holerite" className={linkClass}>
+          <Receipt size={18} className="shrink-0" /> {label("Holerite")}
+        </NavLink>
+      ) : null}
+      {permitido("emails") ? (
+        <NavLink to="/emails" onClick={() => setOpen(false)} title="E-mails" className={linkClass}>
+          <Mail size={18} className="shrink-0" /> {label("E-mails")}
+        </NavLink>
+      ) : null}
+      {permitido("documentos") ? (
+        <NavLink to="/documentos-pendentes" onClick={() => setOpen(false)} title="Documentos Pendentes" className={linkClass}>
+          <FileWarning size={18} className="shrink-0" /> {label("Documentos Pendentes")}
+        </NavLink>
+      ) : null}
+      {admin ? (
+        <NavLink to="/configuracoes" onClick={() => setOpen(false)} title="Configurações" className={linkClass}>
+          <Settings size={18} className="shrink-0" /> {label("Configurações")}
+        </NavLink>
+      ) : null}
     </nav>
   );
 
@@ -186,7 +230,9 @@ export function Shell({ email, notify }: { email: string; notify: (message: stri
           <button className="grid h-9 w-9 place-items-center rounded-lg text-slate-300 hover:bg-white/10 lg:hidden" aria-label="Abrir menu" onClick={() => setOpen(true)}><Menu size={18} /></button>
           <p className="hidden text-sm font-semibold text-white sm:block">{tituloDaRota(pathname)}</p>
         </header>
-        <main className={cn("mx-auto p-4 md:p-6", pathname.startsWith("/emails") ? "max-w-none" : "max-w-7xl")}><Outlet /></main>
+        <main className={cn("mx-auto p-4 md:p-6", pathname.startsWith("/emails") ? "max-w-none" : "max-w-7xl")}>
+          {pathname.startsWith("/configuracoes") && !admin ? <p className="text-sm text-slate-300">Somente o administrador configura os acessos.</p> : paginaDoCaminho(pathname) && !permitido(paginaDoCaminho(pathname)!) ? <p className="text-sm text-slate-300">Você não tem acesso a esta página.</p> : <Outlet />}
+        </main>
       </div>
     </div>
   );

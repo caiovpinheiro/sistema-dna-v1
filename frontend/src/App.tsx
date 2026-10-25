@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import { CandidatoDetailPage } from "@/pages/CandidatoDetailPage";
 import { CandidatoFormPage } from "@/pages/CandidatoFormPage";
 import { CandidatosPage } from "@/pages/CandidatosPage";
+import { ConfiguracoesPage } from "@/pages/ConfiguracoesPage";
 import { ContratacaoDetailPage } from "@/pages/ContratacaoDetailPage";
 import { ContratacoesPage } from "@/pages/ContratacoesPage";
 import { DashboardPage } from "@/pages/DashboardPage";
@@ -37,12 +38,12 @@ function Toast({ message, error }: { message: string; error?: boolean }) {
 
 function Protected() {
   const [toast, setToast] = useState<{ message: string; error?: boolean }>({ message: "" });
-  const me = useQuery({ queryKey: ["me"], queryFn: () => api<{ email: string }>("/api/v1/auth/me"), retry: false });
+  const me = useQuery({ queryKey: ["me"], queryFn: () => api<{ email: string; admin: boolean; paginas: string[] }>("/api/v1/auth/me"), retry: false });
   if (me.isLoading) return <div className="grid min-h-screen place-items-center text-sm text-slate-500">Carregando sessão…</div>;
   if (me.isError) return <Navigate to="/login" replace />;
   return (
     <>
-      <Shell email={me.data?.data.email ?? ""} notify={(message, error) => { setToast({ message, error }); setTimeout(() => setToast({ message: "" }), 3200); }} />
+      <Shell email={me.data?.data.email ?? ""} admin={me.data?.data.admin === true} paginas={me.data?.data.paginas ?? []} notify={(message, error) => { setToast({ message, error }); setTimeout(() => setToast({ message: "" }), 3200); }} />
       <Toast message={toast.message} error={toast.error} />
     </>
   );
@@ -88,6 +89,7 @@ export function App() {
             <Route path="/financeiro/holerite" element={<GerarHoleritePage />} />
             <Route path="/documentos-pendentes" element={<DocumentosPendentesPage />} />
             <Route path="/emails" element={<EmailsPage />} />
+            <Route path="/configuracoes" element={<ConfiguracoesPage />} />
             <Route path="/instituicoes" element={<ConsultarInstituicoesPage />} />
             <Route path="/instituicoes/nova" element={<CadastrarInstituicaoPage />} />
           </Route>

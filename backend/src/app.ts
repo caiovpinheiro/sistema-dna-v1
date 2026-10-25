@@ -28,7 +28,9 @@ import { TceService } from "./services/tce.service.js";
 import { TermoService } from "./services/termo.service.js";
 import { ProcessoService } from "./services/processo.service.js";
 import { ProcessoRepository } from "./repositories/processo.repository.js";
+import { AcessoService } from "./services/acesso.service.js";
 import { VagaService } from "./services/vaga.service.js";
+import { paginasDaApi } from "./lib/paginas.js";
 
 export type AppContext = {
   config: AppConfig;
@@ -107,6 +109,7 @@ export async function buildApp(context: AppContext): Promise<FastifyInstance> {
     tce: new TceService(context.db, context.config, termos),
     asaas: new AsaasService(context.db, context.config),
     regua: new ReguaService(context.db, context.config),
+    acesso: new AcessoService(context.db, context.config),
   };
 
   app.addHook("onRequest", async (request) => {
@@ -114,6 +117,17 @@ export async function buildApp(context: AppContext): Promise<FastifyInstance> {
     if (request.method === "OPTIONS") return;
     if (path === "/health" || path === "/api/v1/auth/login" || path === "/api/v1/zapsign/webhook" || path === "/api/v1/asaas/webhook" || path === "/api/v1/servico/ping" || path === "/api/v1/servico/empresas" || path.startsWith("/docs")) return;
     if (path.startsWith("/api/")) await app.authenticate(request);
+    if (!path.startsWith("/api/v1/") || path.startsWith("/api/v1/auth/")) return;
+    const sessao = await services.acesso.daSessao(request.user.sub, request.user.email);
+    if (path.startsWith("/api/v1/configuracoes")) {
+      if (!sessao.admin) throw new AppError(403, "ACESSO_NEGADO", "Somente o administrador configura os acessos.");
+      return;
+    }
+    if (!sessao.admin && !sessao.ativo) throw new AppError(403, "SEM_ACESSO", "Seu acesso está desativado.");
+    const necessarias = paginasDaApi(path);
+    if (necessarias.length && !sessao.admin && !necessarias.some((pagina) => sessao.paginas.includes(pagina))) {
+      throw new AppError(403, "PAGINA_NEGADA", "Você não tem acesso a esta página.");
+    }
   });
 
   await registerRoutes(app, context.config, services, context.db);

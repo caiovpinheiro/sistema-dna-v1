@@ -23,6 +23,7 @@ import type { TermoService } from "../services/termo.service.js";
 import { MANUAL_FIELDS } from "../lib/tce-fields.js";
 import { listarModelosEmail, salvarModeloEmail, excluirModeloEmail } from "../lib/email-modelo.js";
 import type { ProcessoService } from "../services/processo.service.js";
+import type { AcessoService } from "../services/acesso.service.js";
 import type { VagaService } from "../services/vaga.service.js";
 import { sessionCookie } from "../plugins/auth.js";
 
@@ -40,6 +41,7 @@ type Services = {
   tce: TceService;
   asaas: AsaasService;
   regua: ReguaService;
+  acesso: AcessoService;
 };
 
 function idempotencyKey(header: string | string[] | undefined): string {
@@ -73,10 +75,15 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
     return ok({ email: staff && staffOk ? staff.email : config.ADMIN_EMAIL, role: "admin", nome: staff && staffOk ? staff.nome : "Administrador" });
   });
 
-  api.get("/api/v1/auth/me", { schema: { tags: ["auth"] } }, async (request) => ok({
-    email: request.user.email,
-    role: request.user.role,
-  }));
+  api.get("/api/v1/auth/me", { schema: { tags: ["auth"] } }, async (request) => {
+    const sessao = await services.acesso.daSessao(request.user.sub, request.user.email);
+    return ok({
+      email: request.user.email,
+      role: request.user.role,
+      admin: sessao.admin,
+      paginas: sessao.paginas,
+    });
+  });
 
   api.post("/api/v1/auth/logout", { schema: { tags: ["auth"] } }, async (_request, reply) => {
     reply.clearCookie("dnawork_session", { path: "/" });
@@ -382,6 +389,15 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
   api.post("/api/v1/asaas/notas/:id/cancelar", {
     schema: { tags: ["asaas"], params: z.object({ id: z.string().uuid() }) },
   }, async (request) => ok(await services.asaas.cancelarNota(request.params.id)));
+  api.get("/api/v1/configuracoes/acessos", { schema: { tags: ["configuracoes"] } }, async () => ok(await services.acesso.listar()));
+  api.patch("/api/v1/configuracoes/usuarios/:id", {
+    schema: {
+      tags: ["configuracoes"],
+      params: z.object({ id: z.string().uuid() }),
+      body: z.object({ ativo: z.boolean(), paginas: z.array(z.string()) }),
+    },
+  }, async (request) => ok(await services.acesso.salvar(request.params.id, request.body)));
+
   api.post("/api/v1/asaas/webhook", async (request, reply) => {
     const esperado = config.ASAAS_WEBHOOK_TOKEN;
     const recebido = request.headers["asaas-access-token"];
