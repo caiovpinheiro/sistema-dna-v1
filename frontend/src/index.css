@@ -184,6 +184,8 @@ button, a {
 .data-table tbody tr:hover { background: rgb(255 255 255 / 0.035); }
 .data-table a { color: #7dd3e8; font-weight: 600; }
 .data-table a:hover { color: #cffafe; }
+.data-table.compact th,
+.data-table.compact td { padding: 0.4rem 0.85rem; }
 
 .app-canvas {
   background: #0e1014;

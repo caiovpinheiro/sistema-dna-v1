@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { Badge, Skeleton } from "@/components/ui";
+import { Badge, Skeleton, cn } from "@/components/ui";
 import { api } from "@/lib/api";
 import { dateBr, regimeLabel } from "@/lib/format";
 
@@ -36,7 +36,9 @@ type Dashboard = {
   ultimas_contratacoes: Array<{ id_contratacao: number; candidato_nome: string | null; empresa_fantasia: string | null; empresa_razao: string | null; cargo: string | null; regime: string; data_contratacao: string | null; data_inicio: string | null; situacao: string }>;
 };
 
-const tooltip = { background: "#15181e", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, color: "#e7e9ee" };
+const tooltip = { background: "#15181e", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, color: "#e7e9ee", fontSize: 12 };
+const eixo = { stroke: "#8b95a7", fontSize: 11, tickLine: false, axisLine: false } as const;
+const origemNome: Record<string, string> = { dnawork: "DNAWORK", empresa: "Empresa", nao_identificado: "Não identificado" };
 
 export function DashboardPage() {
   const [dias, setDias] = useState<number | null>(30);
@@ -49,9 +51,18 @@ export function DashboardPage() {
     enabled: dias != null || Boolean(de && ate),
   });
   const data = query.data?.data;
+  const primarios = data
+    ? [
+        { titulo: "Vagas cadastradas", valor: data.vagas_cadastradas },
+        { titulo: "Contratações realizadas", valor: data.contratacoes },
+        { titulo: "Candidatos cadastrados", valor: data.cadastrados },
+        { titulo: "Empresas com movimentação", valor: data.empresas_movimento },
+      ]
+    : [];
+  const maxRanking = data?.ranking.reduce((maior, item) => Math.max(maior, item.total), 0) ?? 0;
 
   return (
-    <div className="grid gap-5">
+    <div className="grid gap-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold tracking-tight text-white">Painel</h1>
@@ -59,128 +70,189 @@ export function DashboardPage() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {[7, 30, 90].map((valor) => (
-            <button key={valor} type="button" className={`rounded-lg px-3 py-1.5 text-sm ${dias === valor ? "bg-cyan-400/15 text-cyan-200" : "text-slate-400 hover:bg-white/5"}`} onClick={() => { setDias(valor); setDe(""); setAte(""); }}>{valor} dias</button>
+            <button
+              key={valor}
+              type="button"
+              aria-pressed={dias === valor}
+              className={`rounded-lg px-3 py-1.5 text-sm ${dias === valor ? "bg-cyan-400/15 text-cyan-200" : "text-slate-400 hover:bg-white/5"}`}
+              onClick={() => { setDias(valor); setDe(""); setAte(""); }}
+            >
+              {valor} dias
+            </button>
           ))}
-          <input aria-label="Data inicial" type="date" value={de} onChange={(event) => { setDe(event.target.value); setDias(null); }} className="h-9 rounded-lg border border-white/10 bg-white/5 px-2 text-sm text-white" />
-          <input aria-label="Data final" type="date" value={ate} onChange={(event) => { setAte(event.target.value); setDias(null); }} className="h-9 rounded-lg border border-white/10 bg-white/5 px-2 text-sm text-white" />
+          <input aria-label="Data inicial" type="date" value={de} onChange={(event) => { setDe(event.target.value); setDias(null); }} className="h-8 rounded-lg border border-white/10 bg-white/5 px-2 text-sm text-white [color-scheme:dark]" />
+          <input aria-label="Data final" type="date" value={ate} onChange={(event) => { setAte(event.target.value); setDias(null); }} className="h-8 rounded-lg border border-white/10 bg-white/5 px-2 text-sm text-white [color-scheme:dark]" />
         </div>
       </div>
-      {query.isLoading ? <div className="grid gap-3 md:grid-cols-3">{Array.from({ length: 6 }).map((_, index) => <Skeleton key={index} className="h-24 bg-[#12141a]" />)}</div> : null}
+      {query.isLoading ? (
+        <div className="grid gap-3">
+          <Skeleton className="h-28 bg-[#12141a]" />
+          <Skeleton className="h-40 bg-[#12141a]" />
+        </div>
+      ) : null}
       {query.isError ? <p className="text-sm text-rose-300">Não foi possível carregar os indicadores.</p> : null}
       {data ? (
         <>
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            <Kpi titulo="Cadastrados no período" valor={data.cadastrados} detalhe={`${data.candidatos_sem_data.toLocaleString("pt-BR")} ficam de fora por não terem data de inclusão. A base histórica tem ${data.candidatos_base.toLocaleString("pt-BR")} registros e não representa candidatos ativos.`} />
-            <Kpi titulo="Vagas cadastradas" valor={data.vagas_cadastradas} detalhe="Pela data de cadastro da vaga." />
-            <Kpi titulo="Vagas abertas no período" valor={data.vagas_abertas_periodo} detalhe={`${data.vagas_abertas_agora.toLocaleString("pt-BR")} estão abertas agora, independente do período.`} />
-            <Kpi titulo="Contratações no período" valor={data.contratacoes} detalhe={`${data.contratacoes_ativas_agora.toLocaleString("pt-BR")} vínculos ativos agora. A data usada é a da contratação.`} />
-            <Kpi titulo="Encaminhados pela DNAWORK" valor={data.origem.encaminhados_dnawork} detalhe="Pela data de encaminhamento do processo." />
-            <Kpi titulo="Recebidos das empresas" valor={data.origem.recebidos_empresa} detalhe="Pela data de recebimento do processo." />
-            <Kpi titulo="Entrevistas realizadas" valor={data.origem.entrevistas} detalhe="Movimentações para entrevista realizada no período." />
-            <Kpi titulo="Empresas com movimento" valor={data.empresas_movimento} detalhe={`${data.empresas_base.toLocaleString("pt-BR")} empresas na base. O registro antigo de entrevista, sem origem, teve ${data.encaminhamentos.atual.toLocaleString("pt-BR")} lançamentos.`} />
-          </div>
-          <div className="grid gap-3 lg:grid-cols-3">
-            {data.posicoes.disponivel ? (
-              <article className="rounded-xl bg-[#12141a] px-5 py-4 ring-1 ring-white/10">
-                <p className="text-[13px] text-slate-400">Posições disponíveis</p>
-                <p className="mt-2 text-[2rem] font-medium leading-none tabular-nums text-white">{data.posicoes.total?.toLocaleString("pt-BR")}</p>
-                <p className="mt-2 text-xs text-slate-500">{data.vagas_abertas_agora.toLocaleString("pt-BR")} vagas abertas agora. {data.posicoes.sem_capacidade.toLocaleString("pt-BR")} ainda não têm quantidade definida e ficam de fora desta conta.</p>
-              </article>
-            ) : <Painel titulo="Posições disponíveis" texto={data.posicoes.motivo ?? ""} />}
-            <Conversao titulo="Conversão DNAWORK" taxa={data.origem.conversao_dnawork} texto="Contratações da DNAWORK divididas pelos encaminhamentos do período." />
-            <Conversao titulo="Conversão da empresa" taxa={data.origem.conversao_empresa} texto="Contratações de intermediação divididas pelos candidatos recebidos no período." />
-          </div>
-          <section className="rounded-xl bg-[#12141a] p-4 ring-1 ring-white/10">
-            <h2 className="mb-3 text-sm font-semibold text-white">Vagas e contratações</h2>
-            {data.serie.every((item) => item.vagas === 0 && item.contratacoes === 0) ? <Vazio /> : (
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={data.serie}>
-                    <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
-                    <XAxis dataKey="dia" stroke="#8b95a7" fontSize={12} tickLine={false} axisLine={false} minTickGap={24} />
-                    <YAxis stroke="#8b95a7" fontSize={12} tickLine={false} axisLine={false} allowDecimals={false} width={28} />
-                    <Tooltip contentStyle={tooltip} />
-                    <Line dataKey="vagas" name="Vagas cadastradas" stroke="#67e8f9" strokeWidth={2} dot={false} />
-                    <Line dataKey="contratacoes" name="Contratações" stroke="#d8b4fe" strokeWidth={2} dot={false} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            )}
+          <section className="overflow-hidden rounded-xl bg-[#12141a] ring-1 ring-white/10">
+            <div className="grid grid-cols-2 lg:grid-cols-4">
+              {primarios.map((item, index) => (
+                <article
+                  key={item.titulo}
+                  className={cn(
+                    "min-w-0 px-4 py-3",
+                    index > 0 && "lg:border-l lg:border-white/10",
+                    index % 2 === 1 && "max-lg:border-l max-lg:border-white/10",
+                    index > 1 && "max-lg:border-t max-lg:border-white/10",
+                  )}
+                >
+                  <p className="text-[13px] text-slate-400">{item.titulo}</p>
+                  <p className="mt-1 flex flex-wrap items-baseline gap-x-2">
+                    <span className="text-2xl font-medium leading-none tabular-nums tracking-tight text-white">{item.valor.atual.toLocaleString("pt-BR")}</span>
+                    <span className="text-xs tabular-nums text-slate-500">{deltaDe(item.valor)} vs anterior</span>
+                  </p>
+                </article>
+              ))}
+            </div>
+            <p className="flex flex-wrap gap-x-5 gap-y-1 border-t border-white/10 px-4 py-2 text-xs text-slate-400">
+              <span><span className="tabular-nums text-slate-200">{data.vagas_abertas_agora.toLocaleString("pt-BR")}</span> vagas abertas agora</span>
+              <span><span className="tabular-nums text-slate-200">{data.vagas_abertas_periodo.atual.toLocaleString("pt-BR")}</span> vagas abertas com cadastro no período <span className="text-slate-500">{deltaDe(data.vagas_abertas_periodo)} vs anterior</span></span>
+            </p>
           </section>
-          <div className="grid gap-3 lg:grid-cols-2">
-            <section className="rounded-xl bg-[#12141a] p-4 ring-1 ring-white/10">
-              <h2 className="mb-3 text-sm font-semibold text-white">Origem no período</h2>
-              {data.serie_origem.every((item) => item.dnawork === 0 && item.empresa === 0 && item.entrevistas === 0) ? <Vazio /> : (
-                <div className="h-64">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={data.serie_origem}>
-                      <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
-                      <XAxis dataKey="dia" stroke="#8b95a7" fontSize={12} tickLine={false} axisLine={false} minTickGap={24} />
-                      <YAxis stroke="#8b95a7" fontSize={12} tickLine={false} axisLine={false} allowDecimals={false} width={28} />
-                      <Tooltip contentStyle={tooltip} />
-                      <Line dataKey="dnawork" name="Encaminhados DNAWORK" stroke="#67e8f9" strokeWidth={2} dot={false} />
-                      <Line dataKey="empresa" name="Recebidos da empresa" stroke="#d8b4fe" strokeWidth={2} dot={false} />
-                      <Line dataKey="entrevistas" name="Entrevistas realizadas" stroke="#f4f6f8" strokeWidth={2} dot={false} />
-                    </LineChart>
-                  </ResponsiveContainer>
+
+          <section className="overflow-hidden rounded-xl bg-[#12141a] ring-1 ring-white/10">
+            <div className="grid lg:grid-cols-5">
+              <div className="min-w-0 p-3 lg:col-span-3 lg:border-r lg:border-white/10">
+                <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+                  <h2 className="text-sm font-semibold text-white">Vagas e contratações</h2>
+                  <p className="flex flex-wrap gap-3 text-xs text-slate-400">
+                    <span className="inline-flex items-center gap-1.5"><i aria-hidden className="h-0.5 w-3 rounded-full bg-[#67e8f9]" /> Vagas cadastradas</span>
+                    <span className="inline-flex items-center gap-1.5"><i aria-hidden className="h-0.5 w-3 rounded-full bg-[#d8b4fe]" /> Contratações</span>
+                  </p>
                 </div>
-              )}
-            </section>
-            <section className="rounded-xl bg-[#12141a] p-4 ring-1 ring-white/10">
-              <h2 className="mb-3 text-sm font-semibold text-white">Contratações por origem</h2>
-              {data.origem.contratacoes.every((item) => item.total === 0) ? <Vazio /> : (
-                <div className="h-64">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={data.origem.contratacoes.map((item) => ({ ...item, nome: origemNome[item.origem] ?? item.origem }))}>
-                      <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
-                      <XAxis dataKey="nome" stroke="#8b95a7" fontSize={12} tickLine={false} axisLine={false} />
-                      <YAxis stroke="#8b95a7" fontSize={12} tickLine={false} axisLine={false} allowDecimals={false} width={28} />
-                      <Tooltip contentStyle={tooltip} />
-                      <Bar dataKey="total" name="Contratações" fill="#67e8f9" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              )}
-            </section>
-          </div>
-          <div className="grid gap-3 lg:grid-cols-2">
-            <section className="rounded-xl bg-[#12141a] p-4 ring-1 ring-white/10">
-              <h2 className="mb-3 text-sm font-semibold text-white">CLT e estágio</h2>
-              {data.regimes.length === 0 ? <Vazio /> : (
-                <div className="h-56">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={data.regimes}>
-                      <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
-                      <XAxis dataKey="regime" stroke="#8b95a7" fontSize={12} tickLine={false} axisLine={false} />
-                      <YAxis stroke="#8b95a7" fontSize={12} tickLine={false} axisLine={false} allowDecimals={false} width={28} />
-                      <Tooltip contentStyle={tooltip} />
-                      <Bar dataKey="total" name="Contratações" fill="#67e8f9" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              )}
-            </section>
-            <section className="rounded-xl bg-[#12141a] p-4 ring-1 ring-white/10">
-              <h2 className="mb-3 text-sm font-semibold text-white">Empresas que mais contrataram</h2>
+                {data.serie.every((item) => item.vagas === 0 && item.contratacoes === 0) ? <Vazio /> : (
+                  <div className="h-36">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={data.serie} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                        <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
+                        <XAxis dataKey="dia" {...eixo} minTickGap={28} />
+                        <YAxis {...eixo} allowDecimals={false} width={28} />
+                        <Tooltip contentStyle={tooltip} />
+                        <Line dataKey="vagas" name="Vagas cadastradas" stroke="#67e8f9" strokeWidth={2} dot={false} isAnimationActive={false} />
+                        <Line dataKey="contratacoes" name="Contratações" stroke="#d8b4fe" strokeWidth={2} dot={false} isAnimationActive={false} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+              </div>
+              <div className="min-w-0 border-t border-white/10 p-3 lg:col-span-2 lg:border-t-0">
+                <h2 className="mb-2 text-sm font-semibold text-white">CLT e estágio</h2>
+                {data.regimes.length === 0 ? <Vazio /> : (
+                  <div className="h-36">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={data.regimes} layout="vertical" margin={{ top: 0, right: 8, left: 0, bottom: 0 }}>
+                        <CartesianGrid stroke="rgba(255,255,255,0.06)" horizontal={false} />
+                        <XAxis type="number" {...eixo} allowDecimals={false} />
+                        <YAxis type="category" dataKey="regime" {...eixo} width={108} />
+                        <Tooltip contentStyle={tooltip} />
+                        <Bar dataKey="total" name="Contratações" fill="#67e8f9" barSize={12} radius={[0, 4, 4, 0]} isAnimationActive={false} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="border-t border-white/10 p-3">
+              <h2 className="mb-2 text-sm font-semibold text-white">Empresas que mais contrataram</h2>
               {data.ranking.length === 0 ? <Vazio /> : (
-                <ol className="grid gap-2">
+                <ol className="grid gap-x-6 gap-y-2 sm:grid-cols-2">
                   {data.ranking.map((item) => (
-                    <li key={item.empresa} className="flex items-center justify-between gap-3 text-sm">
-                      <span className="truncate text-slate-200">{item.empresa}</span>
-                      <span className="tabular-nums text-white">{item.total}</span>
+                    <li key={item.empresa} className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm text-slate-200">{item.empresa}</p>
+                        <div className="mt-1 h-1 rounded-full bg-white/10">
+                          <div className="h-1 rounded-full bg-[#22d3ee]" style={{ width: `${maxRanking === 0 ? 0 : (item.total / maxRanking) * 100}%` }} />
+                        </div>
+                      </div>
+                      <span className="tabular-nums text-sm text-white">{item.total.toLocaleString("pt-BR")}</span>
                     </li>
                   ))}
                 </ol>
               )}
-            </section>
-          </div>
+            </div>
+          </section>
+
+          <section className="rounded-xl bg-[#12141a] ring-1 ring-white/10">
+            <h2 className="px-4 pt-3 text-sm font-semibold text-white">Análise detalhada</h2>
+            <dl className="grid gap-x-6 gap-y-3 px-4 py-3 sm:grid-cols-2 xl:grid-cols-3">
+              <Medida titulo="Encaminhados pela DNAWORK" valor={data.origem.encaminhados_dnawork} />
+              <Medida titulo="Candidatos recebidos das empresas" valor={data.origem.recebidos_empresa} />
+              <Medida titulo="Entrevistas realizadas" valor={data.origem.entrevistas} />
+              <Conversao titulo="Conversão DNAWORK" taxa={data.origem.conversao_dnawork} />
+              <Conversao titulo="Conversão da empresa" taxa={data.origem.conversao_empresa} />
+              {data.posicoes.disponivel ? (
+                <div>
+                  <dt className="text-xs text-slate-400">Posições disponíveis</dt>
+                  <dd className="mt-0.5 text-lg font-medium leading-none tabular-nums text-white">{(data.posicoes.total ?? 0).toLocaleString("pt-BR")}</dd>
+                  {data.posicoes.sem_capacidade > 0 ? <p className="mt-1 text-xs text-slate-500">{data.posicoes.sem_capacidade.toLocaleString("pt-BR")} vagas abertas ainda sem quantidade definida.</p> : null}
+                </div>
+              ) : (
+                <Indisponivel titulo="Posições disponíveis" nota={data.posicoes.motivo ?? "Nenhuma vaga aberta tem a quantidade de posições preenchida."} />
+              )}
+            </dl>
+            <div className="grid gap-4 border-t border-white/10 p-3 lg:grid-cols-2">
+              <div className="min-w-0">
+                <h3 className="mb-2 text-[13px] font-semibold text-slate-200">Origem no período</h3>
+                {data.serie_origem.every((item) => item.dnawork === 0 && item.empresa === 0 && item.entrevistas === 0) ? <Vazio /> : (
+                  <div className="h-32">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={data.serie_origem} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                        <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
+                        <XAxis dataKey="dia" {...eixo} minTickGap={28} />
+                        <YAxis {...eixo} allowDecimals={false} width={28} />
+                        <Tooltip contentStyle={tooltip} />
+                        <Line dataKey="dnawork" name="Encaminhados pela DNAWORK" stroke="#67e8f9" strokeWidth={2} dot={false} isAnimationActive={false} />
+                        <Line dataKey="empresa" name="Recebidos das empresas" stroke="#d8b4fe" strokeWidth={2} dot={false} isAnimationActive={false} />
+                        <Line dataKey="entrevistas" name="Entrevistas realizadas" stroke="#f4f6f8" strokeWidth={2} dot={false} isAnimationActive={false} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+              </div>
+              <div className="min-w-0">
+                <h3 className="mb-2 text-[13px] font-semibold text-slate-200">Contratações por origem</h3>
+                {data.origem.contratacoes.every((item) => item.total === 0) ? <Vazio /> : (
+                  <div className="h-32">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={data.origem.contratacoes.map((item) => ({ ...item, nome: origemNome[item.origem] ?? item.origem }))} layout="vertical" margin={{ top: 0, right: 8, left: 0, bottom: 0 }}>
+                        <CartesianGrid stroke="rgba(255,255,255,0.06)" horizontal={false} />
+                        <XAxis type="number" {...eixo} allowDecimals={false} />
+                        <YAxis type="category" dataKey="nome" {...eixo} width={108} />
+                        <Tooltip contentStyle={tooltip} />
+                        <Bar dataKey="total" name="Contratações" fill="#67e8f9" barSize={12} radius={[0, 4, 4, 0]} isAnimationActive={false} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+              </div>
+            </div>
+            <p className="border-t border-white/10 px-4 py-2 text-xs text-slate-500">
+              Registro antigo de entrevistas, sem origem: <span className="tabular-nums text-slate-300">{data.encaminhamentos.atual.toLocaleString("pt-BR")}</span> no período ({deltaDe(data.encaminhamentos)} vs anterior).
+            </p>
+            <p className="px-4 pb-3 text-xs text-slate-500">
+              {data.candidatos_sem_data.toLocaleString("pt-BR")} candidatos sem data de inclusão ficam fora do período. A base tem {data.candidatos_base.toLocaleString("pt-BR")} registros e {data.empresas_base.toLocaleString("pt-BR")} empresas. {data.contratacoes_ativas_agora.toLocaleString("pt-BR")} vínculos ativos agora.
+            </p>
+          </section>
+
           <section className="overflow-hidden rounded-xl bg-[#12141a] ring-1 ring-white/10">
-            <div className="flex items-center justify-between gap-3 px-5 py-4">
-              <h2 className="text-sm font-semibold text-white">Contratações recentes</h2>
+            <div className="flex flex-wrap items-baseline justify-between gap-2 px-4 py-3">
+              <div>
+                <h2 className="text-sm font-semibold text-white">Contratações recentes</h2>
+                <p className="text-xs text-slate-500">Mais recentes da base, fora do período.</p>
+              </div>
               <Link className="text-sm font-semibold text-cyan-300" to="/contratacoes">Ver todas</Link>
             </div>
             <div className="overflow-x-auto">
-              <table className="data-table">
+              <table className="data-table compact">
                 <thead>
                   <tr><th>Candidato</th><th>Empresa</th><th>Cargo</th><th>Regime</th><th>Contratação</th><th>Início</th><th>Situação</th></tr>
                 </thead>
@@ -206,40 +278,45 @@ export function DashboardPage() {
   );
 }
 
-function Conversao({ titulo, taxa, texto }: { titulo: string; taxa: number | null; texto: string }) {
+function Medida({ titulo, valor }: { titulo: string; valor: Contagem }) {
   return (
-    <article className="rounded-xl bg-[#12141a] px-5 py-4 ring-1 ring-white/10">
-      <p className="text-[13px] text-slate-400">{titulo}</p>
-      <p className="mt-2 text-[2rem] font-medium leading-none tabular-nums text-white">{taxa == null ? "—" : `${taxa.toLocaleString("pt-BR")}%`}</p>
-      <p className="mt-2 text-xs text-slate-500">{taxa == null ? `Dados indisponíveis. ${texto}` : texto}</p>
-    </article>
+    <div className="min-w-0">
+      <dt className="text-xs text-slate-400">{titulo}</dt>
+      <dd className="mt-0.5 flex flex-wrap items-baseline gap-x-2">
+        <span className="text-lg font-medium leading-none tabular-nums text-white">{valor.atual.toLocaleString("pt-BR")}</span>
+        <span className="text-xs tabular-nums text-slate-500">{deltaDe(valor)} vs anterior</span>
+      </dd>
+    </div>
   );
 }
 
-const origemNome: Record<string, string> = { dnawork: "DNAWORK", empresa: "Empresa", nao_identificado: "Não identificado" };
-
-function Kpi({ titulo, valor, detalhe }: { titulo: string; valor: Contagem; detalhe: string }) {
-  const delta = valor.atual - valor.anterior;
+function Conversao({ titulo, taxa }: { titulo: string; taxa: number | null }) {
+  if (taxa == null) return <Indisponivel titulo={titulo} nota="Entradas insuficientes no período." />;
   return (
-    <article className="rounded-xl bg-[#12141a] px-5 py-4 ring-1 ring-white/10">
-      <p className="text-[13px] text-slate-400">{titulo}</p>
-      <p className="mt-2 text-[2rem] font-medium leading-none tabular-nums tracking-tight text-white">{valor.atual.toLocaleString("pt-BR")}</p>
-      <p className="mt-2 text-xs text-slate-500">{delta >= 0 ? "+" : ""}{delta.toLocaleString("pt-BR")} em relação ao período anterior. {detalhe}</p>
-    </article>
+    <div className="min-w-0">
+      <dt className="text-xs text-slate-400">{titulo}</dt>
+      <dd className="mt-0.5 text-lg font-medium leading-none tabular-nums text-white">{taxa.toLocaleString("pt-BR")}%</dd>
+    </div>
   );
 }
 
-function Painel({ titulo, texto }: { titulo: string; texto: string }) {
+function Indisponivel({ titulo, nota }: { titulo: string; nota: string }) {
   return (
-    <article className="rounded-xl bg-[#12141a] px-5 py-4 ring-1 ring-white/10">
-      <h2 className="text-sm font-semibold text-white">{titulo}</h2>
-      <p className="mt-2 text-sm text-slate-400">Dados indisponíveis. {texto}</p>
-    </article>
+    <div className="min-w-0">
+      <dt className="text-xs text-slate-400">{titulo}</dt>
+      <dd className="mt-0.5 text-sm text-slate-300">Dados indisponíveis</dd>
+      <p className="mt-0.5 text-xs text-slate-500">{nota}</p>
+    </div>
   );
 }
 
 function Vazio() {
   return <p className="text-sm text-slate-400">Nenhum movimento neste período.</p>;
+}
+
+function deltaDe(valor: Contagem) {
+  const delta = valor.atual - valor.anterior;
+  return `${delta > 0 ? "+" : ""}${delta.toLocaleString("pt-BR")}`;
 }
 
 function somar(iso: string, dias: number) {
