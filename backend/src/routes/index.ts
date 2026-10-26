@@ -216,6 +216,12 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
   api.get("/api/v1/termos/:id", {
     schema: { tags: ["termos"], params: z.object({ id: z.string().uuid() }) },
   }, async (request) => ok(await services.termos.get(request.params.id)));
+  api.delete("/api/v1/termos/:id", {
+    schema: { tags: ["termos"], params: z.object({ id: z.string().uuid() }) },
+  }, async (request) => {
+    await services.tce.excluir(request.params.id);
+    return ok({ id: request.params.id });
+  });
   api.post("/api/v1/termos", {
     schema: { tags: ["termos"], body: z.object({ id_contratacao: z.number().int().positive() }) },
   }, async (request, reply) => reply.code(201).send(ok(await services.termos.criar(request.body.id_contratacao))));

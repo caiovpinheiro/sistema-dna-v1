@@ -116,6 +116,32 @@ export class TceService {
     }
   }
 
+  async excluir(id: string) {
+    await this.termos.get(id);
+    const client = await this.db.connect();
+    let pdfPath = "";
+    try {
+      await client.query("BEGIN");
+      const tabela = await client.query<{ exists: boolean }>("SELECT to_regclass('public.tces') IS NOT NULL AS exists");
+      if (tabela.rows[0]?.exists) {
+        const arquivo = await client.query<{ pdf_path: string }>("SELECT pdf_path FROM public.tces WHERE id = $1", [id]);
+        pdfPath = arquivo.rows[0]?.pdf_path ?? "";
+        await client.query("DELETE FROM public.tces WHERE id = $1", [id]);
+      }
+      const removed = await client.query("DELETE FROM dna_work.termo_estagio WHERE id = $1", [id]);
+      if (removed.rowCount === 0) throw new AppError(404, "NAO_ENCONTRADO", "Termo não encontrado.");
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+    if (pdfPath) {
+      await fs.unlink(path.join(await pastaGravavel(this.config.PDF_STORAGE_DIR), path.basename(pdfPath))).catch(() => undefined);
+    }
+  }
+
   async lerPdf(id: string): Promise<Buffer> {
     const row = await this.db.query<{ pdf_path: string }>("SELECT pdf_path FROM public.tces WHERE id = $1", [id]);
     const filename = row.rows[0]?.pdf_path;

@@ -1,8 +1,10 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Trash2 } from "lucide-react";
+import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { GeradorTce } from "@/components/gerador-tce";
 import { Badge, Card, Empty, Skeleton } from "@/components/ui";
-import { api } from "@/lib/api";
+import { ApiError, api } from "@/lib/api";
 
 type Termo = {
   id: string;
@@ -40,10 +42,20 @@ export function GerarTcePage() {
 
 export function TermosPage() {
   const [params, setParams] = useSearchParams();
+  const [erro, setErro] = useState("");
+  const client = useQueryClient();
   const status = params.get("status") ?? "";
   const query = useQuery({
     queryKey: ["termos", status],
     queryFn: () => api<Termo[]>(`/api/v1/termos${status ? `?status=${status}` : ""}`),
+  });
+  const excluir = useMutation({
+    mutationFn: (id: string) => api<{ id: string }>(`/api/v1/termos/${id}`, { method: "DELETE" }),
+    onSuccess: async () => {
+      setErro("");
+      await client.invalidateQueries({ queryKey: ["termos"] });
+    },
+    onError: (error) => setErro(error instanceof ApiError ? error.message : "Não foi possível excluir o termo."),
   });
   const rows = query.data?.data ?? [];
   return (
@@ -62,6 +74,7 @@ export function TermosPage() {
       </div>
       {query.isLoading ? <Skeleton className="h-48" /> : null}
       {query.isError ? <p className="text-sm text-rose-600">Não foi possível carregar os termos. Confira se a migration já rodou no deploy.</p> : null}
+      {erro ? <p className="text-sm text-rose-600">{erro}</p> : null}
       {!query.isLoading && !query.isError && rows.length === 0 ? <Empty title="Nenhum termo" text="Abra uma contratação de estágio e envie o termo para assinatura." /> : null}
       {rows.length > 0 ? (
         <Card className="overflow-x-auto p-0">
@@ -82,7 +95,24 @@ export function TermosPage() {
                   </td>
                   <td className="px-4 py-3">{row.empresa_nome || "—"}</td>
                   <td className="px-4 py-3"><Badge value={row.status}>{labels[row.status] ?? row.status}</Badge></td>
-                  <td className="px-4 py-3">{new Date(row.criado_em).toLocaleDateString("pt-BR")}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex w-full items-center justify-between gap-6 pr-1">
+                      <span>{new Date(row.criado_em).toLocaleDateString("pt-BR")}</span>
+                      <button
+                        type="button"
+                        className="text-slate-400 hover:text-rose-600 disabled:opacity-40"
+                        aria-label={`Excluir TCE de ${row.candidato_nome || row.nome}`}
+                        disabled={excluir.isPending}
+                        onClick={() => {
+                          const nome = row.candidato_nome || row.nome;
+                          if (!window.confirm(`Excluir o TCE de ${nome}?`)) return;
+                          excluir.mutate(row.id);
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
