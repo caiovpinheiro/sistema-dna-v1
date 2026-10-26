@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
+import { Paginacao, numeroPagina } from "@/components/paginacao";
 import { Button, Input, Select, Skeleton } from "@/components/ui";
 import { api } from "@/lib/api";
 import { dateBr, etapaLabel, origemLabel } from "@/lib/format";
@@ -18,14 +19,21 @@ type Row = {
 export function ProcessosPage() {
   const [params, setParams] = useSearchParams();
   const query = Object.fromEntries(params.entries());
+  const pagina = numeroPagina(params);
   const result = useQuery({
     queryKey: ["processos", query],
-    queryFn: () => api<Row[]>(`/api/v1/processos?${new URLSearchParams({ page: "1", pageSize: "30", ...query })}`),
+    queryFn: () => api<Row[]>(`/api/v1/processos?${new URLSearchParams({ ...query, page: String(pagina), pageSize: "30" })}`),
   });
   function update(key: string, value: string) {
     const next = new URLSearchParams(params);
     if (value) next.set(key, value);
     else next.delete(key);
+    if (key !== "page") next.delete("page");
+    setParams(next);
+  }
+  function irPara(paginaDestino: number) {
+    const next = new URLSearchParams(params);
+    if (paginaDestino <= 1) next.delete("page"); else next.set("page", String(paginaDestino));
     setParams(next);
   }
   return (
@@ -52,7 +60,10 @@ export function ProcessosPage() {
       {result.isLoading ? <Skeleton className="h-40 bg-[#12141a]" /> : null}
       {result.isError ? <p className="text-sm text-rose-300">Não foi possível carregar os processos.</p> : null}
       {result.data ? (
-        <Lista linhas={result.data.data} />
+        <div className="grid gap-3">
+          <Lista linhas={result.data.data} />
+          <Paginacao pagina={pagina} tamanho={30} total={Number(result.data.meta?.total ?? 0)} onPagina={irPara} />
+        </div>
       ) : null}
     </div>
   );

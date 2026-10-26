@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
+import { Paginacao, numeroPagina } from "@/components/paginacao";
 import { Badge, Button, Card, Empty, Input, Select, Skeleton } from "@/components/ui";
 import { api } from "@/lib/api";
 import { money, regimeLabel, situacaoLabel } from "@/lib/format";
@@ -11,14 +12,22 @@ type Mode = { id: number; descricao: string };
 export function VagasPage() {
   const [params, setParams] = useSearchParams();
   const query = Object.fromEntries(params.entries());
-  const result = useQuery({ queryKey: ["vagas", query], queryFn: () => api<Row[]>(`/api/v1/vagas?${new URLSearchParams({ page: "1", pageSize: "20", ...query })}`) });
+  const pagina = numeroPagina(params);
+  const result = useQuery({ queryKey: ["vagas", query], queryFn: () => api<Row[]>(`/api/v1/vagas?${new URLSearchParams({ ...query, page: String(pagina), pageSize: "20" })}`) });
   const companies = useQuery({ queryKey: ["empresas-opcoes"], queryFn: () => api<Company[]>("/api/v1/empresas?pageSize=100") });
   const modes = useQuery({ queryKey: ["modalidades"], queryFn: () => api<Mode[]>("/api/v1/modalidades") });
   function update(key: string, value: string) {
     const next = new URLSearchParams(params);
     if (value) next.set(key, value); else next.delete(key);
+    if (key !== "page") next.delete("page");
     setParams(next);
   }
+  function irPara(paginaDestino: number) {
+    const next = new URLSearchParams(params);
+    if (paginaDestino <= 1) next.delete("page"); else next.set("page", String(paginaDestino));
+    setParams(next);
+  }
+  const lista = result.data;
   return (
     <div className="grid gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -43,9 +52,9 @@ export function VagasPage() {
           <option value="capacidade_pendente">Capacidade pendente</option>
         </Select>
       </Card>
-      {result.isLoading ? <Skeleton className="h-64" /> : result.isError ? <p className="text-rose-600">Erro ao listar vagas. Se a migration de quantidade ainda não foi aplicada, a consulta fica indisponível.</p> : result.data?.data.length ? (
+      {result.isLoading ? <Skeleton className="h-64" /> : result.isError ? <p className="text-rose-600">Erro ao listar vagas. Se a migration de quantidade ainda não foi aplicada, a consulta fica indisponível.</p> : lista && (lista.data.length || Number(lista.meta?.total ?? 0) > 0) ? (
         <div className="grid gap-3">
-          {result.data.data.map((item) => (
+          {lista.data.map((item) => (
             <Link key={item.id_vaga} to={`/vagas/${item.id_vaga}`} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm hover:border-cyan-200">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
@@ -58,7 +67,10 @@ export function VagasPage() {
               <p className="text-xs text-slate-500">{regimeLabel[item.regime]}</p>
             </Link>
           ))}
-          <p className="text-xs text-slate-500">{result.data.meta?.total ?? 0} registros</p>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-xs text-slate-500">{lista.meta?.total ?? 0} registros</p>
+            <Paginacao pagina={pagina} tamanho={20} total={Number(lista.meta?.total ?? 0)} onPagina={irPara} />
+          </div>
         </div>
       ) : <Empty title="Nenhuma vaga" text="Crie uma vaga vinculada a uma empresa existente." />}
     </div>

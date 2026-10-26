@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { LinhaPreview, PreviewFlutuante, useLinhaPreview } from "@/components/preview";
+import { Paginacao, numeroPagina } from "@/components/paginacao";
 import { Button, Card, Empty, Input, Select, Skeleton } from "@/components/ui";
 import { api } from "@/lib/api";
 import { dateBr, formatCpf, formatPhone } from "@/lib/format";
@@ -12,9 +13,10 @@ type Detail = Row & { telefonefixo: string | null; datanascimento: string | null
 export function CandidatosPage() {
   const [params, setParams] = useSearchParams();
   const query = Object.fromEntries(params.entries());
+  const pagina = numeroPagina(params);
   const result = useQuery({
     queryKey: ["candidatos", query],
-    queryFn: () => api<Row[]>(`/api/v1/candidatos?${new URLSearchParams({ page: "1", pageSize: "20", ...query })}`),
+    queryFn: () => api<Row[]>(`/api/v1/candidatos?${new URLSearchParams({ ...query, page: String(pagina), pageSize: "20" })}`),
   });
   const preview = useLinhaPreview();
   const detalhe = useQuery({
@@ -35,6 +37,12 @@ export function CandidatosPage() {
     }
     setParams(next);
   }
+  function irPara(paginaDestino: number) {
+    const next = new URLSearchParams(params);
+    if (paginaDestino <= 1) next.delete("page"); else next.set("page", String(paginaDestino));
+    setParams(next);
+  }
+  const lista = result.data;
   return (
     <div className="grid gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -63,12 +71,12 @@ export function CandidatosPage() {
           <Button type="submit" className="md:col-start-4 md:justify-self-end">Pesquisar</Button>
         </form>
       </Card>
-      {result.isLoading ? <Skeleton className="h-64" /> : result.isError ? <p className="text-rose-600">Erro ao pesquisar candidatos.</p> : result.data?.data.length ? (
+      {result.isLoading ? <Skeleton className="h-64" /> : result.isError ? <p className="text-rose-600">Erro ao pesquisar candidatos.</p> : lista && (lista.data.length || Number(lista.meta?.total ?? 0) > 0) ? (
         <Card className="overflow-x-auto p-0">
           <table className="w-full text-left text-sm">
             <thead className="text-slate-500"><tr className="border-b"><th className="px-4 py-3">Nome</th><th>CPF</th><th>Contato</th><th>Cidade</th></tr></thead>
             <tbody>
-              {result.data.data.map((item) => (
+              {lista.data.map((item) => (
                 <tr key={item.id_candidato} className="border-b border-slate-100 last:border-0 hover:bg-slate-50" onMouseEnter={(event) => preview.mostrar(item.id_candidato, event)} onMouseLeave={preview.esconder}>
                   <td className="px-4 py-3 font-semibold"><Link className="text-cyan-800" to={`/candidatos/${item.id_candidato}`}>{item.nome}</Link></td>
                   <td>{formatCpf(item.cpf)}</td>
@@ -78,7 +86,10 @@ export function CandidatosPage() {
               ))}
             </tbody>
           </table>
-          <p className="px-4 py-3 text-xs text-slate-500">{result.data.meta?.total ?? 0} registros</p>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100">
+            <p className="px-4 py-3 text-xs text-slate-500">{lista.meta?.total ?? 0} registros</p>
+            <Paginacao pagina={pagina} tamanho={20} total={Number(lista.meta?.total ?? 0)} onPagina={irPara} />
+          </div>
           <PreviewFlutuante box={preview.box}>
             {aberto ? (
               <LinhaPreview

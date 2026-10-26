@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { LinhaPreview, PreviewFlutuante, useLinhaPreview } from "@/components/preview";
+import { Paginacao, numeroPagina } from "@/components/paginacao";
 import { Button, Badge, Card, Empty, Input, Select, Skeleton } from "@/components/ui";
 import { api } from "@/lib/api";
 import { formatCnpj, formatPhone } from "@/lib/format";
@@ -12,7 +13,8 @@ type Detail = Row & { email: string | null; telefone: string | null; celular: st
 export function EmpresasPage() {
   const [params, setParams] = useSearchParams();
   const query = Object.fromEntries(params.entries());
-  const result = useQuery({ queryKey: ["empresas", query], queryFn: () => api<Row[]>(`/api/v1/empresas?${new URLSearchParams({ page: "1", pageSize: "20", ...query })}`) });
+  const pagina = numeroPagina(params);
+  const result = useQuery({ queryKey: ["empresas", query], queryFn: () => api<Row[]>(`/api/v1/empresas?${new URLSearchParams({ ...query, page: String(pagina), pageSize: "20" })}`) });
   const preview = useLinhaPreview();
   const detalhe = useQuery({
     queryKey: ["empresa", preview.id],
@@ -32,6 +34,12 @@ export function EmpresasPage() {
     }
     setParams(next);
   }
+  function irPara(paginaDestino: number) {
+    const next = new URLSearchParams(params);
+    if (paginaDestino <= 1) next.delete("page"); else next.set("page", String(paginaDestino));
+    setParams(next);
+  }
+  const lista = result.data;
   return (
     <div className="grid gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -51,12 +59,12 @@ export function EmpresasPage() {
           <Button type="submit">Pesquisar</Button>
         </form>
       </Card>
-      {result.isLoading ? <Skeleton className="h-64" /> : result.isError ? <p className="text-rose-600">Erro ao pesquisar empresas.</p> : result.data?.data.length ? (
+      {result.isLoading ? <Skeleton className="h-64" /> : result.isError ? <p className="text-rose-600">Erro ao pesquisar empresas.</p> : lista && (lista.data.length || Number(lista.meta?.total ?? 0) > 0) ? (
         <Card className="overflow-x-auto p-0">
           <table className="w-full text-left text-sm">
             <thead className="text-slate-500"><tr className="border-b"><th className="px-4 py-3">Razão social</th><th>Fantasia</th><th>CNPJ</th><th>Cidade</th><th>Status</th></tr></thead>
             <tbody>
-              {result.data.data.map((item) => (
+              {lista.data.map((item) => (
                 <tr key={item.id_empresa} className="border-b border-slate-100 last:border-0 hover:bg-slate-50" onMouseEnter={(event) => preview.mostrar(item.id_empresa, event)} onMouseLeave={preview.esconder}>
                   <td className="px-4 py-3 font-semibold"><Link className="text-cyan-800" to={`/empresas/${item.id_empresa}`}>{item.razao_social}</Link></td>
                   <td>{item.nome_fantasia || "—"}</td>
@@ -67,7 +75,10 @@ export function EmpresasPage() {
               ))}
             </tbody>
           </table>
-          <p className="px-4 py-3 text-xs text-slate-500">{result.data.meta?.total ?? 0} registros</p>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100">
+            <p className="px-4 py-3 text-xs text-slate-500">{lista.meta?.total ?? 0} registros</p>
+            <Paginacao pagina={pagina} tamanho={20} total={Number(lista.meta?.total ?? 0)} onPagina={irPara} />
+          </div>
           <PreviewFlutuante box={preview.box}>
             {aberto ? (
               <LinhaPreview

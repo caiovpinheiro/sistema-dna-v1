@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
+import { Paginacao, numeroPagina } from "@/components/paginacao";
 import { Badge, Button, Card, Empty, Input, Select, Skeleton } from "@/components/ui";
 import { api } from "@/lib/api";
 import { dateBr, regimeLabel, situacaoLabel } from "@/lib/format";
@@ -9,12 +10,20 @@ type Row = { id_contratacao: number; candidato_nome: string | null; empresa_fant
 export function ContratacoesPage() {
   const [params, setParams] = useSearchParams();
   const query = Object.fromEntries(params.entries());
-  const result = useQuery({ queryKey: ["contratacoes", query], queryFn: () => api<Row[]>(`/api/v1/contratacoes?${new URLSearchParams({ page: "1", pageSize: "20", ...query })}`) });
+  const pagina = numeroPagina(params);
+  const result = useQuery({ queryKey: ["contratacoes", query], queryFn: () => api<Row[]>(`/api/v1/contratacoes?${new URLSearchParams({ ...query, page: String(pagina), pageSize: "20" })}`) });
   function update(key: string, value: string) {
     const next = new URLSearchParams(params);
     if (value) next.set(key, value); else next.delete(key);
+    if (key !== "page") next.delete("page");
     setParams(next);
   }
+  function irPara(paginaDestino: number) {
+    const next = new URLSearchParams(params);
+    if (paginaDestino <= 1) next.delete("page"); else next.set("page", String(paginaDestino));
+    setParams(next);
+  }
+  const lista = result.data;
   return (
     <div className="grid gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -32,12 +41,12 @@ export function ContratacoesPage() {
         <Input aria-label="Início de" type="date" defaultValue={params.get("inicio_de") ?? ""} onChange={(event) => update("inicio_de", event.target.value)} />
         <Input aria-label="Início até" type="date" defaultValue={params.get("inicio_ate") ?? ""} onChange={(event) => update("inicio_ate", event.target.value)} />
       </Card>
-      {result.isLoading ? <Skeleton className="h-64" /> : result.isError ? <p className="text-rose-600">Erro ao pesquisar contratações.</p> : result.data?.data.length ? (
+      {result.isLoading ? <Skeleton className="h-64" /> : result.isError ? <p className="text-rose-600">Erro ao pesquisar contratações.</p> : lista && (lista.data.length || Number(lista.meta?.total ?? 0) > 0) ? (
         <Card className="overflow-x-auto p-0">
           <table className="w-full text-left text-sm">
             <thead className="text-slate-500"><tr className="border-b"><th className="px-4 py-3">Candidato</th><th>Empresa</th><th>Vaga</th><th>Regime</th><th>Início</th><th>Situação</th></tr></thead>
             <tbody>
-              {result.data.data.map((item) => (
+              {lista.data.map((item) => (
                 <tr key={item.id_contratacao} className="border-b border-slate-100">
                   <td className="px-4 py-3 font-semibold"><Link className="text-cyan-800" to={`/contratacoes/${item.id_contratacao}`}>{item.candidato_nome}</Link></td>
                   <td>{item.empresa_fantasia || item.empresa_razao}</td>
@@ -49,7 +58,10 @@ export function ContratacoesPage() {
               ))}
             </tbody>
           </table>
-          <p className="px-4 py-3 text-sm font-semibold text-slate-700">{result.data.meta?.total ?? 0} contratações</p>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100">
+            <p className="px-4 py-3 text-sm font-semibold text-slate-700">{lista.meta?.total ?? 0} contratações</p>
+            <Paginacao pagina={pagina} tamanho={20} total={Number(lista.meta?.total ?? 0)} onPagina={irPara} />
+          </div>
         </Card>
       ) : <Empty title="Nenhuma contratação" text="Registre um vínculo a partir de uma vaga com posição livre." />}
     </div>
