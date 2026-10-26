@@ -104,6 +104,13 @@ function htmlParaTexto(html: string) {
   return texto.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
+function documentoDaPrevia(html: string, escuro: boolean) {
+  const fundo = escuro ? "#15181e" : "#ffffff";
+  const cor = escuro ? "#f4f6f8" : "#102033";
+  const link = escuro ? "#67e8f9" : "#0e7490";
+  return `<!doctype html><html><head><meta charset="utf-8"><style>body{margin:0;padding:16px;font:14px/1.55 Manrope,ui-sans-serif,sans-serif;background:${fundo};color:${cor}}a{color:${link}}</style></head><body>${html}</body></html>`;
+}
+
 function textoParaHtml(texto: string) {
   const escapado = texto
     .replace(/&/g, "&amp;")
@@ -130,8 +137,15 @@ export function EmailsPage() {
   const [aviso, setAviso] = useState("");
   const [erro, setErro] = useState("");
   const [campoNovo, setCampoNovo] = useState<string>(CAMPOS[0].nome);
+  const [escuro, setEscuro] = useState(() => localStorage.getItem("dnawork-tema") !== "claro");
   const mensagem = useRef<HTMLTextAreaElement>(null);
   const atual = modelos.find((item) => item.vinculo === id) ?? modelos[0];
+
+  useEffect(() => {
+    const sincronizar = () => setEscuro(localStorage.getItem("dnawork-tema") !== "claro");
+    window.addEventListener("dnawork-tema", sincronizar);
+    return () => window.removeEventListener("dnawork-tema", sincronizar);
+  }, []);
 
   useEffect(() => {
     if (!atual) return;
@@ -230,7 +244,7 @@ export function EmailsPage() {
                 <p><span className="mr-2 text-slate-400">Para</span>maria.souza@exemplo.com</p>
                 <p><span className="mr-2 text-slate-400">Assunto</span>{previewAssunto}</p>
               </div>
-              <iframe title="Prévia do e-mail" sandbox="" srcDoc={previewHtml} className="h-[640px] w-full rounded-2xl border border-slate-200 bg-white" />
+              <iframe key={`${escuro ? "escuro" : "claro"}:${previewHtml}`} title="Prévia do e-mail" sandbox="" srcDoc={documentoDaPrevia(previewHtml, escuro)} className="h-[640px] w-full rounded-2xl border border-slate-200 bg-white" />
             </Card>
             <Card className="grid min-w-0 gap-4">
               <Field label="Nome do modelo"><Input value={nome} onChange={(event) => setNome(event.target.value)} /></Field>

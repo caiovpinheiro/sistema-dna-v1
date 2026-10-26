@@ -1,4 +1,4 @@
-import { Briefcase, Building2, ChevronDown, FileSignature, FileWarning, GraduationCap, Handshake, LayoutDashboard, ListChecks, LogOut, Mail, Menu, Percent, Receipt, Settings, Users, Wallet, X } from "lucide-react";
+import { Briefcase, Building2, ChevronDown, FileSignature, FileWarning, GraduationCap, Handshake, LayoutDashboard, ListChecks, LogOut, Mail, Menu, Moon, Percent, Receipt, Settings, Sun, Users, Wallet, X } from "lucide-react";
 import { useEffect, useState, type ComponentType } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { api } from "@/lib/api";
@@ -130,7 +130,15 @@ function tituloDaRota(pathname: string) {
 export function Shell({ email, admin, paginas, notify }: { email: string; admin: boolean; paginas: string[]; notify: (message: string, error?: boolean) => void }) {
   const [open, setOpen] = useState(false);
   const [hover, setHover] = useState(false);
+  const [escuro, setEscuro] = useState(() => localStorage.getItem("dnawork-tema") !== "claro");
   const { pathname } = useLocation();
+  useEffect(() => {
+    const tema = escuro ? "escuro" : "claro";
+    localStorage.setItem("dnawork-tema", tema);
+    document.documentElement.dataset.tema = tema;
+    window.dispatchEvent(new Event("dnawork-tema"));
+  }, [escuro]);
+
   const financeiroActive = pathname.startsWith("/financeiro") && !pathname.startsWith("/financeiro/comissao") && !pathname.startsWith("/financeiro/holerite");
   const comissaoActive = pathname.startsWith("/financeiro/comissao");
   const vagaActive = pathname.startsWith("/vagas");
@@ -191,7 +199,7 @@ export function Shell({ email, admin, paginas, notify }: { email: string; admin:
   );
 
   return (
-    <div className="app-canvas flex h-screen overflow-hidden">
+    <div className={cn("app-canvas flex h-screen overflow-hidden", escuro ? "escuro" : "claro")}>
       <aside
         onMouseEnter={() => setHover(true)}
         onMouseLeave={() => setHover(false)}
@@ -229,6 +237,15 @@ export function Shell({ email, admin, paginas, notify }: { email: string; admin:
         <header className="flex h-14 shrink-0 items-center gap-4 border-b border-white/10 bg-[#0e1014] px-4">
           <button className="grid h-9 w-9 place-items-center rounded-lg text-slate-300 hover:bg-white/10 lg:hidden" aria-label="Abrir menu" onClick={() => setOpen(true)}><Menu size={18} /></button>
           <p className="hidden text-sm font-semibold text-white sm:block">{tituloDaRota(pathname)}</p>
+          <button
+            type="button"
+            className="ml-auto grid h-9 w-9 place-items-center rounded-lg text-slate-300 hover:bg-white/10 hover:text-white"
+            aria-label={escuro ? "Usar visual claro" : "Usar visual escuro"}
+            title={escuro ? "Visual claro" : "Visual escuro"}
+            onClick={() => setEscuro((atual) => !atual)}
+          >
+            {escuro ? <Sun size={18} /> : <Moon size={18} />}
+          </button>
         </header>
         <main className={cn("min-h-0 flex-1 overflow-y-auto p-4 md:p-6", pathname.startsWith("/emails") ? "" : "mx-auto w-full max-w-7xl")}>
           {pathname.startsWith("/configuracoes") && !admin ? <p className="text-sm text-slate-300">Somente o administrador configura os acessos.</p> : paginaDoCaminho(pathname) && !permitido(paginaDoCaminho(pathname)!) ? <p className="text-sm text-slate-300">Você não tem acesso a esta página.</p> : <Outlet />}
