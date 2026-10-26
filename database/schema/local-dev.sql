@@ -101,6 +101,7 @@ CREATE TABLE IF NOT EXISTS dna_work.vaga (
   carga_horaria character varying,
   obs text,
   quantidade_posicoes integer,
+  responsavel_agente integer,
   data_adicao timestamp without time zone,
   CONSTRAINT vaga_quantidade_posicoes_check CHECK (quantidade_posicoes IS NULL OR quantidade_posicoes > 0)
 );
@@ -157,6 +158,12 @@ CREATE TABLE IF NOT EXISTS dna_work.colaborador (
 CREATE INDEX IF NOT EXISTS colaborador__id_colaborador ON dna_work.colaborador USING btree (id_colaborador);
 CREATE INDEX IF NOT EXISTS colaborador__id_contratacao ON dna_work.colaborador USING btree (id_contratacao);
 
+CREATE TABLE IF NOT EXISTS dna_work.usuario (
+  u_id integer PRIMARY KEY,
+  u_nome character varying,
+  u_login character varying
+);
+
 CREATE TABLE IF NOT EXISTS dna_work.app_usuario (
   id uuid PRIMARY KEY,
   nome character varying(160) NOT NULL,
@@ -181,6 +188,39 @@ CREATE TABLE IF NOT EXISTS dna_work.termo_estagio (
   signatarios jsonb NOT NULL DEFAULT '[]'::jsonb,
   criado_em timestamp without time zone NOT NULL DEFAULT now(),
   atualizado_em timestamp without time zone NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS dna_work.processo_seletivo (
+  id uuid PRIMARY KEY,
+  id_candidato character varying NOT NULL,
+  id_empresa character varying NOT NULL,
+  id_vaga character varying NOT NULL,
+  origem character varying(20) NOT NULL CHECK (origem IN ('dnawork', 'empresa')),
+  data_recebimento date NOT NULL,
+  data_encaminhamento date,
+  etapa character varying(40) NOT NULL CHECK (etapa IN (
+    'recebido',
+    'encaminhado',
+    'entrevista_agendada',
+    'entrevista_realizada',
+    'contratado',
+    'reprovado',
+    'desistente'
+  )),
+  id_contratacao integer,
+  criado_em timestamp with time zone NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS processo_seletivo_aberto
+  ON dna_work.processo_seletivo (id_candidato, id_vaga)
+  WHERE etapa NOT IN ('contratado', 'reprovado', 'desistente');
+
+CREATE TABLE IF NOT EXISTS dna_work.processo_movimento (
+  id uuid PRIMARY KEY,
+  id_processo uuid NOT NULL REFERENCES dna_work.processo_seletivo (id),
+  etapa character varying(40) NOT NULL,
+  observacao character varying(500),
+  criado_em timestamp with time zone NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS dna_work.api_idempotencia (

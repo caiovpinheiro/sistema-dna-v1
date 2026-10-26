@@ -2,9 +2,9 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
 import { Badge, Button, Card, Empty, Input, Select, Skeleton } from "@/components/ui";
 import { api } from "@/lib/api";
-import { dateBr, regimeLabel, situacaoLabel } from "@/lib/format";
+import { dateBr, efetivacaoLabel, regimeLabel, situacaoLabel } from "@/lib/format";
 
-type Row = { id_contratacao: number; candidato_nome: string | null; empresa_fantasia: string | null; empresa_razao: string | null; cargo: string | null; regime: string; situacao: string; data_inicio: string | null; status: number };
+type Row = { id_contratacao: number; candidato_nome: string | null; empresa_fantasia: string | null; empresa_razao: string | null; cargo: string | null; regime: string; situacao: string; data_inicio: string | null; status: number; origem_efetivacao: string; efetivado_por: string | null };
 
 export function ContratacoesPage() {
   const [params, setParams] = useSearchParams();
@@ -21,7 +21,7 @@ export function ContratacoesPage() {
         <div><h1 className="text-2xl font-extrabold">Contratações</h1><p className="text-sm text-slate-500">Todo vínculo nasce de uma vaga existente.</p></div>
         <Link to="/contratacoes/nova"><Button>Nova contratação</Button></Link>
       </div>
-      <Card className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+      <Card className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         <Input aria-label="Busca" placeholder="Candidato, empresa ou cargo" defaultValue={params.get("q") ?? ""} onBlur={(event) => update("q", event.target.value)} />
         <Select aria-label="Regime" defaultValue={params.get("regime") ?? ""} onChange={(event) => update("regime", event.target.value)}>
           <option value="">Regime</option><option value="clt">CLT</option><option value="estagio">Estágio</option>
@@ -31,11 +31,17 @@ export function ContratacoesPage() {
         </Select>
         <Input aria-label="Início de" type="date" defaultValue={params.get("inicio_de") ?? ""} onChange={(event) => update("inicio_de", event.target.value)} />
         <Input aria-label="Início até" type="date" defaultValue={params.get("inicio_ate") ?? ""} onChange={(event) => update("inicio_ate", event.target.value)} />
+        <Select aria-label="Origem da efetivação" defaultValue={params.get("origem") ?? ""} onChange={(event) => update("origem", event.target.value)}>
+          <option value="">Origem</option>
+          <option value="dnawork">Vaga DNAWORK</option>
+          <option value="empresa">Formalização</option>
+          <option value="nao_identificado">Não identificado</option>
+        </Select>
       </Card>
       {result.isLoading ? <Skeleton className="h-64" /> : result.isError ? <p className="text-rose-600">Erro ao pesquisar contratações.</p> : result.data?.data.length ? (
         <Card className="overflow-x-auto p-0">
           <table className="w-full text-left text-sm">
-            <thead className="text-slate-500"><tr className="border-b"><th className="px-4 py-3">Candidato</th><th>Empresa</th><th>Vaga</th><th>Regime</th><th>Início</th><th>Situação</th></tr></thead>
+            <thead className="text-slate-500"><tr className="border-b"><th className="px-4 py-3">Candidato</th><th>Empresa</th><th>Vaga</th><th>Regime</th><th>Origem</th><th>Início</th><th>Situação</th></tr></thead>
             <tbody>
               {result.data.data.map((item) => (
                 <tr key={item.id_contratacao} className="border-b border-slate-100">
@@ -43,6 +49,7 @@ export function ContratacoesPage() {
                   <td>{item.empresa_fantasia || item.empresa_razao}</td>
                   <td>{item.cargo}</td>
                   <td>{regimeLabel[item.regime]}</td>
+                  <td>{efetivacaoLabel[item.origem_efetivacao] ?? item.origem_efetivacao}{item.efetivado_por ? <span className="block text-xs text-slate-500">{item.efetivado_por}</span> : null}</td>
                   <td>{dateBr(item.data_inicio)}</td>
                   <td><Badge value={item.situacao}>{situacaoLabel[item.situacao]}</Badge></td>
                 </tr>

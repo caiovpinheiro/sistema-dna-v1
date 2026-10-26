@@ -3,13 +3,14 @@ import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Badge, Button, Card, Field, Input, Skeleton } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
-import { dateBr, formatCpf, money, regimeLabel, situacaoLabel } from "@/lib/format";
+import { dateBr, efetivacaoLabel, formatCpf, money, regimeLabel, situacaoLabel } from "@/lib/format";
 
 type Detail = {
   id_contratacao: number; id_candidato: string; id_empresa: string; id_vaga: string;
   candidato_nome: string | null; candidato_cpf: string | null; empresa_razao: string | null; empresa_fantasia: string | null;
   cargo: string | null; modalidade: string | null; regime: string; salario: number | null; situacao: string;
   data_inicio: string | null; data_encerramento: string | null; data_fim_prevista: string | null; carga_horaria: string | null;
+  origem_efetivacao: string; efetivado_por: string | null;
 };
 
 export function ContratacaoDetailPage() {
@@ -53,6 +54,8 @@ export function ContratacaoDetailPage() {
     ["Início", dateBr(data.data_inicio)],
     ["Previsão de fim", dateBr(data.data_fim_prevista)],
     ["Encerramento", dateBr(data.data_encerramento)],
+    ["Origem", efetivacaoLabel[data.origem_efetivacao] ?? data.origem_efetivacao],
+    ["Efetivado por", data.efetivado_por],
   ];
   return (
     <div className="grid gap-5">

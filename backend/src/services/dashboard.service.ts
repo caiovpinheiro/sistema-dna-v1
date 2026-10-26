@@ -2,6 +2,7 @@ import type { Pool } from "pg";
 import type { AppConfig } from "../config.js";
 import { AppError } from "../lib/errors.js";
 import { DATA_LEGADO, VAGA_ABERTA, intervaloDe } from "../lib/dashboard-periodo.js";
+import { ORIGEM_EFETIVACAO_SQL } from "../lib/origem-efetivacao.js";
 import { taxaConversao } from "../lib/processo.js";
 import { ContratacaoRepository } from "../repositories/contratacao.repository.js";
 import { one } from "../repositories/sql.js";
@@ -194,14 +195,17 @@ export class DashboardService {
             AND (criado_em AT TIME ZONE 'America/Sao_Paulo')::date >= $1::date
             AND (criado_em AT TIME ZONE 'America/Sao_Paulo')::date < $2::date) AS entrevistas,
         (SELECT count(*)::int FROM dna_work.conratacaovaga cv
-          JOIN dna_work.processo_seletivo p ON p.id_contratacao = cv.id_contratacao
-          WHERE p.origem = 'dnawork' AND ${CONTRATACAO} >= $1::date AND ${CONTRATACAO} < $2::date) AS contratados_dnawork,
+          LEFT JOIN dna_work.vaga v ON v.id_vaga = cv.id_vaga
+          WHERE ${ORIGEM_EFETIVACAO_SQL} = 'dnawork'
+            AND ${CONTRATACAO} >= $1::date AND ${CONTRATACAO} < $2::date) AS contratados_dnawork,
         (SELECT count(*)::int FROM dna_work.conratacaovaga cv
-          JOIN dna_work.processo_seletivo p ON p.id_contratacao = cv.id_contratacao
-          WHERE p.origem = 'empresa' AND ${CONTRATACAO} >= $1::date AND ${CONTRATACAO} < $2::date) AS contratados_empresa,
+          LEFT JOIN dna_work.vaga v ON v.id_vaga = cv.id_vaga
+          WHERE ${ORIGEM_EFETIVACAO_SQL} = 'empresa'
+            AND ${CONTRATACAO} >= $1::date AND ${CONTRATACAO} < $2::date) AS contratados_empresa,
         (SELECT count(*)::int FROM dna_work.conratacaovaga cv
-          LEFT JOIN dna_work.processo_seletivo p ON p.id_contratacao = cv.id_contratacao
-          WHERE p.id IS NULL AND ${CONTRATACAO} >= $1::date AND ${CONTRATACAO} < $2::date) AS contratados_sem_origem
+          LEFT JOIN dna_work.vaga v ON v.id_vaga = cv.id_vaga
+          WHERE ${ORIGEM_EFETIVACAO_SQL} = 'nao_identificado'
+            AND ${CONTRATACAO} >= $1::date AND ${CONTRATACAO} < $2::date) AS contratados_sem_origem
     `, [inicio, fim]);
     return row ?? { encaminhados: 0, recebidos: 0, entrevistas: 0, contratados_dnawork: 0, contratados_empresa: 0, contratados_sem_origem: 0 };
   }

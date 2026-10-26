@@ -24,6 +24,7 @@ export const contratacaoListSchema = z.object({
   status: z.coerce.number().int().optional(),
   inicio_de: isoDateSchema.optional(),
   inicio_ate: isoDateSchema.optional(),
+  origem: z.enum(["dnawork", "empresa", "nao_identificado"]).optional(),
 });
 
 export type ContratacaoCreate = z.infer<typeof contratacaoCreateSchema>;
