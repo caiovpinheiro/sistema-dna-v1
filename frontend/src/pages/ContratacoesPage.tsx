@@ -27,7 +27,7 @@ export function ContratacoesPage() {
   return (
     <div className="grid gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div><h1 className="text-2xl font-extrabold">Contratações</h1><p className="text-sm text-slate-500">Todo vínculo nasce de uma vaga existente.</p></div>
+        <div><h1 className="text-2xl font-extrabold">Consultar</h1><p className="text-sm text-slate-500">Todo vínculo nasce de uma vaga existente.</p></div>
         <Link to="/contratacoes/nova"><Button>Nova contratação</Button></Link>
       </div>
       <Card className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">

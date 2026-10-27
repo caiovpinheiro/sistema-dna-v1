@@ -14,7 +14,11 @@ const items = [
 
 const afterVagas = [
   { id: "processos", to: "/processos", label: "Processos", icon: ListChecks },
-  { id: "contratacoes", to: "/contratacoes", label: "Contratações", icon: Handshake },
+];
+
+const contratacaoLinks: LinkItem[] = [
+  { id: "contratacoes", to: "/contratacoes", label: "Consultar", end: true },
+  { id: "contratacoes", to: "/contratacoes/rescisao", label: "Rescisão" },
 ];
 
 const termoLinks: LinkItem[] = [
@@ -63,6 +67,7 @@ const CAMINHOS: Array<[string, string]> = [
   ["/candidatos", "candidatos"],
   ["/empresas", "empresas"],
   ["/processos", "processos"],
+  ["/contratacoes/rescisao", "contratacoes"],
   ["/contratacoes", "contratacoes"],
   ["/emails", "emails"],
   ["/documentos-pendentes", "documentos"],
@@ -144,6 +149,7 @@ export function Shell({ email, admin, paginas, notify }: { email: string; admin:
   const vagaActive = pathname.startsWith("/vagas");
   const instituicaoActive = pathname.startsWith("/instituicoes");
   const termoActive = pathname.startsWith("/termos");
+  const contratacaoActive = pathname.startsWith("/contratacoes");
   const expanded = open || hover;
   const linkClass = ({ isActive }: { isActive: boolean }) => cn(
     "flex h-10 items-center gap-3 rounded-lg px-2.5 text-[13px] font-semibold transition duration-150",
@@ -171,6 +177,7 @@ export function Shell({ email, admin, paginas, notify }: { email: string; admin:
           <item.icon size={18} className="shrink-0" /> {label(item.label)}
         </NavLink>
       ))}
+      <SideGroup label="Contratações" icon={Handshake} active={contratacaoActive} expanded={expanded} links={contratacaoLinks.filter((item) => permitido(item.id))} onNavigate={() => setOpen(false)} />
       <SideGroup label="Termos" icon={FileSignature} active={termoActive} expanded={expanded} links={termoLinks.filter((item) => permitido(item.id))} onNavigate={() => setOpen(false)} />
       <SideGroup label="Instituições" icon={GraduationCap} active={instituicaoActive} expanded={expanded} links={instituicaoLinks.filter((item) => permitido(item.id))} onNavigate={() => setOpen(false)} />
       <SideGroup label="Financeiro" icon={Wallet} active={financeiroActive} expanded={expanded} links={financeLinks.filter((item) => permitido(item.id))} onNavigate={() => setOpen(false)} />
