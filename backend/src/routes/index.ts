@@ -171,6 +171,9 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
   api.patch("/api/v1/vagas/:id", {
     schema: { tags: ["vagas"], params: z.object({ id: z.string().min(1) }), body: vagaPatchSchema },
   }, async (request) => ok(await services.vagas.update(request.params.id, request.body)));
+  api.get("/api/v1/vagas/:id/sugeridos", {
+    schema: { tags: ["vagas"], params: z.object({ id: z.string().min(1) }) },
+  }, async (request) => ok(await services.vagas.sugeridos(request.params.id)));
   api.get("/api/v1/vagas/:id/contratacoes", {
     schema: { tags: ["vagas"], params: z.object({ id: z.string().min(1) }), querystring: pageQuery },
   }, async (request) => {

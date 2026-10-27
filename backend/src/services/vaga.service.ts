@@ -55,6 +55,13 @@ export class VagaService {
     return presentVaga((await this.repo.findById(this.db, id))!, this.config.vagaStatusBloqueadas);
   }
 
+  async sugeridos(id: string) {
+    this.ensureCapacityColumn();
+    const row = await this.repo.findById(this.db, id);
+    if (!row) throw new AppError(404, "VAGA_NAO_ENCONTRADA", "Vaga não encontrada.");
+    return this.repo.sugeridos(this.db, id);
+  }
+
   async get(id: string) {
     this.ensureCapacityColumn();
     const row = await this.repo.findById(this.db, id);
