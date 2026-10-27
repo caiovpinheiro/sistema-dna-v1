@@ -25,6 +25,7 @@ import { listarModelosEmail, salvarModeloEmail, excluirModeloEmail } from "../li
 import type { ProcessoService } from "../services/processo.service.js";
 import type { AcessoService } from "../services/acesso.service.js";
 import type { VagaService } from "../services/vaga.service.js";
+import { LegadoService } from "../services/legado.service.js";
 import { sessionCookie } from "../plugins/auth.js";
 
 const ok = <T>(data: T, meta: Record<string, unknown> = {}) => ({ success: true as const, data, meta });
@@ -403,6 +404,41 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
       body: z.object({ ativo: z.boolean(), paginas: z.array(z.string()) }),
     },
   }, async (request) => ok(await services.acesso.salvar(request.params.id, request.body)));
+
+  const legado = new LegadoService(db);
+  const pagina = { page: z.coerce.number().int().min(1).default(1), pageSize: z.coerce.number().int().min(1).max(100).default(50) };
+  api.get("/api/v1/faturamento", { schema: { tags: ["faturamento"], querystring: z.object({ ...pagina, empresa: z.string().optional(), fechamento: z.string().optional(), mes: z.string().optional(), ano: z.string().optional(), status: z.string().optional() }) } }, async (request) => {
+    const result = await legado.faturamento(request.query);
+    return ok(result.data, result.meta);
+  });
+  api.get("/api/v1/procfy", { schema: { tags: ["procfy"], querystring: z.object({ ...pagina, de: z.string().optional(), ate: z.string().optional(), status: z.string().optional(), tipoData: z.string().optional(), sistema: z.string().optional() }) } }, async (request) => {
+    const result = await legado.procfy(request.query);
+    return ok(result.data, result.meta);
+  });
+  api.get("/api/v1/comissao/empresas", { schema: { tags: ["comissao"], querystring: z.object({ ...pagina, empresa: z.string().optional(), consultor: z.string().optional(), mes: z.string().optional(), ano: z.string().optional(), status: z.string().optional() }) } }, async (request) => {
+    const result = await legado.comissaoEmpresas(request.query);
+    return ok(result.data, result.meta);
+  });
+  api.get("/api/v1/comissao", { schema: { tags: ["comissao"], querystring: z.object({ ...pagina, empresa: z.string().optional(), consultor: z.string().optional(), mes: z.string().optional(), ano: z.string().optional(), status: z.string().optional() }) } }, async (request) => {
+    const result = await legado.comissao(request.query);
+    return ok(result.data, result.meta);
+  });
+  api.get("/api/v1/holerite", { schema: { tags: ["holerite"], querystring: z.object({ ...pagina, empresa: z.string().optional(), mes: z.string().optional(), ano: z.string().optional() }) } }, async (request) => {
+    const result = await legado.holerite(request.query);
+    return ok(result.data, result.meta);
+  });
+  api.get("/api/v1/documentos-pendentes", { schema: { tags: ["documentos"], querystring: z.object({ ...pagina, pageSize: z.coerce.number().int().min(1).max(100).default(20), modalidade: z.string().optional(), empresa: z.string().optional(), documento: z.string().optional(), candidato: z.string().optional(), de: z.string().optional(), ate: z.string().optional() }) } }, async (request) => {
+    const result = await legado.documentos(request.query);
+    return ok(result.data, result.meta);
+  });
+  api.get("/api/v1/modelos", { schema: { tags: ["vagas"], querystring: z.object({ ...pagina, nome: z.string().optional(), cargo: z.string().optional(), modalidade: z.string().optional() }) } }, async (request) => {
+    const result = await legado.modelos(request.query);
+    return ok(result.data, result.meta);
+  });
+  api.get("/api/v1/instituicoes", { schema: { tags: ["instituicoes"], querystring: z.object({ ...pagina, pageSize: z.coerce.number().int().min(1).max(100).default(20), q: z.string().optional(), ensino: z.string().optional(), conveniada: z.string().optional(), cidade: z.string().optional(), uf: z.string().optional() }) } }, async (request) => {
+    const result = await legado.instituicoes(request.query);
+    return ok(result.data, result.meta);
+  });
 
   api.post("/api/v1/asaas/webhook", async (request, reply) => {
     const esperado = config.ASAAS_WEBHOOK_TOKEN;

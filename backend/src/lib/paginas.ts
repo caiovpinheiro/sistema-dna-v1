@@ -37,6 +37,14 @@ const REGRAS_API: Array<[string, string[]]> = [
   ["/api/v1/emails", ["emails"]],
   ["/api/v1/asaas/regua", ["regua"]],
   ["/api/v1/asaas", ["contas", "faturamento"]],
+  ["/api/v1/faturamento", ["faturamento"]],
+  ["/api/v1/procfy", ["procfy"]],
+  ["/api/v1/comissao/empresas", ["comissao-empresas"]],
+  ["/api/v1/comissao", ["comissao"]],
+  ["/api/v1/holerite", ["holerite"]],
+  ["/api/v1/documentos-pendentes", ["documentos"]],
+  ["/api/v1/modelos", ["vagas-modelos", "vagas-modelo"]],
+  ["/api/v1/instituicoes", ["instituicoes", "instituicoes-nova"]],
 ];
 
 export function paginasDaApi(path: string): string[] {

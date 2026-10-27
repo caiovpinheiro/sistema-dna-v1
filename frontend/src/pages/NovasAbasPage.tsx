@@ -1,5 +1,9 @@
-import type { ReactNode } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useState, type FormEvent, type ReactNode } from "react";
+import { Paginacao } from "@/components/paginacao";
 import { Button, Card, Field, Input, Select, Textarea } from "@/components/ui";
+import { api } from "@/lib/api";
+import { dateBr, formatCnpj } from "@/lib/format";
 
 function Screen({ title, subtitle, children }: { title: string; subtitle?: string; children: ReactNode }) {
   return (
@@ -34,8 +38,25 @@ function DataTable({ columns, rows }: { columns: ReactNode[]; rows: ReactNode[][
   );
 }
 
-function ListingFooter({ total }: { total: number }) {
-  return <p className="text-sm text-slate-500">{total === 0 ? "Nenhum registro encontrado" : `Mostrando 1 até ${total} de ${total}`}</p>;
+function ListingFooter({ total, visiveis }: { total: number; visiveis?: number }) {
+  const ate = visiveis ?? total;
+  return <p className="text-sm text-slate-500">{total === 0 ? "Nenhum registro encontrado" : `Mostrando 1 até ${ate} de ${total}`}</p>;
+}
+
+function lerFiltros(event: FormEvent<HTMLFormElement>, chaves: string[]) {
+  const data = new FormData(event.currentTarget);
+  const next: Record<string, string> = {};
+  for (const chave of chaves) {
+    const valor = String(data.get(chave) ?? "").trim();
+    if (valor) next[chave] = valor;
+  }
+  return next;
+}
+
+function Consulta({ carregando, erro }: { carregando: boolean; erro: unknown }) {
+  if (carregando) return <p className="text-sm text-slate-500">Carregando...</p>;
+  if (erro instanceof Error) return <p className="text-sm text-red-600">{erro.message}</p>;
+  return null;
 }
 
 const documentos = [
@@ -64,60 +85,88 @@ const documentos = [
   "Termo de compromisso de estágio",
 ];
 
+type Documento = { nome: string | null; assinatura: string | null; vencimento: string | null; atraso: number; datainicio: string | null; modalidade: string | null; documento: string | null; empresa: string | null; status: string | null; instrucao: string | null };
+
 export function DocumentosPendentesPage() {
+  const [busca, setBusca] = useState<Record<string, string>>({});
+  const [pagina, setPagina] = useState(1);
+  const result = useQuery({
+    queryKey: ["documentos-pendentes", busca, pagina],
+    queryFn: () => api<Documento[]>(`/api/v1/documentos-pendentes?${new URLSearchParams({ ...busca, page: String(pagina), pageSize: "20" })}`),
+  });
+  const linhas = result.data?.data ?? [];
+  const total = Number(result.data?.meta?.total ?? 0);
   return (
     <Screen title="Relatório" subtitle="Documento Pendente">
+      <form onSubmit={(event) => { event.preventDefault(); setBusca(lerFiltros(event, ["modalidade", "empresa", "documento", "candidato", "de", "ate"])); setPagina(1); }}>
       <Card className="grid gap-4 md:grid-cols-3 xl:grid-cols-4">
         <Field label="Modalidade da Vaga">
-          <Select aria-label="Modalidade da Vaga" defaultValue="Todos">
+          <Select name="modalidade" aria-label="Modalidade da Vaga" defaultValue="Todos">
             <option>Todos</option>
             <option>CLT</option>
             <option>Estágio</option>
             <option>Pessoa Juridica</option>
           </Select>
         </Field>
-        <Field label="Empresa"><Input aria-label="Empresa" /></Field>
+        <Field label="Empresa"><Input name="empresa" aria-label="Empresa" /></Field>
         <Field label="Documento">
-          <Select aria-label="Documento" defaultValue="Todos">
+          <Select name="documento" aria-label="Documento" defaultValue="Todos">
             <option>Todos</option>
             {documentos.map((item) => <option key={item}>{item}</option>)}
           </Select>
         </Field>
-        <Field label="Candidato"><Input aria-label="Candidato" /></Field>
-        <Field label="Data De"><Input aria-label="Data De" type="date" /></Field>
-        <Field label="Data Até"><Input aria-label="Data Até" type="date" /></Field>
-        <Button type="button" variant="secondary" className="self-end">Pesquisar</Button>
+        <Field label="Candidato"><Input name="candidato" aria-label="Candidato" /></Field>
+        <Field label="Data De"><Input name="de" aria-label="Data De" type="date" /></Field>
+        <Field label="Data Até"><Input name="ate" aria-label="Data Até" type="date" /></Field>
+        <Button type="submit" variant="secondary" className="self-end">Pesquisar</Button>
       </Card>
+      </form>
+      <Consulta carregando={result.isLoading} erro={result.error} />
       <DataTable
         columns={["Nome", "Tipo de Assinatura", "Data Vencimento", "Dias Atraso", "Data Início", "Modalidade da Vaga", "Documento", "Empresa", "Status", "Instruções", "Instruções"]}
-        rows={[]}
+        rows={linhas.map((item) => [item.nome, item.assinatura, dateBr(item.vencimento), item.atraso, dateBr(item.datainicio), item.modalidade, item.documento, item.empresa, item.status, item.instrucao, ""])}
       />
-      <ListingFooter total={0} />
+      <Paginacao pagina={pagina} tamanho={20} total={total} onPagina={setPagina} />
+      <ListingFooter total={total} visiveis={linhas.length} />
     </Screen>
   );
 }
 
+type Modelo = { id_modelo: number; nome: string | null; cargo: string | null; tipo: string | null };
+
 export function ConsultarModelosPage() {
+  const [busca, setBusca] = useState<Record<string, string>>({});
+  const [pagina, setPagina] = useState(1);
+  const result = useQuery({
+    queryKey: ["modelos", busca, pagina],
+    queryFn: () => api<Modelo[]>(`/api/v1/modelos?${new URLSearchParams({ ...busca, page: String(pagina), pageSize: "50" })}`),
+  });
+  const linhas = result.data?.data ?? [];
+  const total = Number(result.data?.meta?.total ?? 0);
   return (
     <Screen title="Buscar" subtitle="Modelo de Vaga">
+      <form onSubmit={(event) => { event.preventDefault(); setBusca(lerFiltros(event, ["nome", "cargo", "modalidade"])); setPagina(1); }}>
       <Card className="grid gap-4 md:grid-cols-4">
-        <Field label="Nome"><Input aria-label="Nome" /></Field>
-        <Field label="Cargo da Vaga"><Input aria-label="Cargo da Vaga" placeholder="Cargo" /></Field>
+        <Field label="Nome"><Input name="nome" aria-label="Nome" /></Field>
+        <Field label="Cargo da Vaga"><Input name="cargo" aria-label="Cargo da Vaga" placeholder="Cargo" /></Field>
         <Field label="Modalidade">
-          <Select aria-label="Modalidade" defaultValue="Todos">
+          <Select name="modalidade" aria-label="Modalidade" defaultValue="Todos">
             <option>Todos</option>
             <option>CLT</option>
             <option>Estágio</option>
             <option>Pessoa Juridica</option>
           </Select>
         </Field>
-        <Button type="button" variant="secondary" className="self-end">Pesquisar</Button>
+        <Button type="submit" variant="secondary" className="self-end">Pesquisar</Button>
       </Card>
+      </form>
+      <Consulta carregando={result.isLoading} erro={result.error} />
       <DataTable
         columns={["Nome", "Cargo", "Tipo de vaga", "Abrir Vaga"]}
-        rows={[]}
+        rows={linhas.map((item) => [item.nome, item.cargo, item.tipo, "Abrir"])}
       />
-      <ListingFooter total={0} />
+      <Paginacao pagina={pagina} tamanho={50} total={total} onPagina={setPagina} />
+      <ListingFooter total={total} visiveis={linhas.length} />
     </Screen>
   );
 }
@@ -209,16 +258,27 @@ export function CadastrarModeloPage() {
   );
 }
 
+type Instituicao = { conveniada: string | null; data_inicio: string | null; data_termino: string | null; tipo_encino: string | null; parece: string | null; cnpj: string | null; razao_social: string | null; nome_fantasia: string | null; bairro: string | null; cidade: string | null; uf: string | null };
+
 export function ConsultarInstituicoesPage() {
+  const [busca, setBusca] = useState<Record<string, string>>({});
+  const [pagina, setPagina] = useState(1);
+  const result = useQuery({
+    queryKey: ["instituicoes", busca, pagina],
+    queryFn: () => api<Instituicao[]>(`/api/v1/instituicoes?${new URLSearchParams({ ...busca, page: String(pagina), pageSize: "20" })}`),
+  });
+  const linhas = result.data?.data ?? [];
+  const total = Number(result.data?.meta?.total ?? 0);
   return (
     <Screen title="buscar" subtitle="Instituição">
+      <form onSubmit={(event) => { event.preventDefault(); setBusca(lerFiltros(event, ["q", "ensino", "conveniada", "cidade", "uf"])); setPagina(1); }}>
       <Card className="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
         <Field label="Buscar">
-          <Input aria-label="Buscar" placeholder="Ex: Nome da faculdade" />
+          <Input name="q" aria-label="Buscar" placeholder="Ex: Nome da faculdade" />
           <p className="text-xs text-slate-500">Pesquisar por: Razão Social, Nome Fantasia, CNPJ, Telefone, E-mail</p>
         </Field>
         <Field label="Tipo Ensino">
-          <Select aria-label="Tipo Ensino" defaultValue="Todos">
+          <Select name="ensino" aria-label="Tipo Ensino" defaultValue="Todos">
             <option>Todos</option>
             <option>Ensino Médio</option>
             <option>Ensino Superior</option>
@@ -227,21 +287,24 @@ export function ConsultarInstituicoesPage() {
           </Select>
         </Field>
         <Field label="Conveniada">
-          <Select aria-label="Conveniada" defaultValue="Todas">
+          <Select name="conveniada" aria-label="Conveniada" defaultValue="Todas">
             <option>Todas</option>
             <option>Sim</option>
             <option>Não</option>
           </Select>
         </Field>
-        <Field label="Cidade"><Input aria-label="Cidade" placeholder="Ex: Nome da cidade" /></Field>
-        <Field label="UF"><Input aria-label="UF" placeholder="Ex: Sigla do estado" /></Field>
-        <Button type="button" variant="secondary" className="self-end">Pesquisar</Button>
+        <Field label="Cidade"><Input name="cidade" aria-label="Cidade" placeholder="Ex: Nome da cidade" /></Field>
+        <Field label="UF"><Input name="uf" aria-label="UF" placeholder="Ex: Sigla do estado" /></Field>
+        <Button type="submit" variant="secondary" className="self-end">Pesquisar</Button>
       </Card>
+      </form>
+      <Consulta carregando={result.isLoading} erro={result.error} />
       <DataTable
         columns={["Conveniada", "Início do Convênio", "Término do Convênio", "Tipo Ensino", "Experiência", "CNPJ / INEP", "Razão Social", "Nome Fantasia", "Bairro", "Cidade", "Estado"]}
-        rows={[]}
+        rows={linhas.map((item) => [item.conveniada === "1" ? "Sim" : "Não", dateBr(item.data_inicio), item.conveniada === "1" && !item.data_termino ? "Indeterminada" : dateBr(item.data_termino), item.tipo_encino, "★".repeat(Number(item.parece) || 0), formatCnpj(item.cnpj), item.razao_social, item.nome_fantasia, item.bairro, item.cidade, item.uf])}
       />
-      <ListingFooter total={0} />
+      <Paginacao pagina={pagina} tamanho={20} total={total} onPagina={setPagina} />
+      <ListingFooter total={total} visiveis={linhas.length} />
     </Screen>
   );
 }

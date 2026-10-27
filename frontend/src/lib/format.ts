@@ -28,8 +28,8 @@ export function money(value: number | null | undefined): string {
 
 export function dateBr(value: string | null | undefined): string {
   if (!value) return "—";
-  const [year, month, day] = value.slice(0, 10).split("-");
-  if (!year || !month || !day) return value;
+  const [year, month, day] = value.slice(0, 10).replaceAll("/", "-").split("-");
+  if (!year || !month || !day || year.length < 4) return value;
   return `${day}/${month}/${year}`;
 }
 
