@@ -2,9 +2,14 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { Badge, Button, Card, Skeleton } from "@/components/ui";
 import { api } from "@/lib/api";
-import { formatCnpj, regimeLabel, situacaoLabel } from "@/lib/format";
+import { formatCnpj, formatPhone, regimeLabel, situacaoLabel } from "@/lib/format";
 
-type Company = { id_empresa: string; razao_social: string; nome_fantasia: string | null; cnpj: string; email: string | null; cidade: string | null; uf: string | null; responsavel: string | null; matriz: string | null; status: number | null };
+type Company = {
+  id_empresa: string; razao_social: string; nome_fantasia: string | null; cnpj: string; email: string | null;
+  telefone: string | null; celular: string | null; cep: string | null; logradouro: string | null; numero: string | null;
+  complemento: string | null; bairro: string | null; cidade: string | null; uf: string | null; responsavel: string | null;
+  matriz: string | null; ie: string | null; site: string | null; obs: string | null; status: number | null;
+};
 type Job = { id_vaga: string; cargo: string; regime: string; situacao: string; quantidade_posicoes: number | null; ocupadas: number; disponiveis: number | null };
 type Contract = { id_contratacao: number; candidato_nome: string | null; cargo: string | null; situacao: string };
 
@@ -23,10 +28,11 @@ export function EmpresaDetailPage() {
         <div className="flex gap-2"><Link to={`/vagas/nova?empresa=${id}`}><Button>Nova vaga</Button></Link><Link to={`/empresas/${id}/editar`}><Button variant="secondary">Editar</Button></Link></div>
       </div>
       <div className="grid gap-4 md:grid-cols-3">
-        <Card><p className="text-xs text-slate-500">Cidade</p><p className="font-semibold">{[data.cidade, data.uf].filter(Boolean).join(" / ") || "—"}</p></Card>
-        <Card><p className="text-xs text-slate-500">Responsável</p><p className="font-semibold">{data.responsavel || "—"}</p></Card>
-        <Card><p className="text-xs text-slate-500">Matriz</p><p className="font-semibold">{data.matriz || "Não informada"}</p></Card>
+        <Card><p className="text-xs text-slate-500">Cidade</p><p className="font-semibold">{[data.cidade, data.uf].filter(Boolean).join(" / ") || "—"}</p><p className="text-sm text-slate-500">{[data.logradouro, data.numero, data.bairro, data.cep].filter(Boolean).join(", ") || "Endereço não informado"}</p></Card>
+        <Card><p className="text-xs text-slate-500">Contato</p><p className="font-semibold">{data.responsavel || "—"}</p><p className="text-sm text-slate-500">{[formatPhone(data.telefone), formatPhone(data.celular), data.email].filter((item) => item && item !== "—").join(" · ") || "Sem telefone ou e-mail"}</p></Card>
+        <Card><p className="text-xs text-slate-500">Cadastro</p><p className="font-semibold">{data.matriz || "Sem matriz"}</p><p className="text-sm text-slate-500">{[data.ie ? `IE ${data.ie}` : "", data.site || ""].filter(Boolean).join(" · ") || "IE e site não informados"}</p></Card>
       </div>
+      {data.obs ? <Card><h2 className="mb-2 font-bold">Observações</h2><p className="whitespace-pre-line text-sm text-slate-600">{data.obs}</p></Card> : null}
       <Card>
         <h2 className="mb-3 font-bold">Vagas</h2>
         <div className="grid gap-2">{jobs.data?.data.length ? jobs.data.data.map((job) => (

@@ -56,7 +56,7 @@ export class CandidatoService {
   async get(id: string) {
     const row = await this.repo.findById(this.db, id);
     if (!row) throw new AppError(404, "CANDIDATO_NAO_ENCONTRADO", "Candidato não encontrado.");
-    return presentCandidato(row, true);
+    return { ...presentCandidato(row, true), curriculo: await this.repo.curriculo(this.db, row) };
   }
 
   async list(query: CandidatoListQuery) {
