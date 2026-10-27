@@ -112,5 +112,7 @@ export function presentContratacao(row: ContratacaoRow, statusAtivo: number, sta
     data_inicio: legacyToIso(row.datainicio),
     data_fim_prevista: legacyToIso(row.datafim),
     data_encerramento: legacyToIso(row.data_demicao),
+    origem_efetivacao: row.origem_efetivacao,
+    efetivado_por: row.efetivado_por,
   };
 }

@@ -1,4 +1,5 @@
 import { isoToLegacy } from "../lib/dates.js";
+import { EFETIVADO_POR_SQL, ORIGEM_EFETIVACAO_SQL, type OrigemEfetivacao } from "../lib/origem-efetivacao.js";
 import type { ContratacaoListQuery } from "../schemas/contratacao.js";
 import { many, one, REGIME_SQL, sortClause, type Db } from "./sql.js";
 
@@ -26,6 +27,9 @@ export type ContratacaoRow = {
   tipo_vaga: number | null;
   modalidade: string | null;
   carga_horaria: string | null;
+  responsavel_agente: number | null;
+  efetivado_por: string | null;
+  origem_efetivacao: OrigemEfetivacao;
 };
 
 const SELECT = `
@@ -34,12 +38,15 @@ const SELECT = `
          cv.ferias, cv.id_supervisor, cv.id_responsavel_agente,
          c.nome AS candidato_nome, c.cpf AS candidato_cpf,
          e.razao_social AS empresa_razao, e.nome_fantasia AS empresa_fantasia,
-         v.cargo, v.salario, v.tipo_vaga, v.carga_horaria, m.descricao AS modalidade
+         v.cargo, v.salario, v.tipo_vaga, v.carga_horaria, m.descricao AS modalidade,
+         v.responsavel_agente, ${EFETIVADO_POR_SQL} AS efetivado_por,
+         ${ORIGEM_EFETIVACAO_SQL} AS origem_efetivacao
   FROM dna_work.conratacaovaga cv
   LEFT JOIN dna_work.candidato c ON c.id_candidato = cv.id_candidato
   LEFT JOIN dna_work.empresa e ON e.id_empresa = cv.id_empresa
   LEFT JOIN dna_work.vaga v ON v.id_vaga = cv.id_vaga
   LEFT JOIN dna_work.modalidade_vaga m ON m.id = v.tipo_vaga
+  LEFT JOIN dna_work.usuario u ON u.u_id = v.responsavel_agente
 `;
 
 const SORTS: Record<string, string> = {
@@ -204,6 +211,7 @@ export class ContratacaoRepository {
     const periodo = `replace(coalesce(nullif(btrim(cv.datainicio), ''), nullif(btrim(cv.data_contratacao), '')), '-', '/')`;
     if (query.inicio_de) add(`${periodo} >= $#`, isoToLegacy(query.inicio_de));
     if (query.inicio_ate) add(`${periodo} <= $#`, isoToLegacy(query.inicio_ate));
+    if (query.origem) add(`${ORIGEM_EFETIVACAO_SQL} = $#`, query.origem);
     const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
     const order = query.sort
       ? sortClause(query.sort, query.order, SORTS, "cv.id_contratacao")

@@ -5,7 +5,7 @@ import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Too
 import { Badge, Skeleton, cn } from "@/components/ui";
 import { PreviewFlutuante } from "@/components/preview";
 import { api } from "@/lib/api";
-import { dateBr, regimeLabel } from "@/lib/format";
+import { dateBr, efetivacaoLabel, regimeLabel } from "@/lib/format";
 
 type Contagem = { atual: number; anterior: number };
 type Dashboard = {
@@ -34,12 +34,12 @@ type Dashboard = {
   serie: Array<{ dia: string; vagas: number; contratacoes: number }>;
   serie_origem: Array<{ dia: string; dnawork: number; empresa: number; entrevistas: number }>;
   ranking: Array<{ empresa: string; total: number }>;
-  ultimas_contratacoes: Array<{ id_contratacao: number; candidato_nome: string | null; empresa_fantasia: string | null; empresa_razao: string | null; cargo: string | null; regime: string; data_contratacao: string | null; data_inicio: string | null; situacao: string }>;
+  ultimas_contratacoes: Array<{ id_contratacao: number; candidato_nome: string | null; empresa_fantasia: string | null; empresa_razao: string | null; cargo: string | null; regime: string; data_contratacao: string | null; data_inicio: string | null; situacao: string; origem_efetivacao: string; efetivado_por: string | null }>;
 };
 
 const tooltip = { background: "#15181e", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, color: "#e7e9ee", fontSize: 12 };
 const eixo = { stroke: "#8b95a7", fontSize: 11, tickLine: false, axisLine: false } as const;
-const origemNome: Record<string, string> = { dnawork: "DNAWORK", empresa: "Empresa", nao_identificado: "Não identificado" };
+const origemNome = efetivacaoLabel;
 
 export function DashboardPage() {
   const [dias, setDias] = useState<number | null>(30);
@@ -237,6 +237,9 @@ export function DashboardPage() {
               </div>
             </div>
             <p className="border-t border-white/10 px-4 py-2 text-xs text-slate-500">
+              Efetivação pelo usuário DNA Work conta como formalização: a empresa contratou e a DNA só registrou o contrato. Efetivação da Ketly ou de outro recrutador interno conta como vaga DNAWORK.
+            </p>
+            <p className="px-4 py-2 text-xs text-slate-500">
               Registro antigo de entrevistas, sem origem: <span className="tabular-nums text-slate-300">{data.encaminhamentos.atual.toLocaleString("pt-BR")}</span> no período (<Comparacao valor={data.encaminhamentos} periodo={data.periodo} />).
             </p>
             <p className="px-4 pb-3 text-xs text-slate-500">
@@ -255,15 +258,16 @@ export function DashboardPage() {
             <div className="overflow-x-auto">
               <table className="data-table compact">
                 <thead>
-                  <tr><th>Candidato</th><th>Empresa</th><th>Cargo</th><th>Regime</th><th>Contratação</th><th>Início</th><th>Situação</th></tr>
+                  <tr><th>Candidato</th><th>Empresa</th><th>Cargo</th><th>Regime</th><th>Origem</th><th>Contratação</th><th>Início</th><th>Situação</th></tr>
                 </thead>
                 <tbody>
-                  {data.ultimas_contratacoes.length === 0 ? <tr><td className="text-slate-400" colSpan={7}>Nenhuma contratação registrada.</td></tr> : data.ultimas_contratacoes.map((item) => (
+                  {data.ultimas_contratacoes.length === 0 ? <tr><td className="text-slate-400" colSpan={8}>Nenhuma contratação registrada.</td></tr> : data.ultimas_contratacoes.map((item) => (
                     <tr key={item.id_contratacao}>
                       <td><Link to={`/contratacoes/${item.id_contratacao}`}>{item.candidato_nome}</Link></td>
                       <td>{item.empresa_fantasia || item.empresa_razao}</td>
                       <td>{item.cargo}</td>
                       <td>{regimeLabel[item.regime] ?? item.regime}</td>
+                      <td>{efetivacaoLabel[item.origem_efetivacao] ?? item.origem_efetivacao}{item.efetivado_por ? <span className="block text-xs text-slate-500">{item.efetivado_por}</span> : null}</td>
                       <td className="tabular-nums">{dateBr(item.data_contratacao)}</td>
                       <td className="tabular-nums">{dateBr(item.data_inicio)}</td>
                       <td><Badge value={item.situacao}>{item.situacao === "ativa" ? "Ativa" : item.situacao === "encerrada" ? "Encerrada" : "Não identificada"}</Badge></td>
