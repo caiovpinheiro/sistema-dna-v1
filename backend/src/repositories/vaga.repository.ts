@@ -234,8 +234,9 @@ export class VagaRepository {
 
   async list(db: Db, query: VagaListQuery): Promise<{ rows: VagaRow[]; total: number }> {
     const where: string[] = [];
-    const params: unknown[] = [this.statusAtivo, this.statusBloqueadas];
-    const blocked = "$2::int[]";
+    const params: unknown[] = [this.statusAtivo];
+    const bloqueadasSql = (this.statusBloqueadas.length ? this.statusBloqueadas : [-1]).join(",");
+    const blockedExpr = `COALESCE(v.status, -1) = ANY(ARRAY[${bloqueadasSql}]::int[])`;
     const add = (sql: string, value: unknown) => {
       params.push(value);
       where.push(sql.replaceAll("$#", `$${params.length}`));
@@ -245,7 +246,6 @@ export class VagaRepository {
     if (query.tipo_vaga) add("v.tipo_vaga = $#", query.tipo_vaga);
     if (query.q) add("(v.cargo ILIKE $# OR e.nome_fantasia ILIKE $# OR e.razao_social ILIKE $#)", `%${query.q}%`);
     if (query.situacao) {
-      const blockedExpr = `COALESCE(v.status, -1) = ANY(${blocked})`;
       const cheia = "v.quantidade_posicoes IS NOT NULL AND COALESCE(o.ocupadas, 0) >= v.quantidade_posicoes";
       if (query.situacao === "encerrada") where.push(blockedExpr);
       if (query.situacao === "capacidade_pendente") where.push(`v.quantidade_posicoes IS NULL AND NOT (${blockedExpr})`);
@@ -275,7 +275,7 @@ export class VagaRepository {
              e.razao_social, e.nome_fantasia, m.descricao AS modalidade,
              COALESCE(o.ocupadas, 0)::int AS ocupadas
       ${from}
-      ORDER BY CASE WHEN v.cargo ILIKE 'teste%' AND COALESCE(v.status, -1) = ANY(${blocked}) THEN 1 ELSE 0 END, ${order} NULLS LAST, v.id_vaga
+      ORDER BY CASE WHEN v.cargo ILIKE 'teste%' AND ${blockedExpr} THEN 1 ELSE 0 END, ${order} NULLS LAST, v.id_vaga
       LIMIT $${params.length + 1} OFFSET $${params.length + 2}
     `, [...params, query.pageSize, (query.page - 1) * query.pageSize]);
     return { rows, total: totalRow?.total ?? 0 };
