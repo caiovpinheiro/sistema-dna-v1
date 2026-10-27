@@ -44,6 +44,28 @@ export const etapaLabel: Record<string, string> = {
   reprovado: "Reprovado",
   desistente: "Desistente",
 };
+export function textoPlano(valor: string | null | undefined) {
+  return (valor ?? "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+export const statusVagaLabel: Record<number, string> = {
+  0: "Aberta",
+  1: "Ocupada",
+  2: "Suspensa",
+  3: "Stand by",
+  4: "Em andamento",
+  5: "Encerrada",
+};
+
 export const situacaoLabel: Record<string, string> = {
   aberta: "Aberta",
   preenchida: "Preenchida",

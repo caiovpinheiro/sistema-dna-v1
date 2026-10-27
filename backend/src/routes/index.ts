@@ -435,6 +435,11 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
     const result = await legado.modelos(request.query);
     return ok(result.data, result.meta);
   });
+  api.get("/api/v1/modelos/:id", { schema: { tags: ["vagas"], params: z.object({ id: z.coerce.number().int().positive() }) } }, async (request) => {
+    const modelo = await legado.modelo(request.params.id);
+    if (!modelo) throw new AppError(404, "MODELO_NAO_ENCONTRADO", "Modelo de vaga não encontrado.");
+    return ok(modelo);
+  });
   api.get("/api/v1/instituicoes", { schema: { tags: ["instituicoes"], querystring: z.object({ ...pagina, pageSize: z.coerce.number().int().min(1).max(100).default(20), q: z.string().optional(), ensino: z.string().optional(), conveniada: z.string().optional(), cidade: z.string().optional(), uf: z.string().optional() }) } }, async (request) => {
     const result = await legado.instituicoes(request.query);
     return ok(result.data, result.meta);

@@ -469,6 +469,21 @@ export class LegadoService {
     return { data: rows, meta: { total: total?.total ?? 0, page: pagina, pageSize: tamanho } };
   }
 
+  async modelo(id: number) {
+    return one<{
+      id_modelo: number; nome: string | null; cargo: string | null; tipo_vaga: number | null; tipo: string | null;
+      salario: string | null; km: string | null; atribuicaoes: string | null; atribu_contrato: string | null;
+      requisitos_desejaveis: string | null; destaque: string | null;
+    }>(this.db, `
+      SELECT m.id_modelo, m.nome, m.cargo, m.tipo_vaga, mv.descricao AS tipo,
+             m.salario::text AS salario, m.km::text AS km, m.atribuicaoes, m.atribu_contrato,
+             m.requisitos_desejaveis, m.destaque
+      FROM dna_work.vaga_modelo m
+      LEFT JOIN dna_work.modalidade_vaga mv ON mv.id::text = m.tipo_vaga::text
+      WHERE m.id_modelo = $1
+    `, [id]);
+  }
+
   async instituicoes(query: { q?: string; ensino?: string; conveniada?: string; cidade?: string; uf?: string; page?: number; pageSize?: number }) {
     const { pagina, tamanho, offset } = corte(query.page ?? 1, query.pageSize ?? 20);
     const q = texto(query.q);

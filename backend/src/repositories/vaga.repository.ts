@@ -22,6 +22,10 @@ export type VagaRow = {
   ocupadas: number;
 };
 
+function vazioEntrevista() {
+  return { total: 0, confirmou: 0, negou: 0, sem_resposta: 0, recusados: 0 };
+}
+
 const SORTS: Record<string, string> = {
   cargo: "v.cargo",
   dataabertura: "v.dataabertura",
@@ -57,6 +61,84 @@ export class VagaRepository {
     return one<VagaRow>(db, `${this.select("WHERE v.id_vaga = $2")}`, [this.statusAtivo, id]);
   }
 
+  async ficha(db: Db, id: string, comparador: string | null) {
+    const texto = await one<{
+      codigo: string | null;
+      km: string | null;
+      atribuicaoes: string | null;
+      atribu_contrato: string | null;
+      requisitos_desejaveis: string | null;
+      destaque: string | null;
+      quantidade: number;
+    }>(db, `
+      SELECT v.codigo, v.km::text AS km, v.atribuicaoes, v.atribu_contrato, v.requisitos_desejaveis, v.destaque,
+             CASE WHEN coalesce(v.comparador, '') = '' THEN 0
+                  ELSE (SELECT count(*)::int FROM dna_work.vaga x WHERE x.comparador = v.comparador)
+             END AS quantidade
+      FROM dna_work.vaga v
+      WHERE v.id_vaga = $1
+    `, [id]);
+    const comp = comparador ?? "";
+    const entrevistas = comp ? await this.entrevistas(db, comp) : vazioEntrevista();
+    const agente = comp && await this.tabela(db, "chamado_emtrevista")
+      ? (await one<{ total: number }>(db, `SELECT count(*)::int AS total FROM dna_work.chamado_emtrevista WHERE comparador = $1`, [comp]))?.total ?? 0
+      : 0;
+    const contratados = comp
+      ? (await one<{ total: number }>(db, `
+          SELECT count(*)::int AS total FROM dna_work.conratacaovaga WHERE comparador = $1 AND status = $2
+        `, [comp, this.statusAtivo]))?.total ?? 0
+      : 0;
+    const inscritos = comp ? await this.inscritos(db, comp) : 0;
+    return {
+      codigo: texto?.codigo ?? null,
+      km: texto?.km ?? null,
+      atribuicaoes: texto?.atribuicaoes ?? null,
+      atribu_contrato: texto?.atribu_contrato ?? null,
+      requisitos_desejaveis: texto?.requisitos_desejaveis ?? null,
+      destaque: texto?.destaque ?? null,
+      quantidade: texto?.quantidade ?? 0,
+      inscritos,
+      entrevistas_agente: agente,
+      contratados,
+      ...entrevistas,
+    };
+  }
+
+  private async tabela(db: Db, nome: string) {
+    const row = await one<{ ok: string | null }>(db, "SELECT to_regclass($1) AS ok", [`dna_work.${nome}`]);
+    return row?.ok != null;
+  }
+
+  private async entrevistas(db: Db, comparador: string) {
+    if (!await this.tabela(db, "emcaminhamento")) return vazioEntrevista();
+    const row = await one<{ total: number; confirmou: number; negou: number; sem_resposta: number; recusados: number }>(db, `
+      SELECT count(*)::int AS total,
+             count(*) FILTER (WHERE aceite = 'S' AND coalesce(reprovado, '') <> 'S')::int AS confirmou,
+             count(*) FILTER (WHERE aceite = 'N' AND coalesce(reprovado, '') <> 'S')::int AS negou,
+             count(*) FILTER (WHERE coalesce(reprovado, '') <> 'S' AND coalesce(aceite, '') = '')::int AS sem_resposta,
+             count(*) FILTER (WHERE reprovado = 'S')::int AS recusados
+      FROM (
+        SELECT DISTINCT ON (id_candidato) aceite, reprovado
+        FROM dna_work.emcaminhamento
+        WHERE comparador = $1
+        ORDER BY id_candidato
+      ) lista
+    `, [comparador]);
+    return row ?? vazioEntrevista();
+  }
+
+  private async inscritos(db: Db, comparador: string) {
+    const partes: string[] = [];
+    if (await this.tabela(db, "selecionado_vaga")) partes.push("SELECT id_candidato::text AS id FROM dna_work.selecionado_vaga WHERE comparador = $1");
+    if (await this.tabela(db, "candidatura")) partes.push("SELECT id_candidato::text AS id FROM dna_work.candidatura WHERE comparador = $1");
+    if (await this.tabela(db, "candidatos_incluidos_vaga")) partes.push("SELECT id_candidato::text AS id FROM dna_work.candidatos_incluidos_vaga WHERE conparador = $1");
+    if (await this.tabela(db, "emcaminhamento")) partes.push("SELECT id_candidato::text AS id FROM dna_work.emcaminhamento WHERE comparador = $1");
+    if (await this.tabela(db, "chamado_emtrevista")) partes.push("SELECT id_candidato::text AS id FROM dna_work.chamado_emtrevista WHERE comparador = $1");
+    if (!partes.length) return 0;
+    const row = await one<{ total: number }>(db, `SELECT count(DISTINCT id)::int AS total FROM (${partes.join(" UNION ")}) pessoas`, [comparador]);
+    return row?.total ?? 0;
+  }
+
   async lockById(db: Db, id: string): Promise<VagaRow | null> {
     const locked = await one<{ id_vaga: string }>(db, `
       SELECT id_vaga FROM dna_work.vaga WHERE id_vaga = $1 FOR UPDATE
@@ -69,8 +151,9 @@ export class VagaRepository {
     await db.query(`
       INSERT INTO dna_work.vaga (
         id_vaga, id_empresa, cargo, tipo_vaga, salario, status, comparador, dataabertura,
-        publicar, carga_horaria, obs, quantidade_posicoes, data_adicao
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12, now())
+        publicar, carga_horaria, obs, quantidade_posicoes, data_adicao,
+        km, atribuicaoes, atribu_contrato, requisitos_desejaveis, destaque
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12, now(), $13,$14,$15,$16,$17)
     `, [
       id,
       input.id_empresa,
@@ -84,6 +167,11 @@ export class VagaRepository {
       input.carga_horaria ?? null,
       input.obs ?? null,
       input.quantidade_posicoes,
+      input.km ?? null,
+      input.atribuicaoes ?? null,
+      input.atribu_contrato ?? null,
+      input.requisitos_desejaveis ?? null,
+      input.destaque ?? null,
     ]);
   }
 

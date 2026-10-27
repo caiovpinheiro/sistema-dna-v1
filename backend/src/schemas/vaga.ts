@@ -11,6 +11,11 @@ const fields = {
   publicar: z.coerce.number().int().min(0).max(1).optional(),
   carga_horaria: z.string().trim().max(40).optional(),
   obs: z.string().trim().max(4000).optional(),
+  km: z.string().trim().max(20).optional(),
+  atribuicaoes: z.string().trim().max(8000).optional(),
+  atribu_contrato: z.string().trim().max(8000).optional(),
+  requisitos_desejaveis: z.string().trim().max(4000).optional(),
+  destaque: z.string().trim().max(4000).optional(),
 };
 
 export const vagaCreateSchema = z.object(fields);

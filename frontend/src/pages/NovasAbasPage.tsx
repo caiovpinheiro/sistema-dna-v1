@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState, type FormEvent, type ReactNode } from "react";
+import { Link } from "react-router-dom";
 import { Paginacao } from "@/components/paginacao";
 import { Button, Card, Field, Input, Select, Textarea } from "@/components/ui";
 import { api } from "@/lib/api";
@@ -163,7 +164,7 @@ export function ConsultarModelosPage() {
       <Consulta carregando={result.isLoading} erro={result.error} />
       <DataTable
         columns={["Nome", "Cargo", "Tipo de vaga", "Abrir Vaga"]}
-        rows={linhas.map((item) => [item.nome, item.cargo, item.tipo, "Abrir"])}
+        rows={linhas.map((item) => [item.nome, item.cargo, item.tipo, <Link key={item.id_modelo} className="font-semibold text-cyan-800" to={`/vagas/nova?modelo=${item.id_modelo}`}>Abrir</Link>])}
       />
       <Paginacao pagina={pagina} tamanho={50} total={total} onPagina={setPagina} />
       <ListingFooter total={total} visiveis={linhas.length} />
