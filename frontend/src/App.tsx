@@ -14,11 +14,12 @@ import { EmailsPage } from "@/pages/EmailsPage";
 import { EmpresaDetailPage } from "@/pages/EmpresaDetailPage";
 import { EmpresaFormPage } from "@/pages/EmpresaFormPage";
 import { EmpresasPage } from "@/pages/EmpresasPage";
+import { GruposEmpresasPage } from "@/pages/GruposEmpresasPage";
 import { ComissaoConsultarPage, ComissaoEmpresasPage, GerarFaturamentoPage, GerarHoleritePage, RelatorioProcfyPage } from "@/pages/FinanceiroPage";
 import { ContasReceberPage } from "@/pages/ContasReceberPage";
 import { ReguaCobrancaPage } from "@/pages/ReguaCobrancaPage";
 import { LoginPage } from "@/pages/LoginPage";
-import { CadastrarInstituicaoPage, CadastrarModeloPage, ConsultarInstituicoesPage, ConsultarModelosPage, DocumentosPendentesPage } from "@/pages/NovasAbasPage";
+import { CadastrarInstituicaoPage, ConsultarInstituicoesPage, ConsultarModelosPage, DocumentosPendentesPage } from "@/pages/NovasAbasPage";
 import { NovaContratacaoPage } from "@/pages/NovaContratacaoPage";
 import { ProcessoDetailPage } from "@/pages/ProcessoDetailPage";
 import { ProcessoFormPage } from "@/pages/ProcessoFormPage";
@@ -63,14 +64,15 @@ export function App() {
             <Route path="/candidatos/novo" element={<CandidatoFormPage />} />
             <Route path="/candidatos/:id" element={<CandidatoDetailPage />} />
             <Route path="/candidatos/:id/editar" element={<CandidatoFormPage />} />
+            <Route path="/grupos-empresas" element={<GruposEmpresasPage />} />
             <Route path="/empresas" element={<EmpresasPage />} />
-            <Route path="/empresas/nova" element={<EmpresaFormPage />} />
+            <Route path="/empresas/nova" element={<Navigate to="/grupos-empresas?aba=empresa" replace />} />
             <Route path="/empresas/:id" element={<EmpresaDetailPage />} />
             <Route path="/empresas/:id/editar" element={<EmpresaFormPage />} />
             <Route path="/vagas" element={<VagasPage />} />
             <Route path="/vagas/modelos" element={<ConsultarModelosPage />} />
-            <Route path="/vagas/modelos/novo" element={<CadastrarModeloPage />} />
-            <Route path="/vagas/nova" element={<VagaFormPage />} />
+            <Route path="/vagas/modelos/novo" element={<Navigate to="/grupos-empresas?aba=vaga" replace />} />
+            <Route path="/vagas/nova" element={<Navigate to="/grupos-empresas?aba=vaga" replace />} />
             <Route path="/vagas/:id" element={<VagaDetailPage />} />
             <Route path="/vagas/:id/editar" element={<VagaFormPage />} />
             <Route path="/processos" element={<ProcessosPage />} />

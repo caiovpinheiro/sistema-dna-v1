@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { useState, type FormEvent, type ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { Paginacao } from "@/components/paginacao";
 import { Button, Card, Field, Input, Select, Textarea } from "@/components/ui";
 import { api } from "@/lib/api";
@@ -133,41 +133,106 @@ export function DocumentosPendentesPage() {
   );
 }
 
-type Modelo = { id_modelo: number; nome: string | null; cargo: string | null; tipo: string | null };
+type ModeloConsulta = { vaga_id: string; nome: string; cargo: string; tipo_vaga: string; salario: string; empresa_id: string | null };
+
+function normalizarBusca(value: string) {
+  return value.normalize("NFD").replace(/\p{M}/gu, "").toLocaleLowerCase();
+}
+
+function Pesquisa({ label, value, onChange, sugestoes, placeholder }: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  sugestoes: string[];
+  placeholder?: string;
+}) {
+  const [aberto, setAberto] = useState(false);
+  const termo = normalizarBusca(value.trim());
+  const lista = sugestoes.filter((item) => normalizarBusca(item).includes(termo)).slice(0, 8);
+  return (
+    <Field label={label}>
+      <div className="relative">
+        <Input
+          aria-label={label}
+          value={value}
+          placeholder={placeholder}
+          autoComplete="off"
+          onChange={(event) => { onChange(event.target.value); setAberto(true); }}
+          onFocus={() => setAberto(true)}
+          onBlur={() => window.setTimeout(() => setAberto(false), 150)}
+        />
+        {aberto && lista.length ? (
+          <ul className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-xl border border-slate-200 bg-white shadow-lg">
+            {lista.map((item) => (
+              <li key={item}>
+                <button type="button" className="w-full px-3 py-2 text-left text-sm hover:bg-slate-50" onMouseDown={(event) => { event.preventDefault(); onChange(item); setAberto(false); }}>
+                  {item}
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
+    </Field>
+  );
+}
 
 export function ConsultarModelosPage() {
-  const [busca, setBusca] = useState<Record<string, string>>({});
-  const [pagina, setPagina] = useState(1);
+  const [params, setParams] = useSearchParams();
+  const consulta = Object.fromEntries(params.entries());
+  const [nome, setNome] = useState(params.get("nome") ?? "");
+  const [cargo, setCargo] = useState(params.get("cargo") ?? "");
   const result = useQuery({
-    queryKey: ["modelos", busca, pagina],
-    queryFn: () => api<Modelo[]>(`/api/v1/modelos?${new URLSearchParams({ ...busca, page: String(pagina), pageSize: "50" })}`),
+    queryKey: ["modelos-consulta", consulta],
+    queryFn: () => api<ModeloConsulta[]>(`/api/v1/vagas/modelos?${new URLSearchParams(consulta)}`),
   });
+  const opcoes = useQuery({
+    queryKey: ["modelos-opcoes"],
+    queryFn: () => api<{ empresas: string[]; cargos: string[] }>("/api/v1/vagas/modelos/opcoes"),
+  });
+  useEffect(() => {
+    setNome(params.get("nome") ?? "");
+    setCargo(params.get("cargo") ?? "");
+  }, [params]);
+  function pesquisar(form: FormData) {
+    const next = new URLSearchParams();
+    if (nome.trim()) next.set("nome", nome.trim());
+    if (cargo.trim()) next.set("cargo", cargo.trim());
+    const tipo = form.get("tipo");
+    if (typeof tipo === "string" && tipo && tipo !== "todos") next.set("tipo", tipo);
+    setParams(next);
+  }
   const linhas = result.data?.data ?? [];
-  const total = Number(result.data?.meta?.total ?? 0);
   return (
     <Screen title="Buscar" subtitle="Modelo de Vaga">
-      <form onSubmit={(event) => { event.preventDefault(); setBusca(lerFiltros(event, ["nome", "cargo", "modalidade"])); setPagina(1); }}>
-      <Card className="grid gap-4 md:grid-cols-4">
-        <Field label="Nome"><Input name="nome" aria-label="Nome" /></Field>
-        <Field label="Cargo da Vaga"><Input name="cargo" aria-label="Cargo da Vaga" placeholder="Cargo" /></Field>
-        <Field label="Modalidade">
-          <Select name="modalidade" aria-label="Modalidade" defaultValue="Todos">
-            <option>Todos</option>
-            <option>CLT</option>
-            <option>Estágio</option>
-            <option>Pessoa Juridica</option>
-          </Select>
-        </Field>
-        <Button type="submit" variant="secondary" className="self-end">Pesquisar</Button>
-      </Card>
+      <form onSubmit={(event) => { event.preventDefault(); pesquisar(new FormData(event.currentTarget)); }}>
+        <Card className="grid gap-4 md:grid-cols-4">
+          <Pesquisa label="Nome" value={nome} onChange={setNome} sugestoes={opcoes.data?.data.empresas ?? []} />
+          <Pesquisa label="Cargo da Vaga" value={cargo} onChange={setCargo} sugestoes={opcoes.data?.data.cargos ?? []} placeholder="Cargo" />
+          <Field label="Modalidade">
+            <Select name="tipo" aria-label="Modalidade" defaultValue={params.get("tipo") ?? "todos"}>
+              <option value="todos">Todos</option>
+              <option value="clt">CLT</option>
+              <option value="estagio">Estágio</option>
+              <option value="pj">Pessoa Juridica</option>
+            </Select>
+          </Field>
+          <Button type="submit" variant="secondary" className="self-end">Pesquisar</Button>
+        </Card>
       </form>
-      <Consulta carregando={result.isLoading} erro={result.error} />
-      <DataTable
-        columns={["Nome", "Cargo", "Tipo de vaga", "Abrir Vaga"]}
-        rows={linhas.map((item) => [item.nome, item.cargo, item.tipo, <Link key={item.id_modelo} className="font-semibold text-cyan-800" to={`/vagas/nova?modelo=${item.id_modelo}`}>Abrir</Link>])}
-      />
-      <Paginacao pagina={pagina} tamanho={50} total={total} onPagina={setPagina} />
-      <ListingFooter total={total} visiveis={linhas.length} />
+      {result.isError ? <p className="text-sm text-rose-600">Não foi possível consultar os modelos.</p> : (
+        <DataTable
+          columns={["Nome", "Cargo", "Tipo de vaga", "Salário", "Abrir Vaga"]}
+          rows={linhas.map((item) => [
+            item.nome,
+            item.cargo,
+            item.tipo_vaga,
+            item.salario,
+            <Link key={item.vaga_id} className="font-semibold text-cyan-800" to={`/grupos-empresas?aba=vaga&modelo=${item.vaga_id}${item.empresa_id ? `&empresa=${item.empresa_id}` : ""}`}>Abrir vaga</Link>,
+          ])}
+        />
+      )}
+      <ListingFooter total={linhas.length} />
     </Screen>
   );
 }

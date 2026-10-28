@@ -9,6 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { jsonSchemaTransform, validatorCompiler, type ZodTypeProvider } from "fastify-type-provider-zod";
 import type { Pool } from "pg";
+import type { MysqlPool } from "./db/mysql.js";
 import type { AppConfig } from "./config.js";
 import type { SchemaCapabilities } from "./db/capabilities.js";
 import { AppError } from "./lib/errors.js";
@@ -31,11 +32,13 @@ import { ProcessoRepository } from "./repositories/processo.repository.js";
 import { AcessoService } from "./services/acesso.service.js";
 import { VagaService } from "./services/vaga.service.js";
 import { paginasDaApi } from "./lib/paginas.js";
+import { CadastroService } from "./services/cadastro.service.js";
 
 export type AppContext = {
   config: AppConfig;
   db: Pool;
   capabilities: SchemaCapabilities;
+  mysql?: MysqlPool | null;
 };
 
 export async function buildApp(context: AppContext): Promise<FastifyInstance> {
@@ -110,6 +113,7 @@ export async function buildApp(context: AppContext): Promise<FastifyInstance> {
     asaas: new AsaasService(context.db, context.config),
     regua: new ReguaService(context.db, context.config),
     acesso: new AcessoService(context.db, context.config),
+    cadastro: new CadastroService(context.db, context.mysql ?? null, context.config),
   };
 
   app.addHook("onRequest", async (request) => {

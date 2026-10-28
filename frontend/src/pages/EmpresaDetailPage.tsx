@@ -25,7 +25,7 @@ export function EmpresaDetailPage() {
     <div className="grid gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div><h1 className="text-2xl font-extrabold">{data.nome_fantasia || data.razao_social}</h1><p className="text-sm text-slate-500">{data.razao_social} · {formatCnpj(data.cnpj)}</p></div>
-        <div className="flex gap-2"><Link to={`/vagas/nova?empresa=${id}`}><Button>Nova vaga</Button></Link><Link to={`/empresas/${id}/editar`}><Button variant="secondary">Editar</Button></Link></div>
+        <div className="flex gap-2"><Link to="/grupos-empresas?aba=vaga"><Button>Nova vaga</Button></Link><Link to={`/empresas/${id}/editar`}><Button variant="secondary">Editar</Button></Link></div>
       </div>
       <div className="grid gap-4 md:grid-cols-3">
         <Card><p className="text-xs text-slate-500">Cidade</p><p className="font-semibold">{[data.cidade, data.uf].filter(Boolean).join(" / ") || "—"}</p><p className="text-sm text-slate-500">{[data.logradouro, data.numero, data.bairro, data.cep].filter(Boolean).join(", ") || "Endereço não informado"}</p></Card>

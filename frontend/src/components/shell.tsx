@@ -1,4 +1,4 @@
-import { Briefcase, Building2, ChevronDown, FileSignature, FileWarning, GraduationCap, Handshake, LayoutDashboard, ListChecks, LogOut, Mail, Menu, Moon, Percent, Receipt, Settings, Sun, Users, Wallet, X } from "lucide-react";
+import { Briefcase, Building2, ChevronDown, FileSignature, FileWarning, GraduationCap, Handshake, Layers, LayoutDashboard, ListChecks, LogOut, Mail, Menu, Moon, Percent, Receipt, Settings, Sun, Users, Wallet, X } from "lucide-react";
 import { useEffect, useState, type ComponentType } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { api } from "@/lib/api";
@@ -10,6 +10,7 @@ const items = [
   { id: "painel", to: "/", label: "Painel", icon: LayoutDashboard, end: true },
   { id: "candidatos", to: "/candidatos", label: "Candidatos", icon: Users },
   { id: "empresas", to: "/empresas", label: "Empresas", icon: Building2 },
+  { id: "empresas", to: "/grupos-empresas", label: "Grupos", icon: Layers },
 ];
 
 const afterVagas = [
@@ -65,6 +66,7 @@ const CAMINHOS: Array<[string, string]> = [
   ["/instituicoes/nova", "instituicoes-nova"],
   ["/instituicoes", "instituicoes"],
   ["/candidatos", "candidatos"],
+  ["/grupos-empresas", "empresas"],
   ["/empresas", "empresas"],
   ["/processos", "processos"],
   ["/contratacoes/rescisao", "contratacoes"],
@@ -131,6 +133,7 @@ function tituloDaRota(pathname: string) {
     ["/vagas", "Vagas"],
     ["/contratacoes", "Contratações"],
     ["/candidatos", "Candidatos"],
+    ["/grupos-empresas", "Grupos"],
     ["/empresas", "Empresas"],
   ];
   return rotas.find(([prefixo]) => pathname.startsWith(prefixo))?.[1] ?? "Interno";

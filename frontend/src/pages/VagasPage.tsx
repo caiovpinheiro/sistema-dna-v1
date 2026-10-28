@@ -32,7 +32,7 @@ export function VagasPage() {
     <div className="grid gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div><h1 className="text-2xl font-extrabold">Vagas</h1><p className="text-sm text-slate-500">Cada vaga tem capacidade própria, mesmo com cargos iguais.</p></div>
-        <Link to="/vagas/nova"><Button>Nova vaga</Button></Link>
+        <Link to="/grupos-empresas?aba=vaga"><Button>Nova vaga</Button></Link>
       </div>
       <Card className="grid gap-3 md:grid-cols-4">
         <Input aria-label="Cargo" placeholder="Cargo" defaultValue={params.get("cargo") ?? ""} onBlur={(event) => update("cargo", event.target.value)} />

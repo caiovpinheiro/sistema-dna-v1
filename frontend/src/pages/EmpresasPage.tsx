@@ -44,7 +44,7 @@ export function EmpresasPage() {
     <div className="grid gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div><h1 className="text-2xl font-extrabold">Empresas</h1><p className="text-sm text-slate-500">Pesquisa por CNPJ, razão social ou nome fantasia.</p></div>
-        <Link to="/empresas/nova"><Button>Nova empresa</Button></Link>
+        <Link to="/grupos-empresas?aba=empresa"><Button>Nova empresa</Button></Link>
       </div>
       <Card>
         <form className="grid gap-3 md:grid-cols-[1fr_1fr_5rem_8rem_auto] md:items-end" onSubmit={pesquisar}>
@@ -70,7 +70,7 @@ export function EmpresasPage() {
                   <td>{item.nome_fantasia || "—"}</td>
                   <td>{formatCnpj(item.cnpj)}</td>
                   <td>{[item.cidade, item.uf].filter(Boolean).join(" / ") || "—"}</td>
-                  <td><Badge value={item.status === 1 ? "ativa" : "encerrada"}>{item.status === 1 ? "Ativo" : "Inativo"}</Badge></td>
+                  <td><Badge value={item.status === 1 ? "ativa" : "encerrada"}>{item.status === 1 ? "Ativo" : item.status === 0 ? "Inativo" : "—"}</Badge></td>
                 </tr>
               ))}
             </tbody>

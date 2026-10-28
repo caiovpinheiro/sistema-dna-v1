@@ -45,6 +45,12 @@ const envSchema = z.object({
   MAILJET_SECRET_KEY: z.string().optional().default(""),
   MAILJET_FROM: z.string().optional().default("documentos@dnawork.ai"),
   MAILJET_FROM_NAME: z.string().optional().default("DNA Work"),
+  DNA_WORK_DB_HOST: z.string().optional().default(""),
+  DNA_WORK_DB_PORT: z.coerce.number().int().positive().default(3306),
+  DNA_WORK_DB_USER: z.string().optional().default(""),
+  DNA_WORK_DB_PASS: z.string().optional().default(""),
+  DNA_WORK_DB_NAME: z.string().optional().default(""),
+  GOOGLE_MAPS_API_KEY: z.string().optional().default(""),
 });
 
 export type AppConfig = z.infer<typeof envSchema> & {

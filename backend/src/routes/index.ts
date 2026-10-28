@@ -12,6 +12,7 @@ import { empresaCreateSchema, empresaListSchema, empresaPatchSchema } from "../s
 import { pageSchema } from "../schemas/common.js";
 import { processoCreateSchema, processoListSchema, processoMoverSchema } from "../schemas/processo.js";
 import { vagaCreateSchema, vagaListSchema, vagaPatchSchema } from "../schemas/vaga.js";
+import { empresaCadastroSchema, grupoCreateSchema, vagaCadastroSchema } from "../schemas/cadastro.js";
 import type { AsaasService } from "../services/asaas.service.js";
 import type { ReguaService } from "../services/regua.service.js";
 import type { CandidatoService } from "../services/candidato.service.js";
@@ -26,6 +27,7 @@ import type { ProcessoService } from "../services/processo.service.js";
 import type { AcessoService } from "../services/acesso.service.js";
 import type { VagaService } from "../services/vaga.service.js";
 import { LegadoService } from "../services/legado.service.js";
+import type { CadastroService } from "../services/cadastro.service.js";
 import { sessionCookie } from "../plugins/auth.js";
 
 const ok = <T>(data: T, meta: Record<string, unknown> = {}) => ({ success: true as const, data, meta });
@@ -43,6 +45,7 @@ type Services = {
   asaas: AsaasService;
   regua: ReguaService;
   acesso: AcessoService;
+  cadastro: CadastroService;
 };
 
 function idempotencyKey(header: string | string[] | undefined): string {
@@ -161,6 +164,20 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
   api.post("/api/v1/vagas", { schema: { tags: ["vagas"], body: vagaCreateSchema } }, async (request, reply) => {
     return reply.code(201).send(ok(await services.vagas.create(request.body)));
   });
+  api.get("/api/v1/vagas/modelos", {
+    schema: {
+      tags: ["vagas"],
+      querystring: z.object({
+        nome: z.string().trim().optional(),
+        cargo: z.string().trim().optional(),
+        tipo: z.enum(["estagio", "clt", "pj"]).optional(),
+      }),
+    },
+  }, async (request) => ok(await services.cadastro.consultarModelos(request.query)));
+  api.get("/api/v1/vagas/modelos/opcoes", { schema: { tags: ["vagas"] } }, async () => ok(await services.cadastro.opcoesModelos()));
+  api.get("/api/v1/vagas/modelos/:vagaId", {
+    schema: { tags: ["vagas"], params: z.object({ vagaId: z.string().uuid() }) },
+  }, async (request) => ok(await services.cadastro.obterModelo(request.params.vagaId)));
   api.get("/api/v1/vagas", { schema: { tags: ["vagas"], querystring: vagaListSchema } }, async (request) => {
     const result = await services.vagas.list(request.query);
     return ok(result.data, result.meta);
@@ -463,6 +480,27 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
     const payload = request.body && typeof request.body === "object" ? request.body as Record<string, unknown> : {};
     return ok(await services.asaas.receberWebhook(payload));
   });
+  api.get("/api/v1/grupos", { schema: { tags: ["grupos"] } }, async () => ok(await services.cadastro.listarGrupos()));
+  api.get("/api/v1/grupos/:id", {
+    schema: { tags: ["grupos"], params: z.object({ id: z.string().uuid() }) },
+  }, async (request) => ok(await services.cadastro.obterGrupo(request.params.id)));
+  api.post("/api/v1/grupos", { schema: { tags: ["grupos"], body: grupoCreateSchema } }, async (request, reply) => {
+    return reply.code(201).send(ok(await services.cadastro.criarGrupo(request.body)));
+  });
+  api.get("/api/v1/grupos-empresas/empresas", { schema: { tags: ["grupos"] } }, async () => ok(await services.cadastro.listarEmpresas()));
+  api.post("/api/v1/grupos-empresas/empresas", { schema: { tags: ["grupos"], body: empresaCadastroSchema } }, async (request, reply) => {
+    return reply.code(201).send(ok(await services.cadastro.criarEmpresa(request.body)));
+  });
+  api.get("/api/v1/grupos-empresas/vagas", {
+    schema: { tags: ["grupos"], querystring: z.object({ repetidas: z.string().uuid() }) },
+  }, async (request) => {
+    const modelos = await services.cadastro.listarModelos(request.query.repetidas);
+    return { success: true, modelos, data: modelos };
+  });
+  api.post("/api/v1/grupos-empresas/vagas", { schema: { tags: ["grupos"], body: vagaCadastroSchema } }, async (request, reply) => {
+    return reply.code(201).send(ok(await services.cadastro.criarVaga(request.body, request.user.email)));
+  });
+
   api.post("/api/v1/zapsign/webhook", async (request) => {
     const payload = request.body && typeof request.body === "object" ? request.body as Record<string, unknown> : {};
     const termo = await services.termos.receberWebhook(payload);
