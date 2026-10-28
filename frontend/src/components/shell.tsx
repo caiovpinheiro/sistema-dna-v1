@@ -87,21 +87,25 @@ function SideGroup({ label, icon: Icon, active, expanded, links, onNavigate }: {
   onNavigate: () => void;
 }) {
   if (!links.length) return null;
-  const [open, setOpen] = useState(false);
-  useEffect(() => { if (!expanded) setOpen(false); }, [expanded]);
+  const [open, setOpen] = useState(active);
+  useEffect(() => {
+    if (!expanded) setOpen(false);
+    else if (active) setOpen(true);
+  }, [expanded, active]);
+  const visivel = open && expanded;
   const subClass = ({ isActive }: { isActive: boolean }) => cn(
     "block rounded-lg px-3 py-1.5 text-[13px] font-medium transition duration-150",
     isActive ? "bg-white/10 text-cyan-100" : "text-slate-400 hover:bg-white/10 hover:text-white",
   );
   return (
     <div className="grid gap-1">
-      <button type="button" aria-expanded={open && expanded} title={label} onClick={() => setOpen((value) => !value)}
+      <button type="button" aria-expanded={visivel} title={label} onClick={() => setOpen((value) => !value)}
         className={cn("flex h-10 w-full items-center gap-3 rounded-lg px-2.5 text-[13px] font-semibold transition duration-150", active ? "bg-white/10 text-white" : "text-slate-300 hover:bg-white/10 hover:text-white")}>
         <Icon size={18} className="shrink-0" />
         <span className={cn("overflow-hidden whitespace-nowrap text-left transition-all duration-300", expanded ? "max-w-56 opacity-100" : "max-w-0 opacity-0")}>{label}</span>
         <ChevronDown size={16} className={cn("ml-auto shrink-0 transition duration-200", expanded ? "" : "w-0 opacity-0", open ? "" : "-rotate-90")} />
       </button>
-      {open && expanded ? (
+      {visivel ? (
         <div className="nav-sub grid gap-1 pl-8">
           {links.map((item) => (
             <NavLink key={item.to} to={item.to} end={item.end} onClick={onNavigate} className={subClass}>{item.label}</NavLink>
