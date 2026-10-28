@@ -10,9 +10,7 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: { alias: { "@": path.resolve(root, "src") } },
   server: {
-    host: "0.0.0.0",
     port: 5173,
-    allowedHosts: true,
     proxy: {
       "/api": "http://127.0.0.1:3333",
       "/health": "http://127.0.0.1:3333",
