@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { DocumentosContratacao } from "@/components/documentos-contratacao";
 import { Badge, Button, Card, Field, Input, Skeleton } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 import { dateBr, formatCpf, money, regimeLabel, situacaoLabel } from "@/lib/format";
@@ -71,6 +72,7 @@ export function ContratacaoDetailPage() {
           <Link className="font-semibold text-cyan-800" to={`/vagas/${data.id_vaga}`}>Abrir vaga</Link>
         </div>
       </Card>
+      <DocumentosContratacao id={String(data.id_contratacao)} />
       {data.regime === "estagio" ? (
         <Card className="grid gap-3 md:max-w-md">
           <h2 className="font-bold">Termo de estágio</h2>

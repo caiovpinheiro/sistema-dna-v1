@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { DocumentosContratacao } from "@/components/documentos-contratacao";
 import { Badge, Button, Card, Field, Input, Select, Skeleton, Textarea, cn } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 import { dateBr, formatCpf, formatPhone, money, regimeLabel, situacaoLabel, textoPlano } from "@/lib/format";
@@ -96,14 +97,22 @@ export function RescisaoDetailPage() {
   const demitir = useMutation({
     mutationFn: () => api(`/api/v1/contratacoes/${id}/encerrar`, {
       method: "POST",
-      body: JSON.stringify({ data_encerramento: dataDemissao }),
+      body: JSON.stringify({
+        data_encerramento: dataDemissao,
+        motivo,
+        motivo_interno: motivoInterno,
+        avaliacao: avaliacao || undefined,
+        resumo,
+      }),
     }),
     onSuccess: async () => {
-      setMessage("Rescisão registrada e vínculo encerrado.");
+      setMessage("Rescisão gerada. O documento ficou nas informações desta contratação.");
       setPrevia(false);
       await client.invalidateQueries({ queryKey: ["rescisao-contratacao", id] });
       await client.invalidateQueries({ queryKey: ["rescisao"] });
       await client.invalidateQueries({ queryKey: ["contratacoes"] });
+      await client.invalidateQueries({ queryKey: ["contratacao", id] });
+      await client.invalidateQueries({ queryKey: ["contratacao-documentos", id] });
     },
     onError: (error) => setMessage(error instanceof ApiError ? error.message : "Não foi possível demitir."),
   });
@@ -252,19 +261,12 @@ export function RescisaoDetailPage() {
         </Card>
       )}
 
-      <Card>
-        <h2 className="mb-3 font-bold">Documentos gerados</h2>
-        {data.situacao === "encerrada" ? (
-          <div className="rounded-xl border border-slate-200 px-4 py-3 text-sm">
-            <p className="font-semibold text-navy-900">Rescisão registrada</p>
-            <p className="text-slate-500">{data.cargo} · {empresa} · {dateBr(data.data_encerramento)} · Encerrado</p>
-          </div>
-        ) : (
-          <div className="rounded-xl border border-dashed border-slate-300 px-4 py-8 text-center text-sm text-slate-500">
-            Os documentos da rescisão aparecem aqui após gerar.
-          </div>
-        )}
-      </Card>
+      <DocumentosContratacao id={String(data.id_contratacao)} />
+      {data.situacao === "encerrada" ? (
+        <p className="text-sm">
+          <Link className="font-semibold text-cyan-800" to={`/contratacoes/${data.id_contratacao}`}>Abrir nas informações da contratação</Link>
+        </p>
+      ) : null}
     </div>
   );
 }

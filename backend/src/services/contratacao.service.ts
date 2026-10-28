@@ -183,6 +183,25 @@ export class ContratacaoService {
     }
   }
 
+  async documentos(id: number) {
+    this.ensureReady();
+    const row = await this.repo.findById(this.db, id);
+    if (!row) throw new AppError(404, "CONTRATACAO_NAO_ENCONTRADA", "Contratação não encontrada.");
+    const docs = await this.repo.listarRescisoes(this.db, id);
+    return docs.map((item) => ({
+      id: item.id,
+      nome: item.nome,
+      vaga: item.cargo,
+      empresa: item.empresa,
+      data: item.data_demissao,
+      status: "Encerrado",
+      motivo: item.motivo,
+      motivo_interno: item.motivo_interno,
+      avaliacao: item.avaliacao,
+      resumo: item.resumo,
+    }));
+  }
+
   async encerrar(id: number, input: ContratacaoEncerrar) {
     this.ensureReady();
     const client = await this.db.connect();
@@ -199,6 +218,19 @@ export class ContratacaoService {
       if (current.id_vaga) await this.vagas.lockById(client, current.id_vaga);
       const data = isoToLegacy(input.data_encerramento);
       await this.repo.encerrar(client, id, this.config.CONTRATACAO_STATUS_ENCERRADO, data);
+      if (input.motivo) {
+        await this.repo.salvarRescisao(client, {
+          idContratacao: id,
+          nome: current.tipo_vaga === 1 ? "Rescisão de estágio" : "Rescisão CLT",
+          motivo: input.motivo,
+          motivoInterno: input.motivo_interno || null,
+          avaliacao: input.avaliacao || null,
+          resumo: input.resumo || null,
+          dataDemissao: data,
+          cargo: current.cargo,
+          empresa: current.empresa_fantasia || current.empresa_razao,
+        });
+      }
       await this.repo.encerrarColaborador(client, id, this.config.COLABORADOR_STATUS_INATIVO);
       if (current.id_candidato) {
         const other = await this.repo.findOtherActive(client, current.id_candidato, this.config.CONTRATACAO_STATUS_ATIVO);
