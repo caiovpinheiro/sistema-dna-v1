@@ -192,6 +192,9 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
   api.get("/api/v1/contratacoes/:id", {
     schema: { tags: ["contratacoes"], params: z.object({ id: z.coerce.number().int().positive() }) },
   }, async (request) => ok(await services.contratacoes.get(request.params.id)));
+  api.get("/api/v1/contratacoes/:id/documentos", {
+    schema: { tags: ["contratacoes"], params: z.object({ id: z.coerce.number().int().positive() }) },
+  }, async (request) => ok(await services.contratacoes.documentos(request.params.id)));
   api.post("/api/v1/contratacoes/:id/encerrar", {
     schema: {
       tags: ["contratacoes"],
@@ -199,6 +202,9 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
       body: contratacaoEncerrarSchema,
     },
   }, async (request) => ok(await services.contratacoes.encerrar(request.params.id, request.body)));
+  api.post("/api/v1/contratacoes/:id/assinatura", {
+    schema: { tags: ["contratacoes"], params: z.object({ id: z.coerce.number().int().positive() }) },
+  }, async (request) => ok(await services.contratacoes.solicitarAssinatura(request.params.id)));
 
   api.get("/api/v1/processos", { schema: { tags: ["processos"], querystring: processoListSchema } }, async (request) => {
     const result = await services.processos.list(request.query);
@@ -459,7 +465,9 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
   });
   api.post("/api/v1/zapsign/webhook", async (request) => {
     const payload = request.body && typeof request.body === "object" ? request.body as Record<string, unknown> : {};
-    return ok(await services.termos.receberWebhook(payload));
+    const termo = await services.termos.receberWebhook(payload);
+    const rescisao = await services.contratacoes.receberAssinatura(payload);
+    return ok({ ...termo, rescisao });
   });
 }
 

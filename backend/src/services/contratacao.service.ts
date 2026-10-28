@@ -10,6 +10,8 @@ import { ContratacaoRepository } from "../repositories/contratacao.repository.js
 import { one } from "../repositories/sql.js";
 import { VagaRepository } from "../repositories/vaga.repository.js";
 import type { ContratacaoCreate, ContratacaoEncerrar, ContratacaoListQuery } from "../schemas/contratacao.js";
+import { buildTermoPdf } from "../lib/termo-pdf.js";
+import { criarDocumentoZapSign } from "../lib/zapsign.js";
 import { presentContratacao, vagaSituacao } from "./presenters.js";
 import type { ProcessoService } from "./processo.service.js";
 
@@ -183,6 +185,85 @@ export class ContratacaoService {
     }
   }
 
+  async documentos(id: number) {
+    this.ensureReady();
+    const row = await this.repo.findById(this.db, id);
+    if (!row) throw new AppError(404, "CONTRATACAO_NAO_ENCONTRADA", "Contratação não encontrada.");
+    const docs = await this.repo.listarRescisoes(this.db, id);
+    const gerados = docs.map((item) => ({
+      id: item.id,
+      nome: item.nome,
+      vaga: item.cargo,
+      empresa: item.empresa,
+      data: item.data_demissao,
+      devolvido_por: "—",
+      assinatura: item.assinatura || "Não assina digitalmente",
+      sign_url: item.sign_url,
+      pode_assinar: !item.zapsign_token,
+      status: "Demitido",
+      motivo: item.motivo,
+      motivo_interno: item.motivo_interno,
+      avaliacao: item.avaliacao,
+      resumo: item.resumo,
+      texto: item.texto,
+    }));
+    const historicos = await this.repo.listarContratosGerados(this.db, row.id_candidato, row.id_vaga);
+    return [
+      ...gerados,
+      ...historicos.map((item) => ({ ...item, sign_url: null, pode_assinar: false })),
+    ];
+  }
+
+  async solicitarAssinatura(id: number) {
+    this.ensureReady();
+    const row = await this.repo.findById(this.db, id);
+    if (!row) throw new AppError(404, "CONTRATACAO_NAO_ENCONTRADA", "Contratação não encontrada.");
+    const docs = await this.repo.listarRescisoes(this.db, id);
+    const doc = docs[0];
+    if (!doc) throw new AppError(404, "RESCISAO_NAO_ENCONTRADA", "Gere a rescisão antes de pedir a assinatura.");
+    if (doc.zapsign_token) {
+      return { assinatura: doc.assinatura || "Aguardando", sign_url: doc.sign_url };
+    }
+    const partes = await one<{ candidato_nome: string | null; candidato_email: string | null; empresa_nome: string | null; empresa_email: string | null }>(this.db, `
+      SELECT c.nome AS candidato_nome, c.email AS candidato_email,
+             coalesce(e.nome_fantasia, e.razao_social) AS empresa_nome, e.email AS empresa_email
+      FROM dna_work.conratacaovaga cv
+      LEFT JOIN dna_work.candidato c ON c.id_candidato = cv.id_candidato
+      LEFT JOIN dna_work.empresa e ON e.id_empresa = cv.id_empresa
+      WHERE cv.id_contratacao = $1
+    `, [id]);
+    const signers = [
+      partes?.candidato_email ? { name: partes.candidato_nome || "Candidato", email: partes.candidato_email.trim(), external_id: row.id_candidato ?? undefined } : null,
+      partes?.empresa_email ? { name: partes.empresa_nome || "Empresa", email: partes.empresa_email.trim(), external_id: row.id_empresa ?? undefined } : null,
+    ].filter((item): item is { name: string; email: string; external_id: string | undefined } => Boolean(item?.email));
+    if (!signers.length) {
+      throw new AppError(422, "EMAIL_AUSENTE", "Candidato ou empresa precisam ter e-mail para a assinatura digital.");
+    }
+    const pdf = buildTermoPdf((doc.texto || doc.nome).split("\n"));
+    const enviado = await criarDocumentoZapSign({
+      apiUrl: this.config.ZAPSIGN_API_URL,
+      apiToken: this.config.ZAPSIGN_API_TOKEN,
+      userToken: this.config.ZAPSIGN_USER_TOKEN || undefined,
+      folderPath: this.config.ZAPSIGN_AGENTE_ID ? `/${this.config.ZAPSIGN_AGENTE_ID}` : undefined,
+      name: doc.nome,
+      externalId: `rescisao-${id}`,
+      pdf,
+      signers,
+    });
+    const url = enviado.signers?.find((item) => item.sign_url)?.sign_url ?? null;
+    await this.repo.gravarAssinatura(this.db, id, "Aguardando", enviado.token ?? "", url);
+    return { assinatura: "Aguardando", sign_url: url };
+  }
+
+  async receberAssinatura(payload: Record<string, unknown>): Promise<boolean> {
+    const token = String(payload.token ?? "");
+    const status = `${payload.event_type ?? ""} ${payload.status ?? ""}`.toLowerCase();
+    if (!token) return false;
+    const assinatura = status.includes("refus") ? "Recusado" : status.includes("signed") ? "Assinado" : "";
+    if (!assinatura) return false;
+    return this.repo.marcarAssinaturaPorToken(this.db, token, assinatura);
+  }
+
   async encerrar(id: number, input: ContratacaoEncerrar) {
     this.ensureReady();
     const client = await this.db.connect();
@@ -199,6 +280,34 @@ export class ContratacaoService {
       if (current.id_vaga) await this.vagas.lockById(client, current.id_vaga);
       const data = isoToLegacy(input.data_encerramento);
       await this.repo.encerrar(client, id, this.config.CONTRATACAO_STATUS_ENCERRADO, data);
+      if (input.motivo) {
+        const empresa = current.empresa_fantasia || current.empresa_razao;
+        const nome = current.tipo_vaga === 1 ? "Rescisão de estágio" : "Rescisão CLT";
+        await this.repo.salvarRescisao(client, {
+          idContratacao: id,
+          nome,
+          motivo: input.motivo,
+          motivoInterno: input.motivo_interno || null,
+          avaliacao: input.avaliacao || null,
+          resumo: input.resumo || null,
+          dataDemissao: data,
+          cargo: current.cargo,
+          empresa,
+          texto: [
+            nome,
+            `Candidato: ${current.candidato_nome ?? "—"}`,
+            `Empresa: ${empresa ?? "—"}`,
+            `Cargo: ${current.cargo ?? "—"}`,
+            `Motivo: ${input.motivo}`,
+            `Data de demissão: ${input.data_encerramento.split("-").reverse().join("/")}`,
+            `Avaliação: ${input.avaliacao || "—"}`,
+            "",
+            "Resumo das atividades",
+            input.resumo || "—",
+            input.motivo_interno ? `\nMotivo interno\n${input.motivo_interno}` : "",
+          ].join("\n"),
+        });
+      }
       await this.repo.encerrarColaborador(client, id, this.config.COLABORADOR_STATUS_INATIVO);
       if (current.id_candidato) {
         const other = await this.repo.findOtherActive(client, current.id_candidato, this.config.CONTRATACAO_STATUS_ATIVO);

@@ -12,6 +12,10 @@ export const contratacaoCreateSchema = z.object({
 
 export const contratacaoEncerrarSchema = z.object({
   data_encerramento: isoDateSchema,
+  motivo: z.string().trim().min(1).max(200).optional(),
+  motivo_interno: z.string().trim().max(8000).optional(),
+  avaliacao: z.enum(["Excelente", "Muito bom", "Bom", "Regular", "Insuficiente"]).optional(),
+  resumo: z.string().trim().max(8000).optional(),
 });
 
 export const contratacaoListSchema = z.object({
