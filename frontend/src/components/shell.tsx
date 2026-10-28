@@ -104,7 +104,7 @@ function SideGroup({ label, icon: Icon, active, expanded, links, onNavigate }: {
       <button type="button" aria-expanded={visivel} title={label} onClick={() => setOpen((value) => !value)}
         className={cn("flex h-10 w-full items-center gap-3 rounded-lg px-2.5 text-[13px] font-semibold transition duration-150", active ? "bg-white/10 text-white" : "text-slate-300 hover:bg-white/10 hover:text-white")}>
         <Icon size={18} className="shrink-0" />
-        <span className={cn("overflow-hidden whitespace-nowrap text-left transition-all duration-300", expanded ? "max-w-56 opacity-100" : "max-w-0 opacity-0")}>{label}</span>
+        <span className={cn("min-w-0 overflow-hidden whitespace-nowrap text-left transition-all duration-300", expanded ? "max-w-56 opacity-100" : "max-w-0 opacity-0")}>{label}</span>
         <ChevronDown size={16} className={cn("ml-auto shrink-0 transition duration-200", expanded ? "" : "w-0 opacity-0", open ? "" : "-rotate-90")} />
       </button>
       {visivel ? (
@@ -162,7 +162,7 @@ export function Shell({ email, admin, paginas, notify }: { email: string; admin:
     "flex h-10 items-center gap-3 rounded-lg px-2.5 text-[13px] font-semibold transition duration-150",
     isActive ? "bg-white/10 text-white shadow-[inset_2px_0_0_#22d3ee]" : "text-slate-300 hover:bg-white/10 hover:text-white",
   );
-  const label = (text: string) => <span className={cn("overflow-hidden whitespace-nowrap transition-all duration-300", expanded ? "max-w-56 opacity-100" : "max-w-0 opacity-0")}>{text}</span>;
+  const label = (text: string) => <span className={cn("min-w-0 overflow-hidden whitespace-nowrap transition-all duration-300", expanded ? "max-w-56 opacity-100" : "max-w-0 opacity-0")}>{text}</span>;
 
   async function logout() {
     await api("/api/v1/auth/logout", { method: "POST" });
@@ -214,10 +214,11 @@ export function Shell({ email, admin, paginas, notify }: { email: string; admin:
 
   return (
     <div className={cn("app-canvas flex h-screen overflow-hidden", escuro ? "escuro" : "claro")}>
+      <div className="relative hidden h-screen w-[76px] shrink-0 lg:block">
       <aside
         onMouseEnter={() => setHover(true)}
         onMouseLeave={() => setHover(false)}
-        className={cn("sticky top-0 hidden h-screen shrink-0 overflow-x-hidden border-r border-white/10 bg-[#0b0d12] text-white transition-[width] duration-300 ease-out lg:flex lg:flex-col", hover ? "lg:w-80" : "lg:w-[76px]")}
+        className={cn("absolute inset-y-0 left-0 z-30 flex h-screen flex-col overflow-x-hidden border-r border-white/10 bg-[#0b0d12] text-white transition-[width] duration-300 ease-out", hover ? "w-72" : "w-[76px]")}
       >
         <div className={cn("flex items-center py-5", expanded ? "gap-3 px-4" : "justify-center px-2")}>
           <img src="/logo-laranja.png" alt="DNA Work" className={cn("shrink-0 object-contain", expanded ? "h-9 w-16" : "h-8 w-12")} />
@@ -230,11 +231,12 @@ export function Shell({ email, admin, paginas, notify }: { email: string; admin:
         <div className="mt-auto border-t border-white/10 p-2">
           <button type="button" title="Sair" onClick={() => void logout()} className="flex h-10 w-full items-center gap-3 rounded-lg px-2.5 text-[13px] font-semibold text-slate-300 transition duration-150 hover:bg-white/10 hover:text-white">
             <LogOut size={18} className="shrink-0" />
-            <span className={cn("overflow-hidden whitespace-nowrap transition-all duration-300", expanded ? "max-w-56 opacity-100" : "max-w-0 opacity-0")}>Sair</span>
+            <span className={cn("min-w-0 overflow-hidden whitespace-nowrap transition-all duration-300", expanded ? "max-w-56 opacity-100" : "max-w-0 opacity-0")}>Sair</span>
           </button>
           <p className={cn("truncate px-3 pt-2 text-xs text-slate-400", expanded ? "" : "hidden")}>{email}</p>
         </div>
       </aside>
+      </div>
       {open ? <div className="fixed inset-0 z-40 bg-navy-950/50 lg:hidden" onClick={() => setOpen(false)} /> : null}
       <aside className={cn("fixed inset-y-0 left-0 z-50 flex w-80 flex-col border-r border-white/10 bg-[#0b0d12] p-4 text-white lg:hidden", open ? "translate-x-0" : "hidden")}>
         <div className="mb-6 flex items-center justify-between">
@@ -261,7 +263,7 @@ export function Shell({ email, admin, paginas, notify }: { email: string; admin:
             {escuro ? <Sun size={18} /> : <Moon size={18} />}
           </button>
         </header>
-        <main className={cn("min-h-0 flex-1 overflow-y-auto p-4 md:p-6", pathname.startsWith("/emails") ? "" : "mx-auto w-full max-w-7xl")}>
+        <main className="min-h-0 w-full flex-1 overflow-y-auto p-4 md:p-6">
           {pathname.startsWith("/configuracoes") && !admin ? <p className="text-sm text-slate-300">Somente o administrador configura os acessos.</p> : paginaDoCaminho(pathname) && !permitido(paginaDoCaminho(pathname)!) ? <p className="text-sm text-slate-300">Você não tem acesso a esta página.</p> : <Outlet />}
         </main>
       </div>
