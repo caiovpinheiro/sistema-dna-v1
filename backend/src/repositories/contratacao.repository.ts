@@ -133,6 +133,9 @@ export class ContratacaoRepository {
       )
     `);
     await db.query(`ALTER TABLE dna_work.rescisao_documento ADD COLUMN IF NOT EXISTS texto text`);
+    await db.query(`ALTER TABLE dna_work.rescisao_documento ADD COLUMN IF NOT EXISTS assinatura character varying(80) DEFAULT 'Não assina digitalmente'`);
+    await db.query(`ALTER TABLE dna_work.rescisao_documento ADD COLUMN IF NOT EXISTS zapsign_token character varying(120)`);
+    await db.query(`ALTER TABLE dna_work.rescisao_documento ADD COLUMN IF NOT EXISTS sign_url text`);
   }
 
   async salvarRescisao(db: Db, values: {
@@ -182,12 +185,34 @@ export class ContratacaoRepository {
       cargo: string | null;
       empresa: string | null;
       texto: string | null;
+      assinatura: string | null;
+      sign_url: string | null;
+      zapsign_token: string | null;
     }>(db, `
-      SELECT id, nome, motivo, motivo_interno, avaliacao, resumo, data_demissao, cargo, empresa, texto
+      SELECT id, nome, motivo, motivo_interno, avaliacao, resumo, data_demissao, cargo, empresa, texto,
+             assinatura, sign_url, zapsign_token
       FROM dna_work.rescisao_documento
       WHERE id_contratacao = $1
       ORDER BY id
     `, [idContratacao]);
+  }
+
+  async gravarAssinatura(db: Db, idContratacao: number, assinatura: string, token: string, url: string | null): Promise<void> {
+    await this.garantirRescisao(db);
+    await db.query(`
+      UPDATE dna_work.rescisao_documento
+      SET assinatura = $2, zapsign_token = $3, sign_url = $4
+      WHERE id_contratacao = $1
+    `, [idContratacao, assinatura, token, url]);
+  }
+
+  async marcarAssinaturaPorToken(db: Db, token: string, assinatura: string): Promise<boolean> {
+    const existe = await one<{ ok: string | null }>(db, `SELECT to_regclass('dna_work.rescisao_documento')::text AS ok`);
+    if (!existe?.ok) return false;
+    const result = await db.query(`
+      UPDATE dna_work.rescisao_documento SET assinatura = $2 WHERE zapsign_token = $1
+    `, [token, assinatura]);
+    return (result.rowCount ?? 0) > 0;
   }
 
   async listarContratosGerados(db: Db, idCandidato: string | null, idVaga: string | null) {

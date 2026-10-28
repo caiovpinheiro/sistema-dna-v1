@@ -12,6 +12,8 @@ export type ZapDoc = {
 export async function criarDocumentoZapSign(input: {
   apiUrl: string;
   apiToken: string;
+  userToken?: string;
+  folderPath?: string;
   name: string;
   externalId: string;
   pdf: Buffer;
@@ -28,6 +30,8 @@ export async function criarDocumentoZapSign(input: {
       name: input.name,
       external_id: input.externalId,
       lang: "pt-br",
+      ...(input.folderPath ? { folder_path: input.folderPath } : {}),
+      ...(input.userToken ? { user_token: input.userToken } : {}),
       signers: input.signers.map((signer) => ({
         name: signer.name,
         email: signer.email,

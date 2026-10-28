@@ -1,7 +1,7 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Fragment, useState } from "react";
-import { Card, Skeleton } from "@/components/ui";
-import { api } from "@/lib/api";
+import { Button, Card, Skeleton } from "@/components/ui";
+import { ApiError, api } from "@/lib/api";
 import { dateBr } from "@/lib/format";
 
 export type DocumentoGerado = {
@@ -12,6 +12,8 @@ export type DocumentoGerado = {
   data: string | null;
   devolvido_por: string | null;
   assinatura: string | null;
+  sign_url: string | null;
+  pode_assinar: boolean;
   status: string;
   motivo: string;
   motivo_interno: string | null;
@@ -22,9 +24,19 @@ export type DocumentoGerado = {
 
 export function DocumentosContratacao({ id }: { id: string }) {
   const [aberto, setAberto] = useState<number | null>(null);
+  const [erro, setErro] = useState("");
+  const client = useQueryClient();
   const query = useQuery({
     queryKey: ["contratacao-documentos", id],
     queryFn: () => api<DocumentoGerado[]>(`/api/v1/contratacoes/${id}/documentos`),
+  });
+  const assinar = useMutation({
+    mutationFn: () => api<{ assinatura: string; sign_url: string | null }>(`/api/v1/contratacoes/${id}/assinatura`, { method: "POST" }),
+    onSuccess: async () => {
+      setErro("");
+      await client.invalidateQueries({ queryKey: ["contratacao-documentos", id] });
+    },
+    onError: (error) => setErro(error instanceof ApiError ? error.message : "A ZapSign não enviou a assinatura."),
   });
   const linhas = query.data?.data ?? [];
 
@@ -65,7 +77,17 @@ export function DocumentosContratacao({ id }: { id: string }) {
                     <td>{item.empresa || "—"}</td>
                     <td>{dateBr(item.data)}</td>
                     <td>{item.devolvido_por || "—"}</td>
-                    <td>{item.assinatura || "—"}</td>
+                    <td>
+                      <div className="grid gap-1">
+                        <span>{item.assinatura || "—"}</span>
+                        {item.pode_assinar ? (
+                          <Button className="h-8 bg-orange-500 px-2 text-navy-950 hover:bg-orange-400" disabled={assinar.isPending} onClick={() => assinar.mutate()}>
+                            {assinar.isPending ? "Enviando…" : "Obter assinatura digital"}
+                          </Button>
+                        ) : null}
+                        {item.sign_url ? <a className="font-semibold text-cyan-800" href={item.sign_url} target="_blank" rel="noreferrer">Abrir assinatura</a> : null}
+                      </div>
+                    </td>
                     <td>{item.status}</td>
                   </tr>
                   {aberto === item.id ? (
@@ -81,6 +103,7 @@ export function DocumentosContratacao({ id }: { id: string }) {
           </table>
         </div>
       ) : null}
+      {erro ? <p className="mt-3 text-sm text-rose-600">{erro}</p> : null}
     </Card>
   );
 }

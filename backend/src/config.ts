@@ -31,6 +31,8 @@ const envSchema = z.object({
     .transform((value) => value === "true"),
   ZAPSIGN_API_TOKEN: z.string().optional().default(""),
   ZAPSIGN_API_URL: z.string().optional().default("https://api.zapsign.com.br"),
+  ZAPSIGN_USER_TOKEN: z.string().optional().default(""),
+  ZAPSIGN_AGENTE_ID: z.string().optional().default(""),
   SUPABASE_URL: z.string().optional().default(""),
   SUPABASE_SERVICE_ROLE_KEY: z.string().optional().default(""),
   PDF_STORAGE_DIR: z.string().optional().default(""),
