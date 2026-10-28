@@ -9,5 +9,6 @@ CREATE TABLE IF NOT EXISTS dna_work.rescisao_documento (
   data_demissao character varying(20) NOT NULL,
   cargo character varying(200),
   empresa character varying(200),
+  texto text,
   criado_em timestamp without time zone NOT NULL DEFAULT now()
 );

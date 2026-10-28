@@ -132,6 +132,7 @@ export class ContratacaoRepository {
         criado_em timestamp without time zone NOT NULL DEFAULT now()
       )
     `);
+    await db.query(`ALTER TABLE dna_work.rescisao_documento ADD COLUMN IF NOT EXISTS texto text`);
   }
 
   async salvarRescisao(db: Db, values: {
@@ -144,12 +145,13 @@ export class ContratacaoRepository {
     dataDemissao: string;
     cargo: string | null;
     empresa: string | null;
+    texto: string | null;
   }): Promise<void> {
     await this.garantirRescisao(db);
     await db.query(`
       INSERT INTO dna_work.rescisao_documento (
-        id_contratacao, nome, motivo, motivo_interno, avaliacao, resumo, data_demissao, cargo, empresa
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+        id_contratacao, nome, motivo, motivo_interno, avaliacao, resumo, data_demissao, cargo, empresa, texto
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
       ON CONFLICT (id_contratacao) DO UPDATE SET
         nome = EXCLUDED.nome,
         motivo = EXCLUDED.motivo,
@@ -159,10 +161,11 @@ export class ContratacaoRepository {
         data_demissao = EXCLUDED.data_demissao,
         cargo = EXCLUDED.cargo,
         empresa = EXCLUDED.empresa,
+        texto = EXCLUDED.texto,
         criado_em = now()
     `, [
       values.idContratacao, values.nome, values.motivo, values.motivoInterno, values.avaliacao,
-      values.resumo, values.dataDemissao, values.cargo, values.empresa,
+      values.resumo, values.dataDemissao, values.cargo, values.empresa, values.texto,
     ]);
   }
 
@@ -178,12 +181,63 @@ export class ContratacaoRepository {
       data_demissao: string;
       cargo: string | null;
       empresa: string | null;
+      texto: string | null;
     }>(db, `
-      SELECT id, nome, motivo, motivo_interno, avaliacao, resumo, data_demissao, cargo, empresa
+      SELECT id, nome, motivo, motivo_interno, avaliacao, resumo, data_demissao, cargo, empresa, texto
       FROM dna_work.rescisao_documento
       WHERE id_contratacao = $1
       ORDER BY id
     `, [idContratacao]);
+  }
+
+  async listarContratosGerados(db: Db, idCandidato: string | null, idVaga: string | null) {
+    if (!idCandidato) return [];
+    const existe = await one<{ ok: string | null }>(db, `SELECT to_regclass('dna_work.contratos_gerados')::text AS ok`);
+    if (!existe?.ok) return [];
+    return many<{
+      id: number;
+      nome: string;
+      vaga: string | null;
+      empresa: string | null;
+      data: string | null;
+      devolvido_por: string | null;
+      assinatura: string;
+      status: string;
+      motivo: string;
+      motivo_interno: null;
+      avaliacao: null;
+      resumo: null;
+      texto: string | null;
+    }>(db, `
+      SELECT cg.id_contratogerado AS id,
+             coalesce(cg.nome_contrato, 'Documento') AS nome,
+             v.cargo AS vaga,
+             e.nome_fantasia AS empresa,
+             cg.data,
+             coalesce(u.u_nome, '') AS devolvido_por,
+             CASE WHEN ad.id_contratogerado IS NULL THEN 'Não assina digitalmente' ELSE 'Digital' END AS assinatura,
+             CASE cg.status::text
+               WHEN '1' THEN 'Contratado'
+               WHEN '0' THEN 'Demitido'
+               WHEN '3' THEN 'Errado'
+               WHEN '4' THEN 'Cancelado'
+               ELSE coalesce(cg.status::text, '—')
+             END AS status,
+             '' AS motivo,
+             NULL::text AS motivo_interno,
+             NULL::text AS avaliacao,
+             NULL::text AS resumo,
+             tc.texto
+      FROM dna_work.contratos_gerados cg
+      LEFT JOIN dna_work.vaga v ON v.id_vaga::text = cg.vaga::text
+      LEFT JOIN dna_work.empresa e ON e.id_empresa::text = cg.id_empresa::text
+      LEFT JOIN dna_work.usuario u ON u.u_id::text = cg.id_usuario::text
+      LEFT JOIN dna_work.assinatura_digital ad ON ad.id_contratogerado::text = cg.id_contratogerado::text
+      LEFT JOIN dna_work.texto_contrato tc ON tc.id_contratogerado::text = cg.id_contratogerado::text
+      WHERE cg.id_candidato::text = $1
+        AND ($2::text = '' OR cg.vaga::text = $2)
+      ORDER BY cg.id_contratogerado DESC
+    `, [idCandidato, idVaga ?? ""]);
   }
 
   async encerrar(db: Db, id: number, status: number, dataDemissao: string): Promise<void> {

@@ -9,12 +9,15 @@ export type DocumentoGerado = {
   nome: string;
   vaga: string | null;
   empresa: string | null;
-  data: string;
+  data: string | null;
+  devolvido_por: string | null;
+  assinatura: string | null;
   status: string;
   motivo: string;
   motivo_interno: string | null;
   avaliacao: string | null;
   resumo: string | null;
+  texto: string | null;
 };
 
 export function DocumentosContratacao({ id }: { id: string }) {
@@ -44,32 +47,31 @@ export function DocumentosContratacao({ id }: { id: string }) {
                 <th>Vaga</th>
                 <th>Empresa</th>
                 <th>Data</th>
+                <th>Devolvido por</th>
+                <th>Assinatura digital</th>
                 <th>Status</th>
-                <th className="pr-3 text-right">Ver</th>
               </tr>
             </thead>
             <tbody>
               {linhas.map((item) => (
-                <Fragment key={item.id}>
+                <Fragment key={`${item.status}-${item.id}`}>
                   <tr className="border-b border-slate-100">
-                    <td className="px-3 py-3 font-semibold">{item.nome}</td>
+                    <td className="px-3 py-3 font-semibold">
+                      <button type="button" className="text-left text-cyan-800" onClick={() => setAberto(aberto === item.id ? null : item.id)}>
+                        {item.nome}
+                      </button>
+                    </td>
                     <td>{item.vaga || "—"}</td>
                     <td>{item.empresa || "—"}</td>
                     <td>{dateBr(item.data)}</td>
+                    <td>{item.devolvido_por || "—"}</td>
+                    <td>{item.assinatura || "—"}</td>
                     <td>{item.status}</td>
-                    <td className="pr-3 text-right">
-                      <button type="button" className="font-semibold text-orange-500" onClick={() => setAberto(aberto === item.id ? null : item.id)}>
-                        {aberto === item.id ? "Fechar" : "Ver"}
-                      </button>
-                    </td>
                   </tr>
                   {aberto === item.id ? (
                     <tr className="border-b border-slate-100 bg-slate-50">
-                      <td className="px-3 py-3 text-sm text-slate-600" colSpan={6}>
-                        <p><span className="text-slate-500">Motivo:</span> {item.motivo}</p>
-                        <p><span className="text-slate-500">Avaliação:</span> {item.avaliacao || "—"}</p>
-                        <p className="mt-2 whitespace-pre-line"><span className="text-slate-500">Resumo das atividades:</span>{"\n"}{item.resumo || "—"}</p>
-                        {item.motivo_interno ? <p className="mt-2 whitespace-pre-line"><span className="text-slate-500">Motivo interno:</span>{"\n"}{item.motivo_interno}</p> : null}
+                      <td className="px-3 py-3 text-sm text-slate-600" colSpan={7}>
+                        <p className="whitespace-pre-line">{item.texto || item.resumo || "Documento sem texto gravado."}</p>
                       </td>
                     </tr>
                   ) : null}

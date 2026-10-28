@@ -188,18 +188,23 @@ export class ContratacaoService {
     const row = await this.repo.findById(this.db, id);
     if (!row) throw new AppError(404, "CONTRATACAO_NAO_ENCONTRADA", "Contratação não encontrada.");
     const docs = await this.repo.listarRescisoes(this.db, id);
-    return docs.map((item) => ({
+    const gerados = docs.map((item) => ({
       id: item.id,
       nome: item.nome,
       vaga: item.cargo,
       empresa: item.empresa,
       data: item.data_demissao,
-      status: "Encerrado",
+      devolvido_por: "—",
+      assinatura: "Não assina digitalmente",
+      status: "Demitido",
       motivo: item.motivo,
       motivo_interno: item.motivo_interno,
       avaliacao: item.avaliacao,
       resumo: item.resumo,
+      texto: item.texto,
     }));
+    const historicos = await this.repo.listarContratosGerados(this.db, row.id_candidato, row.id_vaga);
+    return [...gerados, ...historicos];
   }
 
   async encerrar(id: number, input: ContratacaoEncerrar) {
@@ -219,16 +224,31 @@ export class ContratacaoService {
       const data = isoToLegacy(input.data_encerramento);
       await this.repo.encerrar(client, id, this.config.CONTRATACAO_STATUS_ENCERRADO, data);
       if (input.motivo) {
+        const empresa = current.empresa_fantasia || current.empresa_razao;
+        const nome = current.tipo_vaga === 1 ? "Rescisão de estágio" : "Rescisão CLT";
         await this.repo.salvarRescisao(client, {
           idContratacao: id,
-          nome: current.tipo_vaga === 1 ? "Rescisão de estágio" : "Rescisão CLT",
+          nome,
           motivo: input.motivo,
           motivoInterno: input.motivo_interno || null,
           avaliacao: input.avaliacao || null,
           resumo: input.resumo || null,
           dataDemissao: data,
           cargo: current.cargo,
-          empresa: current.empresa_fantasia || current.empresa_razao,
+          empresa,
+          texto: [
+            nome,
+            `Candidato: ${current.candidato_nome ?? "—"}`,
+            `Empresa: ${empresa ?? "—"}`,
+            `Cargo: ${current.cargo ?? "—"}`,
+            `Motivo: ${input.motivo}`,
+            `Data de demissão: ${input.data_encerramento.split("-").reverse().join("/")}`,
+            `Avaliação: ${input.avaliacao || "—"}`,
+            "",
+            "Resumo das atividades",
+            input.resumo || "—",
+            input.motivo_interno ? `\nMotivo interno\n${input.motivo_interno}` : "",
+          ].join("\n"),
         });
       }
       await this.repo.encerrarColaborador(client, id, this.config.COLABORADOR_STATUS_INATIVO);

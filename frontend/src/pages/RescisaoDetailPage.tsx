@@ -106,13 +106,11 @@ export function RescisaoDetailPage() {
       }),
     }),
     onSuccess: async () => {
-      setMessage("Rescisão gerada. O documento ficou nas informações desta contratação.");
-      setPrevia(false);
-      await client.invalidateQueries({ queryKey: ["rescisao-contratacao", id] });
       await client.invalidateQueries({ queryKey: ["rescisao"] });
       await client.invalidateQueries({ queryKey: ["contratacoes"] });
       await client.invalidateQueries({ queryKey: ["contratacao", id] });
       await client.invalidateQueries({ queryKey: ["contratacao-documentos", id] });
+      navigate(`/contratacoes/${id}`);
     },
     onError: (error) => setMessage(error instanceof ApiError ? error.message : "Não foi possível demitir."),
   });
