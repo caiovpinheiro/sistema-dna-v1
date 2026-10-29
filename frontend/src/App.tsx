@@ -30,6 +30,7 @@ import { VagaDetailPage } from "@/pages/VagaDetailPage";
 import { VagaFormPage } from "@/pages/VagaFormPage";
 import { TermoDetailPage } from "@/pages/TermoDetailPage";
 import { GerarTcePage, TermosPage } from "@/pages/TermosPage";
+import { TriagemPage } from "@/pages/TriagemPage";
 import { VagasPage } from "@/pages/VagasPage";
 
 const client = new QueryClient({ defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } } });
@@ -60,6 +61,7 @@ export function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route element={<Protected />}>
             <Route path="/" element={<DashboardPage />} />
+            <Route path="/triagem" element={<TriagemPage />} />
             <Route path="/candidatos" element={<CandidatosPage />} />
             <Route path="/candidatos/novo" element={<CandidatoFormPage />} />
             <Route path="/candidatos/:id" element={<CandidatoDetailPage />} />

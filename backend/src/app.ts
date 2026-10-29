@@ -33,6 +33,7 @@ import { AcessoService } from "./services/acesso.service.js";
 import { VagaService } from "./services/vaga.service.js";
 import { paginasDaApi } from "./lib/paginas.js";
 import { CadastroService } from "./services/cadastro.service.js";
+import { TriagemService } from "./services/triagem.service.js";
 
 export type AppContext = {
   config: AppConfig;
@@ -114,6 +115,7 @@ export async function buildApp(context: AppContext): Promise<FastifyInstance> {
     regua: new ReguaService(context.db, context.config),
     acesso: new AcessoService(context.db, context.config),
     cadastro: new CadastroService(context.db, context.mysql ?? null, context.config),
+    triagem: new TriagemService(context.mysql ?? null, context.config),
   };
 
   app.addHook("onRequest", async (request) => {

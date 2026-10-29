@@ -1,5 +1,6 @@
 export const PAGINAS = [
   { id: "painel", nome: "Painel", grupo: "Geral" },
+  { id: "triagem", nome: "Triagem", grupo: "Geral" },
   { id: "candidatos", nome: "Candidatos", grupo: "Geral" },
   { id: "empresas", nome: "Empresas", grupo: "Geral" },
   { id: "vagas", nome: "Consultar vagas", grupo: "Vagas" },
@@ -26,6 +27,7 @@ export const IDS_PAGINA = new Set<string>(PAGINAS.map((pagina) => pagina.id));
 
 const REGRAS_API: Array<[string, string[]]> = [
   ["/api/v1/dashboard", ["painel"]],
+  ["/api/v1/triagem", ["triagem"]],
   ["/api/v1/candidatos", ["candidatos"]],
   ["/api/v1/empresas", ["empresas"]],
   ["/api/v1/grupos-empresas", ["empresas"]],

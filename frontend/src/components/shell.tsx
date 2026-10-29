@@ -1,4 +1,4 @@
-import { Briefcase, Building2, ChevronDown, FileSignature, FileWarning, GraduationCap, Handshake, Layers, LayoutDashboard, ListChecks, LogOut, Mail, Menu, Moon, Percent, Receipt, Settings, Sun, Users, Wallet, X } from "lucide-react";
+import { Briefcase, Building2, ChevronDown, FileSignature, FileWarning, GraduationCap, Handshake, Layers, LayoutDashboard, ListChecks, LogOut, Mail, Menu, Moon, Percent, Receipt, Search, Settings, Sun, Users, Wallet, X } from "lucide-react";
 import { useEffect, useState, type ComponentType } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { api } from "@/lib/api";
@@ -8,6 +8,7 @@ type LinkItem = { id: string; to: string; label: string; end?: boolean };
 
 const items = [
   { id: "painel", to: "/", label: "Painel", icon: LayoutDashboard, end: true },
+  { id: "triagem", to: "/triagem", label: "Triagem", icon: Search },
   { id: "candidatos", to: "/candidatos", label: "Candidatos", icon: Users },
   { id: "empresas", to: "/empresas", label: "Empresas", icon: Building2 },
   { id: "empresas", to: "/grupos-empresas", label: "Grupos", icon: Layers },
@@ -66,6 +67,7 @@ const CAMINHOS: Array<[string, string]> = [
   ["/instituicoes/nova", "instituicoes-nova"],
   ["/instituicoes", "instituicoes"],
   ["/candidatos", "candidatos"],
+  ["/triagem", "triagem"],
   ["/grupos-empresas", "empresas"],
   ["/empresas", "empresas"],
   ["/processos", "processos"],
@@ -133,6 +135,7 @@ function tituloDaRota(pathname: string) {
     ["/vagas", "Vagas"],
     ["/contratacoes", "Contratações"],
     ["/candidatos", "Candidatos"],
+    ["/triagem", "Triagem"],
     ["/grupos-empresas", "Grupos"],
     ["/empresas", "Empresas"],
   ];

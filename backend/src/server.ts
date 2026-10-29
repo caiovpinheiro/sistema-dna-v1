@@ -1,8 +1,12 @@
+import dns from "node:dns";
 import { loadConfig } from "./config.js";
 import { loadCapabilities } from "./db/capabilities.js";
 import { createMysqlPool } from "./db/mysql.js";
 import { createPool } from "./db/pool.js";
 import { buildApp } from "./app.js";
+
+// Prefere IPv4: alguns serviços de CEP falham por IPv6 no servidor publicado.
+dns.setDefaultResultOrder("ipv4first");
 
 const config = loadConfig();
 const db = createPool(config);

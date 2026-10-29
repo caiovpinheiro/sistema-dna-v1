@@ -28,6 +28,7 @@ import type { AcessoService } from "../services/acesso.service.js";
 import type { VagaService } from "../services/vaga.service.js";
 import { LegadoService } from "../services/legado.service.js";
 import type { CadastroService } from "../services/cadastro.service.js";
+import type { TriagemService } from "../services/triagem.service.js";
 import { sessionCookie } from "../plugins/auth.js";
 
 const ok = <T>(data: T, meta: Record<string, unknown> = {}) => ({ success: true as const, data, meta });
@@ -46,6 +47,7 @@ type Services = {
   regua: ReguaService;
   acesso: AcessoService;
   cadastro: CadastroService;
+  triagem: TriagemService;
 };
 
 function idempotencyKey(header: string | string[] | undefined): string {
@@ -500,6 +502,22 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
   api.post("/api/v1/grupos-empresas/vagas", { schema: { tags: ["grupos"], body: vagaCadastroSchema } }, async (request, reply) => {
     return reply.code(201).send(ok(await services.cadastro.criarVaga(request.body, request.user.email)));
   });
+
+  api.post("/api/v1/triagem/vagas", {
+    schema: {
+      tags: ["triagem"],
+      body: z.object({
+        cep: z.string().transform((value) => value.replace(/\D/g, "")).pipe(z.string().length(8, "Informe um CEP com 8 dígitos.")),
+        raioKm: z.coerce.number().min(1).max(100).default(10),
+        tipos: z.array(z.enum(["CLT", "Estágio"])).min(1, "Escolha CLT, Estágio ou os dois."),
+        sexo: z.enum(["M", "F"]).optional(),
+        idade: z.coerce.number().int().min(1).max(120).optional(),
+        lat: z.number().min(-90).max(90).optional(),
+        lng: z.number().min(-180).max(180).optional(),
+      }),
+    },
+  }, async (request) => ok(await services.triagem.buscar(request.body)));
+  api.get("/api/v1/triagem/empresas-pendentes", { schema: { tags: ["triagem"] } }, async () => ok(await services.triagem.empresasPendentes()));
 
   api.post("/api/v1/zapsign/webhook", async (request) => {
     const payload = request.body && typeof request.body === "object" ? request.body as Record<string, unknown> : {};
