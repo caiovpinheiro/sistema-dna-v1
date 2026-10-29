@@ -61,7 +61,7 @@ export function TermosPage() {
   return (
     <div className="grid gap-5">
       <div>
-        <h1 className="text-2xl font-extrabold">Termos de estágio</h1>
+        <h1 className="text-2xl font-extrabold">Termos e documentos</h1>
         <p className="text-sm text-slate-500">Documentos enviados à ZapSign e os que já foram assinados.</p>
       </div>
       <div className="flex flex-wrap gap-2">

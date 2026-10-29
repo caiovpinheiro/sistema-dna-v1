@@ -26,6 +26,7 @@ const contratacaoLinks: LinkItem[] = [
 const termoLinks: LinkItem[] = [
   { id: "termos", to: "/termos", label: "Consultar", end: true },
   { id: "termos-gerar", to: "/termos/gerar", label: "Gerar TCE" },
+  { id: "termos-documento", to: "/termos/documentos", label: "Gerar documento" },
 ];
 
 const vagaLinks: LinkItem[] = [
@@ -61,6 +62,7 @@ const CAMINHOS: Array<[string, string]> = [
   ["/vagas/modelos/novo", "vagas-modelo"],
   ["/vagas/modelos", "vagas-modelos"],
   ["/vagas", "vagas"],
+  ["/termos/documentos", "termos-documento"],
   ["/termos/gerar", "termos-gerar"],
   ["/termos", "termos"],
   ["/instituicoes/nova", "instituicoes-nova"],
@@ -129,7 +131,8 @@ function tituloDaRota(pathname: string) {
     ["/financeiro/holerite", "Holerite"],
     ["/financeiro", "Financeiro"],
     ["/instituicoes", "Instituições"],
-    ["/termos", "Termos"],
+    ["/termos/documentos", "Gerar documento"],
+    ["/termos", "Termos e documentos"],
     ["/processos", "Processos"],
     ["/vagas", "Vagas"],
     ["/contratacoes", "Contratações"],
@@ -187,7 +190,7 @@ export function Shell({ email, admin, paginas, notify }: { email: string; admin:
         </NavLink>
       ))}
       <SideGroup label="Contratações" icon={Handshake} active={contratacaoActive} expanded={expanded} links={contratacaoLinks.filter((item) => permitido(item.id))} onNavigate={() => setOpen(false)} />
-      <SideGroup label="Termos" icon={FileSignature} active={termoActive} expanded={expanded} links={termoLinks.filter((item) => permitido(item.id))} onNavigate={() => setOpen(false)} />
+      <SideGroup label="Termos e documentos" icon={FileSignature} active={termoActive} expanded={expanded} links={termoLinks.filter((item) => permitido(item.id))} onNavigate={() => setOpen(false)} />
       <SideGroup label="Instituições" icon={GraduationCap} active={instituicaoActive} expanded={expanded} links={instituicaoLinks.filter((item) => permitido(item.id))} onNavigate={() => setOpen(false)} />
       <SideGroup label="Financeiro" icon={Wallet} active={financeiroActive} expanded={expanded} links={financeLinks.filter((item) => permitido(item.id))} onNavigate={() => setOpen(false)} />
       <SideGroup label="Comissão" icon={Percent} active={comissaoActive} expanded={expanded} links={comissaoLinks.filter((item) => permitido(item.id))} onNavigate={() => setOpen(false)} />

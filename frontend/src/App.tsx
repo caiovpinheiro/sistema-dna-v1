@@ -29,6 +29,7 @@ import { RescisaoPage } from "@/pages/RescisaoPage";
 import { VagaDetailPage } from "@/pages/VagaDetailPage";
 import { VagaFormPage } from "@/pages/VagaFormPage";
 import { TermoDetailPage } from "@/pages/TermoDetailPage";
+import { GerarDocumentoPage } from "@/pages/GerarDocumentoPage";
 import { GerarTcePage, TermosPage } from "@/pages/TermosPage";
 import { TriagemPage } from "@/pages/TriagemPage";
 import { VagasPage } from "@/pages/VagasPage";
@@ -87,6 +88,7 @@ export function App() {
             <Route path="/contratacoes/:id" element={<ContratacaoDetailPage />} />
             <Route path="/termos" element={<TermosPage />} />
             <Route path="/termos/gerar" element={<GerarTcePage />} />
+            <Route path="/termos/documentos" element={<GerarDocumentoPage />} />
             <Route path="/termos/:id" element={<TermoDetailPage />} />
             <Route path="/financeiro/faturamento" element={<GerarFaturamentoPage />} />
             <Route path="/financeiro/contas-a-receber" element={<ContasReceberPage />} />

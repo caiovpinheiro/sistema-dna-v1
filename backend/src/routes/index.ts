@@ -13,6 +13,8 @@ import { pageSchema } from "../schemas/common.js";
 import { processoCreateSchema, processoListSchema, processoMoverSchema } from "../schemas/processo.js";
 import { vagaCreateSchema, vagaListSchema, vagaPatchSchema } from "../schemas/vaga.js";
 import { empresaCadastroSchema, grupoCreateSchema, vagaCadastroSchema } from "../schemas/cadastro.js";
+import { documentoSchema } from "../schemas/documento-contrato.js";
+import { gerarDocumento } from "../lib/documento-contrato.js";
 import type { AsaasService } from "../services/asaas.service.js";
 import type { ReguaService } from "../services/regua.service.js";
 import type { CandidatoService } from "../services/candidato.service.js";
@@ -251,6 +253,16 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
   api.get("/api/v1/termos", {
     schema: { tags: ["termos"], querystring: z.object({ status: z.enum(["gerado", "enviado", "assinado", "recusado", "cancelado"]).optional() }) },
   }, async (request) => ok(await services.termos.list(request.query.status)));
+  api.post("/api/v1/termos/documentos", {
+    schema: { tags: ["termos"], body: documentoSchema },
+  }, async (request, reply) => {
+    const documento = await gerarDocumento(request.body);
+    const ascii = documento.filename.replace(/[^\w.\- ]+/g, "");
+    return reply
+      .type("application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+      .header("Content-Disposition", `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(documento.filename)}`)
+      .send(documento.buffer);
+  });
   api.get("/api/v1/termos/:id", {
     schema: { tags: ["termos"], params: z.object({ id: z.string().uuid() }) },
   }, async (request) => ok(await services.termos.get(request.params.id)));
