@@ -1,10 +1,18 @@
 import { AppError } from "./errors.js";
 
-export type ZapSigner = { name: string; email: string; external_id?: string };
-export type ZapSignerResult = { name?: string; email?: string; status?: string; sign_url?: string };
+export type ZapSigner = { name: string; email: string; external_id?: string; papel?: string };
+export type ZapSignerResult = {
+  name?: string;
+  email?: string;
+  status?: string;
+  sign_url?: string;
+  token?: string;
+  signed_at?: string | null;
+};
 export type ZapDoc = {
   token?: string;
   status?: string;
+  original_file?: string | null;
   signed_file?: string | null;
   signers?: ZapSignerResult[];
 };
@@ -48,5 +56,18 @@ export async function criarDocumentoZapSign(input: {
       status: response.status,
     });
   }
+  return body;
+}
+
+export async function consultarDocumentoZapSign(input: {
+  apiUrl: string;
+  apiToken: string;
+  token: string;
+}): Promise<ZapDoc | null> {
+  if (!input.apiToken || !input.token) return null;
+  const url = `${input.apiUrl.replace(/\/$/, "")}/api/v1/docs/${encodeURIComponent(input.token)}/?api_token=${encodeURIComponent(input.apiToken)}`;
+  const response = await fetch(url);
+  const body = await response.json().catch(() => null) as ZapDoc | null;
+  if (!response.ok || !body?.token) return null;
   return body;
 }

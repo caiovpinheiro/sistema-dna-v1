@@ -14,7 +14,7 @@ export async function enviarEmailMailjet(input: {
   attachments?: Anexo[];
 }) {
   if (!input.apiKey || !input.secret) {
-    throw new AppError(503, "MAILJET_NAO_CONFIGURADO", "Defina MAILJET_API_KEY e MAILJET_SECRET_KEY no ambiente.");
+    throw new AppError(503, "MAILJET_NAO_CONFIGURADO", "O servidor ainda não tem as chaves da Mailjet. Defina MAILJET_API_KEY e MAILJET_SECRET_KEY no ambiente para enviar e-mail. A assinatura pela ZapSign continua disponível e os links podem ser copiados.");
   }
   const destinos = input.to.filter((item) => item.email.includes("@"));
   if (!destinos.length) throw new AppError(422, "EMAIL_AUSENTE", "Nenhum destinatário com e-mail.");

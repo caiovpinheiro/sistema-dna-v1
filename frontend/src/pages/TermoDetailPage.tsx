@@ -74,9 +74,12 @@ export function TermoDetailPage() {
   });
   const enviar = useMutation({
     mutationFn: () => api<Termo>(`/api/v1/tce/${id}/enviar`, { method: "POST" }),
-    onSuccess: async () => {
+    onSuccess: async (result) => {
       setErro("");
-      setAviso("TCE enviado para assinatura e os e-mails saíram por contratos@dnawork.ai.");
+      const emailEnviado = Boolean((result.data as { email_enviado?: boolean }).email_enviado);
+      setAviso(emailEnviado
+        ? "TCE enviado para assinatura e os e-mails saíram por contratos@dnawork.ai."
+        : "TCE enviado para a ZapSign. O e-mail automático não está configurado neste servidor: use os links de assinatura abaixo.");
       await client.invalidateQueries({ queryKey: ["termo", id] });
       await client.invalidateQueries({ queryKey: ["termos"] });
     },

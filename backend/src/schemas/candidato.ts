@@ -34,6 +34,7 @@ const fields = {
   tipo_chave_pix: z.string().trim().max(30).optional(),
   chave_pix: z.string().trim().max(120).optional(),
   pcd: z.string().trim().max(80).optional(),
+  id_empresa: z.string().trim().max(80).nullable().optional(),
 };
 
 export const candidatoCreateSchema = z.object({
@@ -56,6 +57,7 @@ export const candidatoListSchema = z.object({
   id_empresa: z.string().trim().optional(),
   regime: z.enum(["clt", "estagio"]).optional(),
   situacao: z.enum(["ativo", "encerrado", "sem_vinculo"]).optional(),
+  vinculo: z.enum(["dna", "empresa"]).optional(),
   cadastro_de: isoDateSchema.optional(),
   cadastro_ate: isoDateSchema.optional(),
 });

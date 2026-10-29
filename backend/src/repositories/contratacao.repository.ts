@@ -136,6 +136,9 @@ export class ContratacaoRepository {
     await db.query(`ALTER TABLE dna_work.rescisao_documento ADD COLUMN IF NOT EXISTS assinatura character varying(80) DEFAULT 'Não assina digitalmente'`);
     await db.query(`ALTER TABLE dna_work.rescisao_documento ADD COLUMN IF NOT EXISTS zapsign_token character varying(120)`);
     await db.query(`ALTER TABLE dna_work.rescisao_documento ADD COLUMN IF NOT EXISTS sign_url text`);
+    await db.query(`ALTER TABLE dna_work.rescisao_documento ADD COLUMN IF NOT EXISTS signatarios text`);
+    await db.query(`ALTER TABLE dna_work.rescisao_documento ADD COLUMN IF NOT EXISTS preview_url text`);
+    await db.query(`ALTER TABLE dna_work.rescisao_documento ADD COLUMN IF NOT EXISTS enviado_em timestamp without time zone`);
   }
 
   async salvarRescisao(db: Db, values: {
@@ -188,22 +191,32 @@ export class ContratacaoRepository {
       assinatura: string | null;
       sign_url: string | null;
       zapsign_token: string | null;
+      signatarios: string | null;
+      preview_url: string | null;
+      enviado_em: string | null;
     }>(db, `
       SELECT id, nome, motivo, motivo_interno, avaliacao, resumo, data_demissao, cargo, empresa, texto,
-             assinatura, sign_url, zapsign_token
+             assinatura, sign_url, zapsign_token, signatarios, preview_url, enviado_em
       FROM dna_work.rescisao_documento
       WHERE id_contratacao = $1
       ORDER BY id
     `, [idContratacao]);
   }
 
-  async gravarAssinatura(db: Db, idContratacao: number, assinatura: string, token: string, url: string | null): Promise<void> {
+  async gravarAssinatura(db: Db, idContratacao: number, values: {
+    assinatura: string;
+    token: string;
+    url: string | null;
+    signatarios: string;
+    preview: string | null;
+  }): Promise<void> {
     await this.garantirRescisao(db);
     await db.query(`
       UPDATE dna_work.rescisao_documento
-      SET assinatura = $2, zapsign_token = $3, sign_url = $4
+      SET assinatura = $2, zapsign_token = $3, sign_url = $4, signatarios = $5, preview_url = $6,
+          enviado_em = coalesce(enviado_em, now())
       WHERE id_contratacao = $1
-    `, [idContratacao, assinatura, token, url]);
+    `, [idContratacao, values.assinatura, values.token, values.url, values.signatarios, values.preview]);
   }
 
   async marcarAssinaturaPorToken(db: Db, token: string, assinatura: string): Promise<boolean> {

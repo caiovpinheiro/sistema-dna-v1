@@ -221,6 +221,15 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
       body: contratacaoEncerrarSchema,
     },
   }, async (request) => ok(await services.contratacoes.encerrar(request.params.id, request.body)));
+  api.get("/api/v1/contratacoes/:id/rescisao.pdf", {
+    schema: { tags: ["contratacoes"], params: z.object({ id: z.coerce.number().int().positive() }) },
+  }, async (request, reply) => {
+    const pdf = await services.contratacoes.pdfRescisao(request.params.id);
+    return reply.type("application/pdf").header("Content-Disposition", "inline; filename=\"rescisao.pdf\"").send(pdf);
+  });
+  api.get("/api/v1/contratacoes/:id/assinatura", {
+    schema: { tags: ["contratacoes"], params: z.object({ id: z.coerce.number().int().positive() }) },
+  }, async (request) => ok(await services.contratacoes.acompanharAssinatura(request.params.id)));
   api.post("/api/v1/contratacoes/:id/assinatura", {
     schema: { tags: ["contratacoes"], params: z.object({ id: z.coerce.number().int().positive() }) },
   }, async (request) => ok(await services.contratacoes.solicitarAssinatura(request.params.id)));

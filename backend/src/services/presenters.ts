@@ -37,6 +37,8 @@ export function presentCandidato(row: CandidatoRow, detail = false) {
     estadocivil: row.estadocivil,
     obs: row.obs,
     id_empresa: row.id_empresa,
+    empresa_nome: row.empresa_nome ?? null,
+    vinculo: row.id_empresa ? "empresa" as const : "dna" as const,
     colaborador: row.colaborador,
     pcd: row.pcd,
     banco: detail ? row.banco : undefined,

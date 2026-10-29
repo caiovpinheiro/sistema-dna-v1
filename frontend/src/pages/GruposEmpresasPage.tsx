@@ -245,10 +245,10 @@ function AbaEmpresa({ grupoInicial }: { grupoInicial: string }) {
     }));
   }
   return (
-    <form className="grid gap-4" onSubmit={(event) => { event.preventDefault(); save.mutate(); }}>
+    <form className="mx-auto grid w-full max-w-4xl gap-3" onSubmit={(event) => { event.preventDefault(); save.mutate(); }}>
       <Erro error={save.error} />
       {save.isSuccess ? <p className="text-sm font-semibold text-emerald-700">{save.data.data.reativada ? "Empresa reativada e copiada para o grupo." : "Empresa gravada."}</p> : null}
-      <Card className="grid gap-4 md:grid-cols-2">
+      <Card className="grid gap-3 md:grid-cols-3">
         <Field label="Grupo">
           <BuscaOpcao
             value={form.grupo_id}
@@ -438,11 +438,12 @@ function AbaVaga({ empresaInicial, modeloInicial }: { empresaInicial: string; mo
     setForm((atual) => ({ ...atual, ...modelo.formulario, empresa_id: atual.empresa_id, quantidade: atual.quantidade }));
   }
   return (
-    <form className="grid gap-4" onSubmit={(event) => { event.preventDefault(); save.mutate(); }}>
+    <form className="mx-auto grid w-full max-w-4xl gap-3" onSubmit={(event) => { event.preventDefault(); save.mutate(); }}>
       <Erro error={save.error} />
       <Erro error={detalhe.error} />
       {save.isSuccess ? <p className="text-sm font-semibold text-emerald-700">{save.data.data.quantidade} vaga(s) abertas com o código {save.data.data.codigo}.</p> : null}
-      <Card className="grid gap-4 md:grid-cols-2">
+      <Card className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="sm:col-span-2">
         <Field label="Empresa">
           <BuscaOpcao
             value={form.empresa_id}
@@ -451,7 +452,9 @@ function AbaVaga({ empresaInicial, modeloInicial }: { empresaInicial: string; mo
             placeholder="Pesquisar empresa"
           />
         </Field>
+        </div>
         {form.empresa_id ? (
+          <div className="sm:col-span-2">
           <Field label="Modelo">
             <div className="relative">
               <Input
@@ -475,6 +478,7 @@ function AbaVaga({ empresaInicial, modeloInicial }: { empresaInicial: string; mo
               ) : null}
             </div>
           </Field>
+          </div>
         ) : null}
         <Field label="Tipo">
           <Select value={form.tipo} onChange={(event) => {
@@ -504,11 +508,11 @@ function AbaVaga({ empresaInicial, modeloInicial }: { empresaInicial: string; mo
         <Field label="Idade"><Input type="number" value={form.idade} onChange={(event) => setForm({ ...form, idade: event.target.value })} /></Field>
         <Field label="Idade até"><Input type="number" value={form.idade_ate} onChange={(event) => setForm({ ...form, idade_ate: event.target.value })} /></Field>
         <Field label="Quantidade"><Input type="number" min={1} value={form.quantidade} onChange={(event) => setForm({ ...form, quantidade: event.target.value })} /></Field>
-        <div className="md:col-span-2 grid gap-3">
+        <div className="grid gap-2 sm:col-span-2 lg:col-span-4">
           <p className="text-sm font-medium text-slate-700">Dias do horário</p>
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
             {diasHorario.map((dia) => (
-              <div key={dia.nome} className="grid grid-cols-[5rem_1fr_1fr] items-center gap-2">
+              <div key={dia.nome} className="grid grid-cols-[4.5rem_1fr_1fr] items-center gap-1.5">
                 <span className="text-sm text-slate-600">{dia.nome}</span>
                 <Input type="time" aria-label={`${dia.nome} entrada`} value={form[dia.entrada]} onChange={(event) => setForm({ ...form, [dia.entrada]: event.target.value })} />
                 <Input type="time" aria-label={`${dia.nome} saída`} value={form[dia.saida]} onChange={(event) => setForm({ ...form, [dia.saida]: event.target.value })} />
@@ -516,7 +520,7 @@ function AbaVaga({ empresaInicial, modeloInicial }: { empresaInicial: string; mo
             ))}
           </div>
         </div>
-        <div className="md:col-span-2"><Field label="Atividades"><Textarea value={form.atividades} onChange={(event) => setForm({ ...form, atividades: event.target.value })} /></Field></div>
+        <div className="sm:col-span-2 lg:col-span-4"><Field label="Atividades"><Textarea className="min-h-20" value={form.atividades} onChange={(event) => setForm({ ...form, atividades: event.target.value })} /></Field></div>
       </Card>
       <div><Button disabled={save.isPending}>{save.isPending ? "Salvando…" : "Salvar vaga"}</Button></div>
     </form>

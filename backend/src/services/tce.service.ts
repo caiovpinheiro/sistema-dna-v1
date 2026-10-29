@@ -194,13 +194,17 @@ export class TceService {
         url: signer.sign_url ?? null,
       }))),
     ]);
+    let emailEnviado = true;
     try {
       await this.enviarAssinaturas(id);
     } catch (error) {
-      const mensagem = error instanceof AppError ? error.message : "A Mailjet não enviou o e-mail.";
-      throw new AppError(502, "EMAIL_ASSINATURA", `O TCE foi enviado para assinatura, mas o e-mail não saiu. ${mensagem}`);
+      emailEnviado = false;
+      if (!(error instanceof AppError) || error.code !== "MAILJET_NAO_CONFIGURADO") {
+        const mensagem = error instanceof AppError ? error.message : "A Mailjet não enviou o e-mail.";
+        throw new AppError(502, "EMAIL_ASSINATURA", `O TCE foi enviado para assinatura, mas o e-mail não saiu. ${mensagem}`);
+      }
     }
-    return this.termos.get(id);
+    return { ...await this.termos.get(id), email_enviado: emailEnviado };
   }
 
   async enviarAssinaturas(id: string) {

@@ -67,6 +67,7 @@ export function RescisaoDetailPage() {
   const [previa, setPrevia] = useState(false);
   const [message, setMessage] = useState("");
   const [resumoPronto, setResumoPronto] = useState(false);
+  const [pedido, setPedido] = useState<"" | "perguntar" | "enviado">("");
 
   const query = useQuery({
     queryKey: ["rescisao-contratacao", id],
@@ -110,9 +111,20 @@ export function RescisaoDetailPage() {
       await client.invalidateQueries({ queryKey: ["contratacoes"] });
       await client.invalidateQueries({ queryKey: ["contratacao", id] });
       await client.invalidateQueries({ queryKey: ["contratacao-documentos", id] });
-      navigate(`/contratacoes/${id}`);
+      setPedido("perguntar");
     },
     onError: (error) => setMessage(error instanceof ApiError ? error.message : "Não foi possível demitir."),
+  });
+
+  const enviarAssinatura = useMutation({
+    mutationFn: () => api(`/api/v1/contratacoes/${id}/assinatura`, { method: "POST" }),
+    onSuccess: async () => {
+      setMessage("");
+      setPedido("enviado");
+      await client.invalidateQueries({ queryKey: ["contratacao-documentos", id] });
+      await client.invalidateQueries({ queryKey: ["contratacao-assinatura", id] });
+    },
+    onError: (error) => setMessage(error instanceof ApiError ? error.message : "A ZapSign não enviou a assinatura."),
   });
 
   const cand = candidato.data?.data;
@@ -260,6 +272,35 @@ export function RescisaoDetailPage() {
       )}
 
       <DocumentosContratacao id={String(data.id_contratacao)} />
+      {pedido ? (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-900/40 p-4" role="dialog" aria-modal="true" aria-label="Assinatura digital">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 text-slate-800 shadow-xl">
+            <h2 className="text-2xl font-extrabold text-navy-900">Assinatura digital</h2>
+            {pedido === "perguntar" ? (
+              <p className="mt-3 text-sm">Enviar este documento para assinatura digital?</p>
+            ) : (
+              <div className="mt-3 grid gap-2 text-sm">
+                <p>Documento enviado para assinatura.</p>
+                <p>Envelope enviado.</p>
+              </div>
+            )}
+            {message ? <p className="mt-3 text-sm text-rose-600">{message}</p> : null}
+            <div className="mt-5 flex flex-wrap gap-2">
+              {pedido === "perguntar" ? (
+                <>
+                  <Button className="bg-orange-500 text-navy-950 hover:bg-orange-400" disabled={enviarAssinatura.isPending} onClick={() => enviarAssinatura.mutate()}>
+                    {enviarAssinatura.isPending ? "Enviando…" : "Sim"}
+                  </Button>
+                  <Button variant="secondary" onClick={() => navigate(`/contratacoes/${id}`)}>Não</Button>
+                </>
+              ) : null}
+            </div>
+            <button type="button" className="mt-4 text-sm font-semibold text-orange-600" onClick={() => navigate(`/contratacoes/${id}`)}>
+              Ver documento
+            </button>
+          </div>
+        </div>
+      ) : null}
       {data.situacao === "encerrada" ? (
         <p className="text-sm">
           <Link className="font-semibold text-cyan-800" to={`/contratacoes/${data.id_contratacao}`}>Abrir nas informações da contratação</Link>

@@ -10,13 +10,14 @@ const PATCHABLE = new Set([
   "cep", "logradouro", "numero", "complemento", "bairro", "cidade", "estado", "sexo",
   "estadocivil", "obs", "escola", "nome_escola", "curso", "modalidadecurso", "semestre",
   "periodo", "ctps", "banco", "agencia", "numero_conta", "nome_conta", "tipo_chave_pix",
-  "chave_pix", "pcd",
+  "chave_pix", "pcd", "id_empresa",
 ]);
 
 export class CandidatoService {
   constructor(private readonly db: Pool, private readonly repo: CandidatoRepository) {}
 
   async create(input: CandidatoCreate) {
+    await this.garantirEmpresa(input.id_empresa);
     const duplicated = await this.repo.findByCpf(this.db, input.cpf);
     if (duplicated) {
       throw new AppError(409, "CPF_DUPLICADO", "Já existe um candidato com este CPF.", {
@@ -40,6 +41,7 @@ export class CandidatoService {
     if (Object.keys(patch).length === 0) {
       throw new AppError(400, "NADA_PARA_ATUALIZAR", "Nenhum campo informado para atualização.");
     }
+    if (patch.id_empresa) await this.garantirEmpresa(patch.id_empresa);
     if (patch.cpf) {
       const duplicated = await this.repo.findByCpf(this.db, patch.cpf, id);
       if (duplicated) {
@@ -65,5 +67,11 @@ export class CandidatoService {
       data: result.rows.map((row) => presentCandidato(row)),
       meta: { page: query.page, pageSize: query.pageSize, total: result.total },
     };
+  }
+
+  private async garantirEmpresa(id: string | null | undefined) {
+    if (!id) return;
+    const row = await this.db.query("SELECT id_empresa FROM dna_work.empresa WHERE id_empresa = $1", [id]);
+    if (!row.rowCount) throw new AppError(422, "EMPRESA_NAO_ENCONTRADA", "Selecione a empresa do candidato.");
   }
 }

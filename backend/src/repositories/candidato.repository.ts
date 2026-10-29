@@ -42,6 +42,7 @@ export type CandidatoRow = {
   tipo_chave_pix: string | null;
   chave_pix: string | null;
   pcd: string | null;
+  empresa_nome?: string | null;
 };
 
 const COLUMNS = `
@@ -63,7 +64,12 @@ export class CandidatoRepository {
   constructor(private readonly statusAtivo: number, private readonly statusEncerrado: number) {}
 
   findById(db: Db, id: string): Promise<CandidatoRow | null> {
-    return one<CandidatoRow>(db, `SELECT ${COLUMNS} FROM dna_work.candidato c WHERE c.id_candidato = $1`, [id]);
+    return one<CandidatoRow>(db, `
+      SELECT ${COLUMNS}, coalesce(emp.nome_fantasia, emp.razao_social) AS empresa_nome
+      FROM dna_work.candidato c
+      LEFT JOIN dna_work.empresa emp ON emp.id_empresa = c.id_empresa
+      WHERE c.id_candidato = $1
+    `, [id]);
   }
 
   findByCpf(db: Db, cpf: string, exceptId?: string): Promise<{ id_candidato: string } | null> {
@@ -83,12 +89,12 @@ export class CandidatoRepository {
         id_candidato, nome, cpf, rg, rg_expedidor, datanascimento, datacadastro, ultimaalteracao,
         telefonefixo, celular, email, logradouro, numero, complemento, bairro, cidade, estado, cep,
         escola, nome_escola, modalidadecurso, curso, periodo, semestre, ctps, sexo, estadocivil, obs,
-        colaborador, banco, agencia, numero_conta, nome_conta, tipo_chave_pix, chave_pix, pcd
+        colaborador, banco, agencia, numero_conta, nome_conta, tipo_chave_pix, chave_pix, pcd, id_empresa
       ) VALUES (
         $1,$2,$3,$4,$5,$6,$7,$7,
         $8,$9,$10,$11,$12,$13,$14,$15,$16,$17,
         $18,$19,$20,$21,$22,$23,$24,$25,$26,$27,
-        0,$28,$29,$30,$31,$32,$33,$34
+        0,$28,$29,$30,$31,$32,$33,$34,$35
       )
     `, [
       id, input.nome, input.cpf, input.rg ?? null, input.rg_expedidor ?? null,
@@ -101,6 +107,7 @@ export class CandidatoRepository {
       input.sexo ?? null, input.estadocivil ?? null, input.obs ?? null,
       input.banco ?? null, input.agencia ?? null, input.numero_conta ?? null,
       input.nome_conta ?? null, input.tipo_chave_pix ?? null, input.chave_pix ?? null, input.pcd ?? null,
+      input.id_empresa ?? null,
     ]);
   }
 
@@ -172,6 +179,8 @@ export class CandidatoRepository {
     if (query.situacao === "sem_vinculo") {
       where.push("NOT EXISTS (SELECT 1 FROM dna_work.conratacaovaga cv WHERE cv.id_candidato = c.id_candidato)");
     }
+    if (query.vinculo === "dna") where.push("nullif(btrim(c.id_empresa), '') IS NULL");
+    if (query.vinculo === "empresa") where.push("nullif(btrim(c.id_empresa), '') IS NOT NULL");
     if (query.cadastro_de) add("c.datacadastro >= $#", isoToLegacy(query.cadastro_de));
     if (query.cadastro_ate) add("c.datacadastro <= $#", isoToLegacy(query.cadastro_ate));
 
@@ -179,8 +188,9 @@ export class CandidatoRepository {
     const order = sortClause(query.sort, query.order, SORTS, "c.nome");
     const totalRow = await one<{ total: number }>(db, `SELECT count(*)::int AS total FROM dna_work.candidato c ${clause}`, params);
     const rows = await many<CandidatoRow>(db, `
-      SELECT ${COLUMNS}
+      SELECT ${COLUMNS}, coalesce(emp.nome_fantasia, emp.razao_social) AS empresa_nome
       FROM dna_work.candidato c
+      LEFT JOIN dna_work.empresa emp ON emp.id_empresa = c.id_empresa
       ${clause}
       ORDER BY ${order} NULLS LAST, c.id_candidato
       LIMIT $${params.length + 1} OFFSET $${params.length + 2}

@@ -17,6 +17,7 @@ type Candidate = {
   logradouro: string | null; numero: string | null; complemento: string | null; bairro: string | null; cep: string | null;
   cidade: string | null; estado: string | null; curso: string | null; nome_escola: string | null; periodo: string | null;
   ctps: string | null; datanascimento: string | null; ultimaalteracao: string | null; curriculo: Curriculo;
+  vinculo?: "dna" | "empresa"; empresa_nome?: string | null;
 };
 
 function idade(data: string | null) {
@@ -48,7 +49,7 @@ export function CandidatoDetailPage() {
           <p className="text-sm text-slate-500">{[idade(data.datanascimento), formatCpf(data.cpf)].filter(Boolean).join(" · ")}</p>
           <p className="text-sm text-slate-500">{data.email} · {formatPhone(data.celular || data.telefonefixo)}</p>
           <p className="text-sm text-slate-500">{endereco || "Endereço não informado"}</p>
-          <p className="text-xs text-slate-400">Atualização {dateBr(data.ultimaalteracao)}{cv.origem ? ` · Origem: ${cv.origem}` : ""}</p>
+          <p className="text-xs text-slate-400">Atualização {dateBr(data.ultimaalteracao)}{cv.origem ? ` · Origem: ${cv.origem}` : ""} · {data.vinculo === "empresa" ? `Empresa ${data.empresa_nome || "outra"}` : "Candidato DNA"}</p>
         </div>
         <div className="flex gap-2"><Link to={`/processos/novo?candidato=${id}`}><Button variant="secondary">Novo processo</Button></Link><Link to={`/candidatos/${id}/editar`}><Button variant="secondary">Editar</Button></Link></div>
       </div>

@@ -7,7 +7,7 @@ import { Button, Card, Empty, Input, Select, Skeleton } from "@/components/ui";
 import { api } from "@/lib/api";
 import { dateBr, formatCpf, formatPhone } from "@/lib/format";
 
-type Row = { id_candidato: string; nome: string; cpf: string; email: string; celular: string | null; cidade: string | null; estado: string | null };
+type Row = { id_candidato: string; nome: string; cpf: string; email: string; celular: string | null; cidade: string | null; estado: string | null; vinculo?: "dna" | "empresa"; empresa_nome?: string | null };
 type Detail = Row & { telefonefixo: string | null; datanascimento: string | null; curso: string | null; nome_escola: string | null; bairro: string | null };
 
 export function CandidatosPage() {
@@ -31,7 +31,7 @@ export function CandidatosPage() {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     const next = new URLSearchParams();
-    for (const key of ["nome", "cpf", "email", "telefone", "cidade", "uf", "situacao", "regime"]) {
+    for (const key of ["nome", "cpf", "email", "telefone", "cidade", "uf", "situacao", "regime", "vinculo"]) {
       const value = String(data.get(key) ?? "").trim();
       if (value) next.set(key, value);
     }
@@ -68,13 +68,18 @@ export function CandidatosPage() {
             <option value="clt">CLT</option>
             <option value="estagio">Estágio</option>
           </Select>
-          <Button type="submit" className="md:col-start-4 md:justify-self-end">Pesquisar</Button>
+          <Select name="vinculo" aria-label="DNA ou outra empresa" defaultValue={params.get("vinculo") ?? ""}>
+            <option value="">DNA ou outra empresa</option>
+            <option value="dna">Candidato DNA</option>
+            <option value="empresa">Outra empresa</option>
+          </Select>
+          <Button type="submit" className="md:justify-self-end">Pesquisar</Button>
         </form>
       </Card>
       {result.isLoading ? <Skeleton className="h-64" /> : result.isError ? <p className="text-rose-600">Erro ao pesquisar candidatos.</p> : lista && (lista.data.length || Number(lista.meta?.total ?? 0) > 0) ? (
         <Card className="overflow-x-auto p-0">
           <table className="w-full text-left text-sm">
-            <thead className="text-slate-500"><tr className="border-b"><th className="px-4 py-3">Nome</th><th>CPF</th><th>Contato</th><th>Cidade</th></tr></thead>
+            <thead className="text-slate-500"><tr className="border-b"><th className="px-4 py-3">Nome</th><th>CPF</th><th>Contato</th><th>Cidade</th><th>Vínculo</th></tr></thead>
             <tbody>
               {lista.data.map((item) => (
                 <tr key={item.id_candidato} className="border-b border-slate-100 last:border-0 hover:bg-slate-50" onMouseEnter={(event) => preview.mostrar(item.id_candidato, event)} onMouseLeave={preview.esconder}>
@@ -82,6 +87,7 @@ export function CandidatosPage() {
                   <td>{formatCpf(item.cpf)}</td>
                   <td>{item.email}<div className="text-slate-500">{formatPhone(item.celular)}</div></td>
                   <td>{[item.cidade, item.estado].filter(Boolean).join(" / ") || "—"}</td>
+                  <td>{item.vinculo === "empresa" ? item.empresa_nome || "Outra empresa" : "DNA"}</td>
                 </tr>
               ))}
             </tbody>

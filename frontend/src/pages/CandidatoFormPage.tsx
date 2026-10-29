@@ -1,10 +1,10 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useNavigate, useParams } from "react-router-dom";
 import { z } from "zod";
-import { Button, Card, Field, Input, Textarea } from "@/components/ui";
+import { Button, Card, Field, Input, Select, Textarea } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 
 const schema = z.object({
@@ -29,8 +29,15 @@ const schema = z.object({
   numero_conta: z.string().optional(),
   chave_pix: z.string().optional(),
   obs: z.string().optional(),
+  vinculo: z.enum(["dna", "empresa"]),
+  id_empresa: z.string().optional(),
+}).superRefine((values, ctx) => {
+  if (values.vinculo === "empresa" && !values.id_empresa) {
+    ctx.addIssue({ code: "custom", path: ["id_empresa"], message: "Selecione a empresa." });
+  }
 });
 type Form = z.infer<typeof schema>;
+type EmpresaOpcao = { id_empresa: string; razao_social: string; nome_fantasia: string | null };
 
 function compact<T extends Record<string, unknown>>(values: T) {
   return Object.fromEntries(Object.entries(values).filter(([, value]) => value !== undefined && value !== null && value !== ""));
@@ -59,17 +66,32 @@ export function CandidatoFormPage() {
     enabled: Boolean(id),
     queryFn: () => api<Form & { id_candidato: string }>(`/api/v1/candidatos/${id}`),
   });
-  const form = useForm<Form>({ resolver: zodResolver(schema) });
+  const form = useForm<Form>({ resolver: zodResolver(schema), defaultValues: { vinculo: "dna", id_empresa: "" } });
+  const vinculo = form.watch("vinculo");
+  const [buscaEmpresa, setBuscaEmpresa] = useState("");
+  const empresas = useQuery({
+    queryKey: ["empresas-candidato", buscaEmpresa],
+    enabled: vinculo === "empresa" && buscaEmpresa.trim().length >= 2,
+    queryFn: () => api<EmpresaOpcao[]>(`/api/v1/empresas?pageSize=20&q=${encodeURIComponent(buscaEmpresa.trim())}`),
+  });
   const base = useRef<Form | null>(null);
   useEffect(() => {
     if (!current.data || base.current) return;
-    const data = Object.fromEntries(Object.entries(current.data.data).map(([key, value]) => [key, value ?? ""])) as Form;
+    const bruto = current.data.data as Form & { id_empresa?: string | null; empresa_nome?: string | null };
+    const data = {
+      ...(Object.fromEntries(Object.entries(bruto).map(([key, value]) => [key, value ?? ""])) as Form),
+      vinculo: bruto.id_empresa ? "empresa" as const : "dna" as const,
+      id_empresa: bruto.id_empresa ?? "",
+    };
     base.current = data;
     form.reset(data);
+    if (bruto.empresa_nome) setBuscaEmpresa(String(bruto.empresa_nome));
   }, [current.data, form]);
   const save = useMutation({
     mutationFn: (values: Form) => {
-      const payload = id ? diferencas(values, base.current) : compact(values);
+      const { vinculo: origem, id_empresa: empresa, ...resto } = values;
+      const payload = id ? diferencas(resto, base.current) : compact(resto);
+      payload.id_empresa = origem === "empresa" ? empresa : null;
       if (id && Object.keys(payload).length === 0) throw new ApiError(400, "NADA_PARA_ATUALIZAR", "Nenhum campo foi alterado.");
       return id
         ? api(`/api/v1/candidatos/${id}`, { method: "PATCH", body: JSON.stringify(payload) })
@@ -84,6 +106,46 @@ export function CandidatoFormPage() {
       {error ? <p className="text-sm text-rose-600" role="alert">{error}</p> : null}
       <Card className="grid gap-4 md:grid-cols-2">
         <h2 className="md:col-span-2 font-bold">Identificação</h2>
+        <Field label="Cadastro" error={form.formState.errors.id_empresa?.message}>
+          <Select aria-label="Candidato DNA ou de outra empresa" value={vinculo} onChange={(event) => {
+            const proximo = event.target.value === "empresa" ? "empresa" : "dna";
+            form.setValue("vinculo", proximo);
+            if (proximo === "dna") form.setValue("id_empresa", "");
+          }}>
+            <option value="dna">Candidato DNA</option>
+            <option value="empresa">Outra empresa</option>
+          </Select>
+        </Field>
+        {vinculo === "empresa" ? (
+          <Field label="Empresa">
+            <Input
+              aria-label="Pesquisar empresa"
+              placeholder="Pesquisar empresa"
+              value={buscaEmpresa}
+              onChange={(event) => {
+                setBuscaEmpresa(event.target.value);
+                form.setValue("id_empresa", "");
+              }}
+            />
+            {empresas.data?.data.length ? (
+              <div className="mt-1 max-h-40 overflow-auto rounded-lg border border-slate-200">
+                {empresas.data.data.map((item) => (
+                  <button
+                    key={item.id_empresa}
+                    type="button"
+                    className="block w-full px-3 py-2 text-left text-sm hover:bg-slate-50"
+                    onClick={() => {
+                      form.setValue("id_empresa", item.id_empresa, { shouldValidate: true });
+                      setBuscaEmpresa(item.nome_fantasia || item.razao_social);
+                    }}
+                  >
+                    {item.nome_fantasia || item.razao_social}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </Field>
+        ) : <div />}
         <Field label="Nome" error={form.formState.errors.nome?.message}><Input {...form.register("nome")} /></Field>
         <Field label="CPF" error={form.formState.errors.cpf?.message}><Input {...form.register("cpf")} /></Field>
         <Field label="E-mail" error={form.formState.errors.email?.message}><Input type="email" {...form.register("email")} /></Field>
