@@ -1,12 +1,21 @@
 import type { Pool } from "pg";
+import { randomUUID } from "node:crypto";
 import { AppError } from "../lib/errors.js";
 import { etapaInicial, podeMover } from "../lib/processo.js";
+import { isValidCpf, onlyDigits } from "../lib/normalize.js";
 import { CandidatoRepository } from "../repositories/candidato.repository.js";
 import { EmpresaRepository } from "../repositories/empresa.repository.js";
 import { ProcessoRepository } from "../repositories/processo.repository.js";
-import type { Db } from "../repositories/sql.js";
+import { one, type Db } from "../repositories/sql.js";
 import { VagaRepository } from "../repositories/vaga.repository.js";
-import type { ProcessoCreate, ProcessoListQuery, ProcessoMover } from "../schemas/processo.js";
+import type { Atendimento, ProcessoCreate, ProcessoListQuery, ProcessoMover } from "../schemas/processo.js";
+
+function telefones(valor: string) {
+  let digitos = onlyDigits(valor);
+  if ((digitos.length === 12 || digitos.length === 13) && digitos.startsWith("55")) digitos = digitos.slice(2);
+  if (digitos.length < 10 || digitos.length > 11) throw new AppError(422, "TELEFONE_INVALIDO", "Informe o celular com DDD.");
+  return [digitos, `55${digitos}`];
+}
 
 function hojeSp() {
   return new Intl.DateTimeFormat("en-CA", {
@@ -67,6 +76,94 @@ export class ProcessoService {
       }
       throw error;
     }
+  }
+
+  async receberAtendimento(input: Atendimento) {
+    const fones = telefones(input.celular);
+    const cpf = input.cpf ? onlyDigits(input.cpf) : "";
+    if (cpf && !isValidCpf(cpf)) throw new AppError(422, "CPF_INVALIDO", "CPF inválido.");
+    const vaga = await this.vagaDoAtendimento(input);
+    const data = input.data_recebimento || hojeSp();
+    const observacao = input.observacao?.trim() || "Entrada pelo atendimento.";
+    let idCandidato = await this.candidatoDoAtendimento(cpf, fones);
+    let candidatoNovo = false;
+    if (!idCandidato) {
+      idCandidato = randomUUID();
+      candidatoNovo = true;
+      await this.db.query(`
+        INSERT INTO dna_work.candidato (id_candidato, nome, cpf, celular, email, datacadastro, colaborador, obs)
+        VALUES ($1, $2, $3, $4, $5, $6, 0, $7)
+      `, [idCandidato, input.nome.trim(), cpf || null, fones[0], input.email?.trim().toLowerCase() || null, data.replaceAll("-", "/"), observacao]);
+    }
+    const aberto = await this.repo.aberto(this.db, idCandidato, vaga.id_vaga);
+    if (aberto) {
+      return { id: aberto.id, id_candidato: idCandidato, id_vaga: vaga.id_vaga, id_empresa: vaga.id_empresa, origem: "dnawork", etapa: aberto.etapa, criado: false, candidato_novo: candidatoNovo };
+    }
+    try {
+      const id = await this.repo.insert(this.db, {
+        idCandidato,
+        idEmpresa: vaga.id_empresa,
+        idVaga: vaga.id_vaga,
+        origem: "dnawork",
+        dataRecebimento: data,
+        dataEncaminhamento: null,
+        etapa: "recebido",
+        observacao,
+      });
+      return { id, id_candidato: idCandidato, id_vaga: vaga.id_vaga, id_empresa: vaga.id_empresa, origem: "dnawork" as const, etapa: "recebido" as const, criado: true, candidato_novo: candidatoNovo };
+    } catch (error) {
+      if ((error as { code?: string }).code === "23505") {
+        const existente = await this.repo.aberto(this.db, idCandidato, vaga.id_vaga);
+        if (existente) return { id: existente.id, id_candidato: idCandidato, id_vaga: vaga.id_vaga, id_empresa: vaga.id_empresa, origem: "dnawork", etapa: existente.etapa, criado: false, candidato_novo: candidatoNovo };
+      }
+      throw error;
+    }
+  }
+
+  private async vagaDoAtendimento(input: Atendimento) {
+    if (input.id_vaga) {
+      const vaga = await one<{ id_vaga: string; id_empresa: string }>(this.db, `
+        SELECT id_vaga, id_empresa FROM dna_work.vaga WHERE id_vaga = $1
+      `, [input.id_vaga]);
+      if (!vaga?.id_empresa) throw new AppError(404, "VAGA_NAO_ENCONTRADA", "Vaga não encontrada.");
+      return vaga;
+    }
+    let empresaId = input.id_empresa ?? "";
+    if (!empresaId && input.empresa) {
+      const empresa = await one<{ id_empresa: string }>(this.db, `
+        SELECT id_empresa FROM dna_work.empresa
+        WHERE nome_fantasia ILIKE $1 OR razao_social ILIKE $1
+        ORDER BY CASE WHEN status = 1 THEN 0 ELSE 1 END, nome_fantasia
+        LIMIT 1
+      `, [input.empresa.trim()]);
+      if (!empresa) throw new AppError(404, "EMPRESA_NAO_ENCONTRADA", "Empresa não encontrada.");
+      empresaId = empresa.id_empresa;
+    }
+    if (!empresaId || !input.cargo?.trim()) {
+      throw new AppError(422, "VAGA_OBRIGATORIA", "Informe id_vaga ou a empresa junto com o cargo.");
+    }
+    const vaga = await one<{ id_vaga: string; id_empresa: string }>(this.db, `
+      SELECT id_vaga, id_empresa FROM dna_work.vaga
+      WHERE id_empresa = $1 AND (cargo ILIKE $2 OR cargo ILIKE $3)
+      ORDER BY CASE WHEN cargo ILIKE $2 THEN 0 ELSE 1 END, CASE WHEN status = 0 THEN 0 ELSE 1 END, data_adicao DESC NULLS LAST
+      LIMIT 1
+    `, [empresaId, input.cargo.trim(), `%${input.cargo.trim()}%`]);
+    if (!vaga?.id_empresa) throw new AppError(404, "VAGA_NAO_ENCONTRADA", "Não há vaga com esse cargo nesta empresa.");
+    return vaga;
+  }
+
+  private async candidatoDoAtendimento(cpf: string, fones: string[]) {
+    if (cpf) {
+      const porCpf = await this.candidatos.findByCpf(this.db, cpf);
+      if (porCpf) return porCpf.id_candidato;
+    }
+    const porFone = await one<{ id_candidato: string }>(this.db, `
+      SELECT id_candidato FROM dna_work.candidato
+      WHERE regexp_replace(coalesce(celular, ''), '\\D', '', 'g') = ANY($1::text[])
+         OR regexp_replace(coalesce(telefonefixo, ''), '\\D', '', 'g') = ANY($1::text[])
+      LIMIT 1
+    `, [fones]);
+    return porFone?.id_candidato ?? null;
   }
 
   async mover(id: string, input: ProcessoMover) {

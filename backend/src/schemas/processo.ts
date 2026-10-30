@@ -34,6 +34,20 @@ export const processoListSchema = z.object({
   nome: z.string().trim().optional(),
 });
 
+export const atendimentoSchema = z.object({
+  nome: z.string().trim().min(3).max(180),
+  celular: z.string().trim().min(8).max(20),
+  email: z.union([z.string().trim().email(), z.literal("")]).nullish(),
+  cpf: z.string().trim().nullish(),
+  id_vaga: z.string().trim().nullish(),
+  id_empresa: z.string().trim().nullish(),
+  empresa: z.string().trim().nullish(),
+  cargo: z.string().trim().nullish(),
+  data_recebimento: isoDateSchema.nullish(),
+  observacao: z.string().trim().max(500).nullish(),
+});
+
 export type ProcessoCreate = z.infer<typeof processoCreateSchema>;
+export type Atendimento = z.infer<typeof atendimentoSchema>;
 export type ProcessoMover = z.infer<typeof processoMoverSchema>;
 export type ProcessoListQuery = z.infer<typeof processoListSchema>;
