@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Button, Card, Field, Input, Select } from "@/components/ui";
 import { api } from "@/lib/api";
 import { formatCnpj, formatPhone } from "@/lib/format";
@@ -44,6 +44,16 @@ const regimesIniciais: Regimes = {
   outros_texto: "",
 };
 
+type Parte = { razao: string; cnpj: string; endereco: string; email: string; data: string; modalidade: Modalidade };
+
+function hoje() {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+}
+
+function parteVazia(): Parte {
+  return { razao: "", cnpj: "", endereco: "", email: "", data: hoje(), modalidade: "ambas" };
+}
+
 const regimeOpcoes: Array<{ chave: keyof Omit<Regimes, "outros_texto">; rotulo: string }> = [
   { chave: "clt_indeterminado", rotulo: "CLT por prazo indeterminado" },
   { chave: "clt_determinado", rotulo: "CLT por prazo determinado ou experiência" },
@@ -52,10 +62,6 @@ const regimeOpcoes: Array<{ chave: keyof Omit<Regimes, "outros_texto">; rotulo: 
   { chave: "pj", rotulo: "Pessoa jurídica" },
   { chave: "outros", rotulo: "Outros" },
 ];
-
-function hoje() {
-  return new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
-}
 
 function enderecoEmpresa(empresa: Empresa) {
   const linha = [empresa.logradouro, empresa.numero, empresa.complemento].filter(Boolean).join(", ");
@@ -114,6 +120,7 @@ export function GerarDocumentoPage() {
   const [email, setEmail] = useState("");
   const [data, setData] = useState(hoje);
   const [modalidade, setModalidade] = useState<Modalidade>("ambas");
+  const partes = useRef<Record<Modelo, Parte>>({ contrato: parteVazia(), adesao: parteVazia() });
   const [regimes, setRegimes] = useState<Regimes>(regimesIniciais);
   const [taxaPercentual, setTaxaPercentual] = useState("");
   const [vencimentoDias, setVencimentoDias] = useState("5");
@@ -136,6 +143,19 @@ export function GerarDocumentoPage() {
   const [telefone, setTelefone] = useState("");
   const [enderecoFaturamento, setEnderecoFaturamento] = useState("");
   const [local, setLocal] = useState("São Paulo");
+
+  function trocarModelo(proximo: Modelo) {
+    if (proximo === modelo) return;
+    partes.current[modelo] = { razao, cnpj, endereco, email, data, modalidade };
+    const outra = partes.current[proximo];
+    setRazao(outra.razao);
+    setCnpj(outra.cnpj);
+    setEndereco(outra.endereco);
+    setEmail(outra.email);
+    setData(outra.data);
+    setModalidade(outra.modalidade);
+    setModelo(proximo);
+  }
 
   const direta = modalidade === "direta" || modalidade === "ambas";
   const estagio = modalidade === "estagio" || modalidade === "ambas";
@@ -258,7 +278,7 @@ export function GerarDocumentoPage() {
   }
 
   return (
-    <form className="grid max-w-4xl gap-4" onSubmit={gerar}>
+    <form className="mx-auto grid w-full max-w-5xl gap-4" onSubmit={gerar}>
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-extrabold">Gerar documento</h1>
@@ -269,7 +289,7 @@ export function GerarDocumentoPage() {
       {erro ? <p className="text-sm text-rose-600" role="alert">{erro}</p> : null}
       <Card className="grid gap-3 md:grid-cols-2">
         <Field label="Documento">
-          <Select aria-label="Documento" value={modelo} onChange={(event) => setModelo(event.target.value === "adesao" ? "adesao" : "contrato")}>
+          <Select aria-label="Documento" value={modelo} onChange={(event) => trocarModelo(event.target.value === "adesao" ? "adesao" : "contrato")}>
             <option value="contrato">Contrato de prestação de serviços (Modelo 1)</option>
             <option value="adesao">Termo de adesão — Aderente (Modelo 2)</option>
           </Select>
