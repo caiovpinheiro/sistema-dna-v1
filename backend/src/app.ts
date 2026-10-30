@@ -193,6 +193,24 @@ export async function buildApp(context: AppContext): Promise<FastifyInstance> {
       throw error;
     }
   });
+  app.patch("/api/v1/servico/candidatos", async (request, reply) => {
+    if (!tokenDoServico(request.headers["x-service-token"], context.config.SERVICE_TOKEN)) {
+      return reply.code(401).send({ success: false, error: { code: "SERVICO_NEGADO", message: "Serviço não autorizado." } });
+    }
+    const corpo = atendimentoSchema.safeParse(normalizarAtendimento(request.body));
+    if (!corpo.success) {
+      return reply.code(422).send({ success: false, error: { code: "VALIDACAO", message: corpo.error.issues[0]?.message ?? "Dados inválidos.", details: corpo.error.issues } });
+    }
+    try {
+      const data = await services.processos.atualizarCandidato(corpo.data);
+      return { success: true, data, meta: {} };
+    } catch (error) {
+      if (error instanceof AppError) {
+        return reply.code(error.statusCode).send({ success: false, error: { code: error.code, message: error.message, details: error.details } });
+      }
+      throw error;
+    }
+  });
   app.post("/api/v1/servico/processos", async (request, reply) => {
     if (!tokenDoServico(request.headers["x-service-token"], context.config.SERVICE_TOKEN)) {
       return reply.code(401).send({ success: false, error: { code: "SERVICO_NEGADO", message: "Serviço não autorizado." } });

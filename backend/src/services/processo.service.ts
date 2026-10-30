@@ -155,6 +155,46 @@ export class ProcessoService {
     return { id_candidato: idCandidato, nome: input.nome.trim(), celular: fones[0], criado, captado_por: "dnawork" as const };
   }
 
+  async atualizarCandidato(input: Atendimento) {
+    const fones = telefones(input.celular);
+    const cpf = input.cpf ? onlyDigits(input.cpf) : "";
+    if (cpf && !isValidCpf(cpf)) throw new AppError(422, "CPF_INVALIDO", "CPF inválido.");
+    let id: string | null = null;
+    if (input.deal_id?.trim()) {
+      const porDeal = await one<{ id_candidato: string }>(this.db, `
+        SELECT id_candidato FROM dna_work.candidato
+        WHERE atendimento->>'deal_id' = $1
+        LIMIT 1
+      `, [input.deal_id.trim()]);
+      id = porDeal?.id_candidato ?? null;
+    }
+    if (!id) id = await this.candidatoDoAtendimento(cpf, fones);
+    if (!id) throw new AppError(404, "CANDIDATO_NAO_ENCONTRADO", "Candidato não encontrado.");
+    const cep = cepCadastro(input.cep);
+    const sexo = sexoCadastro(input.sexo);
+    const escola = escolaridadeCadastro(input.escolaridade);
+    const dados = dadosAtendimento(input);
+    await this.db.query(`
+      UPDATE dna_work.candidato SET
+        nome = $2,
+        celular = $3,
+        cpf = COALESCE($4, cpf),
+        email = COALESCE($5, email),
+        cep = COALESCE($6, cep),
+        sexo = COALESCE($7, sexo),
+        escola = COALESCE($8, escola),
+        atendimento = coalesce(atendimento, '{}'::jsonb) || $9::jsonb
+      WHERE id_candidato = $1
+    `, [id, input.nome.trim(), fones[0], cpf || null, input.email?.trim().toLowerCase() || null, cep, sexo, escola, JSON.stringify(dados)]);
+    await this.db.query(`
+      UPDATE dna_work.processo_seletivo
+      SET atendimento = coalesce(atendimento, '{}'::jsonb) || $2::jsonb
+      WHERE id_candidato = $1
+        AND etapa NOT IN ('contratado', 'reprovado', 'desistente')
+    `, [id, JSON.stringify(dados)]);
+    return { id_candidato: id, nome: input.nome.trim(), celular: fones[0], deal_id: input.deal_id ?? null, atualizado: true };
+  }
+
   async receberAtendimento(input: Atendimento) {
     const vaga = await this.vagaDoAtendimento(input);
     const candidato = await this.criarCandidato(input);
