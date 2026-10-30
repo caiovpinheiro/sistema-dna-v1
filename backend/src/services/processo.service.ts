@@ -97,6 +97,31 @@ export class ProcessoService {
     }
   }
 
+  async buscarCandidato(filtro: { telefone?: string; cpf?: string; dealId?: string }) {
+    const cpf = filtro.cpf ? onlyDigits(filtro.cpf) : "";
+    if (cpf && !isValidCpf(cpf)) throw new AppError(422, "CPF_INVALIDO", "CPF inválido.");
+    const fones = filtro.telefone ? telefones(filtro.telefone) : [];
+    if (!cpf && fones.length === 0 && !filtro.dealId?.trim()) {
+      throw new AppError(422, "FILTRO_OBRIGATORIO", "Informe o telefone, o CPF ou o dealId.");
+    }
+    let id = cpf || fones.length ? await this.candidatoDoAtendimento(cpf, fones) : null;
+    if (!id && filtro.dealId?.trim()) {
+      const porDeal = await one<{ id_candidato: string }>(this.db, `
+        SELECT id_candidato FROM dna_work.candidato
+        WHERE atendimento->>'deal_id' = $1
+        LIMIT 1
+      `, [filtro.dealId.trim()]);
+      id = porDeal?.id_candidato ?? null;
+    }
+    if (!id) return { existe: false };
+    const pessoa = await one<{ id_candidato: string; nome: string | null; celular: string | null; deal_id: string | null }>(this.db, `
+      SELECT id_candidato, nome, celular, atendimento->>'deal_id' AS deal_id
+      FROM dna_work.candidato
+      WHERE id_candidato = $1
+    `, [id]);
+    return { existe: true, id_candidato: pessoa?.id_candidato ?? id, nome: pessoa?.nome ?? null, celular: pessoa?.celular ?? null, deal_id: pessoa?.deal_id ?? null };
+  }
+
   async criarCandidato(input: Atendimento) {
     const fones = telefones(input.celular);
     const cpf = input.cpf ? onlyDigits(input.cpf) : "";

@@ -156,6 +156,25 @@ export async function buildApp(context: AppContext): Promise<FastifyInstance> {
     const empresas = await pingServico(context.config.EMPRESAS_API_URL, context.config.SERVICE_TOKEN);
     return { success: true, data: empresas };
   });
+  app.get("/api/v1/servico/candidatos", async (request, reply) => {
+    if (!tokenDoServico(request.headers["x-service-token"], context.config.SERVICE_TOKEN)) {
+      return reply.code(401).send({ success: false, error: { code: "SERVICO_NEGADO", message: "Serviço não autorizado." } });
+    }
+    const query = request.query as { telefone?: string; celular?: string; cpf?: string; dealId?: string; deal_id?: string };
+    try {
+      const data = await services.processos.buscarCandidato({
+        telefone: query.telefone || query.celular,
+        cpf: query.cpf,
+        dealId: query.dealId || query.deal_id,
+      });
+      return { success: true, data, meta: {} };
+    } catch (error) {
+      if (error instanceof AppError) {
+        return reply.code(error.statusCode).send({ success: false, error: { code: error.code, message: error.message, details: error.details } });
+      }
+      throw error;
+    }
+  });
   app.post("/api/v1/servico/candidatos", async (request, reply) => {
     if (!tokenDoServico(request.headers["x-service-token"], context.config.SERVICE_TOKEN)) {
       return reply.code(401).send({ success: false, error: { code: "SERVICO_NEGADO", message: "Serviço não autorizado." } });
