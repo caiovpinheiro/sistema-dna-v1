@@ -41,7 +41,7 @@ export function ProcessosPage() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold tracking-tight text-white">Processos</h1>
-          <p className="text-sm text-slate-400">A origem fica no processo, não no cadastro do candidato.</p>
+          <p className="text-sm text-slate-400">Quem entra pelo atendimento fica marcado como captado pela DNAWORK. Quem a empresa envia fica separado da contratação.</p>
         </div>
         <Link to="/processos/novo"><Button>Novo processo</Button></Link>
       </div>
@@ -49,8 +49,8 @@ export function ProcessosPage() {
         <Input aria-label="Nome do candidato" placeholder="Nome do candidato" defaultValue={params.get("nome") ?? ""} onBlur={(event) => update("nome", event.target.value)} className="max-w-xs" />
         <Select aria-label="Origem" defaultValue={params.get("origem") ?? ""} onChange={(event) => update("origem", event.target.value)} className="max-w-48">
           <option value="">Origem</option>
-          <option value="dnawork">DNAWORK</option>
-          <option value="empresa">Empresa</option>
+          <option value="dnawork">Captado pela DNAWORK</option>
+          <option value="empresa">Enviado pela empresa</option>
         </Select>
         <Select aria-label="Etapa" defaultValue={params.get("etapa") ?? ""} onChange={(event) => update("etapa", event.target.value)} className="max-w-56">
           <option value="">Etapa</option>
@@ -96,7 +96,7 @@ function Lista({ linhas }: { linhas: Row[] }) {
               <td><Link to={`/processos/${item.id}`}>{item.candidato_nome}</Link></td>
               <td>{item.empresa_nome}</td>
               <td>{item.cargo}</td>
-              <td>{origemLabel[item.origem]}</td>
+              <td className={item.origem === "dnawork" ? "font-medium text-cyan-300" : "text-slate-300"}>{origemLabel[item.origem]}</td>
               <td>{etapaLabel[item.etapa]}</td>
               <td className="tabular-nums">{dateBr(item.data_recebimento)}</td>
               <td className="tabular-nums">{dateBr(item.data_encaminhamento)}</td>

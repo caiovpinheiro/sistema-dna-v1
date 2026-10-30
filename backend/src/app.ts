@@ -34,6 +34,7 @@ import { AcessoService } from "./services/acesso.service.js";
 import { VagaService } from "./services/vaga.service.js";
 import { CadastroService } from "./services/cadastro.service.js";
 import { TriagemService } from "./services/triagem.service.js";
+import { normalizarAtendimento } from "./lib/atendimento.js";
 import { atendimentoSchema } from "./schemas/processo.js";
 
 export type AppContext = {
@@ -159,7 +160,7 @@ export async function buildApp(context: AppContext): Promise<FastifyInstance> {
     if (!tokenDoServico(request.headers["x-service-token"], context.config.SERVICE_TOKEN)) {
       return reply.code(401).send({ success: false, error: { code: "SERVICO_NEGADO", message: "Serviço não autorizado." } });
     }
-    const corpo = atendimentoSchema.safeParse(request.body);
+    const corpo = atendimentoSchema.safeParse(normalizarAtendimento(request.body));
     if (!corpo.success) {
       return reply.code(422).send({ success: false, error: { code: "VALIDACAO", message: corpo.error.issues[0]?.message ?? "Dados inválidos.", details: corpo.error.issues } });
     }

@@ -1,6 +1,7 @@
 import type { Pool } from "pg";
 import { randomUUID } from "node:crypto";
 import { AppError } from "../lib/errors.js";
+import { cepCadastro, escolaridadeCadastro, sexoCadastro } from "../lib/atendimento.js";
 import { etapaInicial, podeMover } from "../lib/processo.js";
 import { isValidCpf, onlyDigits } from "../lib/normalize.js";
 import { CandidatoRepository } from "../repositories/candidato.repository.js";
@@ -15,6 +16,24 @@ function telefones(valor: string) {
   if ((digitos.length === 12 || digitos.length === 13) && digitos.startsWith("55")) digitos = digitos.slice(2);
   if (digitos.length < 10 || digitos.length > 11) throw new AppError(422, "TELEFONE_INVALIDO", "Informe o celular com DDD.");
   return [digitos, `55${digitos}`];
+}
+
+function dadosAtendimento(input: Atendimento): Record<string, string> {
+  const dados: Record<string, string> = { captado_por: "dnawork" };
+  const add = (chave: string, valor: string | null | undefined) => {
+    const texto = valor?.trim();
+    if (texto) dados[chave] = texto.replaceAll("\\n", "\n");
+  };
+  add("resumo_cv", input.resumo_cv);
+  add("resumo_entrevista", input.resumo_entrevista);
+  add("descricao_vaga", input.descricao_vaga);
+  add("teste_comportamental", input.teste_comportamental);
+  add("info_conducao", input.info_conducao);
+  add("escolaridade", escolaridadeCadastro(input.escolaridade) ?? undefined);
+  add("idade", input.idade);
+  add("tipo_de_vaga", input.tipo_de_vaga);
+  add("deal_id", input.deal_id);
+  return dados;
 }
 
 function hojeSp() {
@@ -84,19 +103,34 @@ export class ProcessoService {
     if (cpf && !isValidCpf(cpf)) throw new AppError(422, "CPF_INVALIDO", "CPF inválido.");
     const vaga = await this.vagaDoAtendimento(input);
     const data = input.data_recebimento || hojeSp();
-    const observacao = input.observacao?.trim() || "Entrada pelo atendimento.";
+    const observacao = "Captado pela DNAWORK no atendimento.";
+    const cep = cepCadastro(input.cep);
+    const sexo = sexoCadastro(input.sexo);
+    const escola = escolaridadeCadastro(input.escolaridade);
     let idCandidato = await this.candidatoDoAtendimento(cpf, fones);
     let candidatoNovo = false;
     if (!idCandidato) {
       idCandidato = randomUUID();
       candidatoNovo = true;
       await this.db.query(`
-        INSERT INTO dna_work.candidato (id_candidato, nome, cpf, celular, email, datacadastro, colaborador, obs)
-        VALUES ($1, $2, $3, $4, $5, $6, 0, $7)
-      `, [idCandidato, input.nome.trim(), cpf || null, fones[0], input.email?.trim().toLowerCase() || null, data.replaceAll("-", "/"), observacao]);
+        INSERT INTO dna_work.candidato (id_candidato, nome, cpf, celular, email, cep, sexo, escola, datacadastro, colaborador, obs)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 0, $10)
+      `, [idCandidato, input.nome.trim(), cpf || null, fones[0], input.email?.trim().toLowerCase() || null, cep, sexo, escola, data.replaceAll("-", "/"), observacao]);
+    } else {
+      await this.db.query(`
+        UPDATE dna_work.candidato SET
+          cep = CASE WHEN cep IS NULL OR btrim(cep) = '' THEN $2 ELSE cep END,
+          sexo = CASE WHEN sexo IS NULL OR btrim(sexo) = '' THEN $3 ELSE sexo END,
+          escola = CASE WHEN escola IS NULL OR btrim(escola) = '' THEN $4 ELSE escola END,
+          email = CASE WHEN email IS NULL OR btrim(email) = '' THEN $5 ELSE email END,
+          celular = CASE WHEN celular IS NULL OR btrim(celular) = '' THEN $6 ELSE celular END
+        WHERE id_candidato = $1
+      `, [idCandidato, cep, sexo, escola, input.email?.trim().toLowerCase() || null, fones[0]]);
     }
+    const dados = dadosAtendimento(input);
     const aberto = await this.repo.aberto(this.db, idCandidato, vaga.id_vaga);
     if (aberto) {
+      await this.repo.gravarAtendimento(this.db, aberto.id, dados);
       return { id: aberto.id, id_candidato: idCandidato, id_vaga: vaga.id_vaga, id_empresa: vaga.id_empresa, origem: "dnawork", etapa: aberto.etapa, criado: false, candidato_novo: candidatoNovo };
     }
     try {
@@ -110,11 +144,15 @@ export class ProcessoService {
         etapa: "recebido",
         observacao,
       });
+      await this.repo.gravarAtendimento(this.db, id, dados);
       return { id, id_candidato: idCandidato, id_vaga: vaga.id_vaga, id_empresa: vaga.id_empresa, origem: "dnawork" as const, etapa: "recebido" as const, criado: true, candidato_novo: candidatoNovo };
     } catch (error) {
       if ((error as { code?: string }).code === "23505") {
         const existente = await this.repo.aberto(this.db, idCandidato, vaga.id_vaga);
-        if (existente) return { id: existente.id, id_candidato: idCandidato, id_vaga: vaga.id_vaga, id_empresa: vaga.id_empresa, origem: "dnawork", etapa: existente.etapa, criado: false, candidato_novo: candidatoNovo };
+        if (existente) {
+          await this.repo.gravarAtendimento(this.db, existente.id, dados);
+          return { id: existente.id, id_candidato: idCandidato, id_vaga: vaga.id_vaga, id_empresa: vaga.id_empresa, origem: "dnawork", etapa: existente.etapa, criado: false, candidato_novo: candidatoNovo };
+        }
       }
       throw error;
     }
@@ -130,12 +168,7 @@ export class ProcessoService {
     }
     let empresaId = input.id_empresa ?? "";
     if (!empresaId && input.empresa) {
-      const empresa = await one<{ id_empresa: string }>(this.db, `
-        SELECT id_empresa FROM dna_work.empresa
-        WHERE nome_fantasia ILIKE $1 OR razao_social ILIKE $1
-        ORDER BY CASE WHEN status = 1 THEN 0 ELSE 1 END, nome_fantasia
-        LIMIT 1
-      `, [input.empresa.trim()]);
+      const empresa = await this.empresaPorNome(input.empresa);
       if (!empresa) throw new AppError(404, "EMPRESA_NAO_ENCONTRADA", "Empresa não encontrada.");
       empresaId = empresa.id_empresa;
     }
@@ -150,6 +183,30 @@ export class ProcessoService {
     `, [empresaId, input.cargo.trim(), `%${input.cargo.trim()}%`]);
     if (!vaga?.id_empresa) throw new AppError(404, "VAGA_NAO_ENCONTRADA", "Não há vaga com esse cargo nesta empresa.");
     return vaga;
+  }
+
+  private async empresaPorNome(nome: string) {
+    const bruto = nome.trim();
+    const partes = bruto.split(/\s+-\s+/).map((parte) => parte.trim()).filter((parte) => parte.length >= 3);
+    const principal = partes[0] ?? bruto;
+    const complemento = partes[1] ?? "";
+    return one<{ id_empresa: string }>(this.db, `
+      SELECT id_empresa FROM dna_work.empresa
+      WHERE nome_fantasia ILIKE $1 OR razao_social ILIKE $1
+         OR nome_fantasia ILIKE $2 OR razao_social ILIKE $2
+         OR ($4 <> '' AND (
+              (nome_fantasia ILIKE $3 AND nome_fantasia ILIKE $4)
+           OR (razao_social ILIKE $3 AND razao_social ILIKE $4)
+           OR ((coalesce(nome_fantasia, '') || ' ' || coalesce(razao_social, '')) ILIKE $3
+               AND (coalesce(nome_fantasia, '') || ' ' || coalesce(razao_social, '')) ILIKE $4)
+         ))
+      ORDER BY
+        CASE WHEN nome_fantasia ILIKE $1 OR razao_social ILIKE $1 THEN 0
+             WHEN nome_fantasia ILIKE $2 OR razao_social ILIKE $2 THEN 1
+             ELSE 2 END,
+        CASE WHEN status = 1 THEN 0 ELSE 1 END
+      LIMIT 1
+    `, [bruto, `%${bruto}%`, `%${principal}%`, complemento ? `%${complemento}%` : ""]);
   }
 
   private async candidatoDoAtendimento(cpf: string, fones: string[]) {

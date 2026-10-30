@@ -45,6 +45,17 @@ export const atendimentoSchema = z.object({
   cargo: z.string().trim().nullish(),
   data_recebimento: isoDateSchema.nullish(),
   observacao: z.string().trim().max(500).nullish(),
+  cep: z.string().trim().max(12).nullish(),
+  sexo: z.string().trim().max(20).nullish(),
+  escolaridade: z.string().trim().max(80).nullish(),
+  idade: z.string().trim().max(10).nullish(),
+  tipo_de_vaga: z.string().trim().max(40).nullish(),
+  resumo_cv: z.string().trim().max(20000).nullish(),
+  resumo_entrevista: z.string().trim().max(20000).nullish(),
+  descricao_vaga: z.string().trim().max(4000).nullish(),
+  teste_comportamental: z.string().trim().max(4000).nullish(),
+  info_conducao: z.string().trim().max(8000).nullish(),
+  deal_id: z.string().trim().max(80).nullish(),
 });
 
 export type ProcessoCreate = z.infer<typeof processoCreateSchema>;

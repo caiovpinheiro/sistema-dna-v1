@@ -17,6 +17,7 @@ export type ProcessoRow = {
   etapa: Etapa;
   id_contratacao: number | null;
   criado_em: string;
+  atendimento: Record<string, string> | null;
 };
 
 export type MovimentoRow = {
@@ -32,7 +33,7 @@ const SELECT = `
          p.id_vaga, v.cargo, p.origem,
          to_char(p.data_recebimento, 'YYYY-MM-DD') AS data_recebimento,
          to_char(p.data_encaminhamento, 'YYYY-MM-DD') AS data_encaminhamento,
-         p.etapa, p.id_contratacao,
+         p.etapa, p.id_contratacao, p.atendimento,
          to_char(p.criado_em AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD"T"HH24:MI') AS criado_em
   FROM dna_work.processo_seletivo p
   LEFT JOIN dna_work.candidato c ON c.id_candidato = p.id_candidato
@@ -60,6 +61,15 @@ export class ProcessoRepository {
     );
     await this.movimento(db, id, input.etapa, input.observacao);
     return id;
+  }
+
+  async gravarAtendimento(db: Db, id: string, dados: Record<string, string>): Promise<void> {
+    await db.query(
+      `UPDATE dna_work.processo_seletivo
+       SET atendimento = coalesce(atendimento, '{}'::jsonb) || $2::jsonb
+       WHERE id = $1`,
+      [id, JSON.stringify(dados)],
+    );
   }
 
   async movimento(db: Db, idProcesso: string, etapa: Etapa, observacao: string | null): Promise<void> {

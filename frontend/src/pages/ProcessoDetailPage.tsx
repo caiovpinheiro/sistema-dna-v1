@@ -20,6 +20,16 @@ type Processo = {
   data_recebimento: string;
   data_encaminhamento: string | null;
   id_contratacao: number | null;
+  atendimento: {
+    resumo_cv?: string;
+    resumo_entrevista?: string;
+    descricao_vaga?: string;
+    teste_comportamental?: string;
+    info_conducao?: string;
+    escolaridade?: string;
+    idade?: string;
+    tipo_de_vaga?: string;
+  } | null;
   historico: Array<{ id: string; etapa: string; observacao: string | null; criado_em: string }>;
 };
 
@@ -46,7 +56,7 @@ export function ProcessoDetailPage() {
             <Link className="text-cyan-300" to={`/empresas/${data.id_empresa}`}>{data.empresa_nome}</Link>
             {" · "}
             <Link className="text-cyan-300" to={`/vagas/${data.id_vaga}`}>{data.cargo}</Link>
-            {" · "}{origemLabel[data.origem]}
+            {" · "}<span className={data.origem === "dnawork" ? "text-cyan-300" : ""}>{origemLabel[data.origem]}</span>
           </p>
         </div>
         {aberto ? <Link to={`/contratacoes/nova?empresa=${data.id_empresa}&vaga=${data.id_vaga}&candidato=${data.id_candidato}&processo=${data.id}`}><Button>Contratar</Button></Link> : null}
@@ -72,6 +82,21 @@ export function ProcessoDetailPage() {
         {!aberto && data.etapa !== "contratado" ? <p className="text-sm text-slate-400">Processo encerrado como {etapaLabel[data.etapa].toLowerCase()}.</p> : null}
         {data.id_contratacao ? <Link className="text-sm font-semibold text-cyan-300" to={`/contratacoes/${data.id_contratacao}`}>Abrir contratação {data.id_contratacao}</Link> : null}
       </div>
+      {data.atendimento?.resumo_cv ? <Texto titulo="Currículo do atendimento" texto={data.atendimento.resumo_cv} /> : null}
+      {data.atendimento?.resumo_entrevista ? <Texto titulo="Resumo da entrevista" texto={data.atendimento.resumo_entrevista} /> : null}
+      {data.atendimento?.teste_comportamental ? <Texto titulo="Teste comportamental" texto={data.atendimento.teste_comportamental} /> : null}
+      {data.atendimento?.info_conducao ? <Texto titulo="Condução" texto={data.atendimento.info_conducao} /> : null}
+      {data.atendimento?.descricao_vaga || data.atendimento?.escolaridade || data.atendimento?.idade || data.atendimento?.tipo_de_vaga ? (
+        <section className="rounded-xl bg-[#12141a] p-4 ring-1 ring-white/10">
+          <h2 className="text-sm font-semibold text-white">Dados do atendimento</h2>
+          <div className="mt-2 grid gap-1 text-sm text-slate-300">
+            {data.atendimento.descricao_vaga ? <p className="whitespace-pre-wrap">{data.atendimento.descricao_vaga}</p> : null}
+            {data.atendimento.escolaridade ? <p>Escolaridade: {data.atendimento.escolaridade}</p> : null}
+            {data.atendimento.idade ? <p>Idade: {data.atendimento.idade}</p> : null}
+            {data.atendimento.tipo_de_vaga ? <p>Tipo de vaga: {data.atendimento.tipo_de_vaga}</p> : null}
+          </div>
+        </section>
+      ) : null}
       <section className="rounded-xl bg-[#12141a] p-4 ring-1 ring-white/10">
         <h2 className="text-sm font-semibold text-white">Datas</h2>
         <p className="mt-2 text-sm text-slate-300">Recebido em {dateBr(data.data_recebimento)}. Encaminhado em {dateBr(data.data_encaminhamento)}.</p>
@@ -88,5 +113,14 @@ export function ProcessoDetailPage() {
         </ol>
       </section>
     </div>
+  );
+}
+
+function Texto({ titulo, texto }: { titulo: string; texto: string }) {
+  return (
+    <section className="rounded-xl bg-[#12141a] p-4 ring-1 ring-white/10">
+      <h2 className="text-sm font-semibold text-white">{titulo}</h2>
+      <p className="mt-2 whitespace-pre-wrap text-sm text-slate-300">{texto}</p>
+    </section>
   );
 }

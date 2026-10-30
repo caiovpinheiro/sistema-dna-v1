@@ -39,7 +39,7 @@ type Dashboard = {
 
 const tooltip = { background: "#15181e", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, color: "#e7e9ee", fontSize: 12 };
 const eixo = { stroke: "#8b95a7", fontSize: 11, tickLine: false, axisLine: false } as const;
-const origemNome: Record<string, string> = { dnawork: "DNAWORK", empresa: "Empresa", nao_identificado: "Não identificado" };
+const origemNome: Record<string, string> = { dnawork: "Captado pela DNAWORK", empresa: "Enviado pela empresa", nao_identificado: "Não identificado" };
 
 export function DashboardPage() {
   const [dias, setDias] = useState<number | null>(30);
