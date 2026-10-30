@@ -97,25 +97,24 @@ export class ProcessoService {
     }
   }
 
-  async receberAtendimento(input: Atendimento) {
+  async criarCandidato(input: Atendimento) {
     const fones = telefones(input.celular);
     const cpf = input.cpf ? onlyDigits(input.cpf) : "";
     if (cpf && !isValidCpf(cpf)) throw new AppError(422, "CPF_INVALIDO", "CPF inválido.");
-    const vaga = await this.vagaDoAtendimento(input);
     const data = input.data_recebimento || hojeSp();
     const observacao = "Captado pela DNAWORK no atendimento.";
     const cep = cepCadastro(input.cep);
     const sexo = sexoCadastro(input.sexo);
     const escola = escolaridadeCadastro(input.escolaridade);
     let idCandidato = await this.candidatoDoAtendimento(cpf, fones);
-    let candidatoNovo = false;
+    let criado = false;
     if (!idCandidato) {
       idCandidato = randomUUID();
-      candidatoNovo = true;
+      criado = true;
       await this.db.query(`
-        INSERT INTO dna_work.candidato (id_candidato, nome, cpf, celular, email, cep, sexo, escola, datacadastro, colaborador, obs)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 0, $10)
-      `, [idCandidato, input.nome.trim(), cpf || null, fones[0], input.email?.trim().toLowerCase() || null, cep, sexo, escola, data.replaceAll("-", "/"), observacao]);
+        INSERT INTO dna_work.candidato (id_candidato, nome, cpf, celular, email, cep, sexo, escola, datacadastro, colaborador, obs, atendimento)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 0, $10, $11::jsonb)
+      `, [idCandidato, input.nome.trim(), cpf || null, fones[0], input.email?.trim().toLowerCase() || null, cep, sexo, escola, data.replaceAll("-", "/"), observacao, JSON.stringify(dadosAtendimento(input))]);
     } else {
       await this.db.query(`
         UPDATE dna_work.candidato SET
@@ -123,15 +122,25 @@ export class ProcessoService {
           sexo = CASE WHEN sexo IS NULL OR btrim(sexo) = '' THEN $3 ELSE sexo END,
           escola = CASE WHEN escola IS NULL OR btrim(escola) = '' THEN $4 ELSE escola END,
           email = CASE WHEN email IS NULL OR btrim(email) = '' THEN $5 ELSE email END,
-          celular = CASE WHEN celular IS NULL OR btrim(celular) = '' THEN $6 ELSE celular END
+          celular = CASE WHEN celular IS NULL OR btrim(celular) = '' THEN $6 ELSE celular END,
+          atendimento = coalesce(atendimento, '{}'::jsonb) || $7::jsonb
         WHERE id_candidato = $1
-      `, [idCandidato, cep, sexo, escola, input.email?.trim().toLowerCase() || null, fones[0]]);
+      `, [idCandidato, cep, sexo, escola, input.email?.trim().toLowerCase() || null, fones[0], JSON.stringify(dadosAtendimento(input))]);
     }
+    return { id_candidato: idCandidato, nome: input.nome.trim(), celular: fones[0], criado, captado_por: "dnawork" as const };
+  }
+
+  async receberAtendimento(input: Atendimento) {
+    const vaga = await this.vagaDoAtendimento(input);
+    const candidato = await this.criarCandidato(input);
+    const idCandidato = candidato.id_candidato;
+    const data = input.data_recebimento || hojeSp();
+    const observacao = "Captado pela DNAWORK no atendimento.";
     const dados = dadosAtendimento(input);
     const aberto = await this.repo.aberto(this.db, idCandidato, vaga.id_vaga);
     if (aberto) {
       await this.repo.gravarAtendimento(this.db, aberto.id, dados);
-      return { id: aberto.id, id_candidato: idCandidato, id_vaga: vaga.id_vaga, id_empresa: vaga.id_empresa, origem: "dnawork", etapa: aberto.etapa, criado: false, candidato_novo: candidatoNovo };
+      return { id: aberto.id, id_candidato: idCandidato, id_vaga: vaga.id_vaga, id_empresa: vaga.id_empresa, origem: "dnawork", etapa: aberto.etapa, criado: false, candidato_novo: candidato.criado };
     }
     try {
       const id = await this.repo.insert(this.db, {
@@ -145,13 +154,13 @@ export class ProcessoService {
         observacao,
       });
       await this.repo.gravarAtendimento(this.db, id, dados);
-      return { id, id_candidato: idCandidato, id_vaga: vaga.id_vaga, id_empresa: vaga.id_empresa, origem: "dnawork" as const, etapa: "recebido" as const, criado: true, candidato_novo: candidatoNovo };
+      return { id, id_candidato: idCandidato, id_vaga: vaga.id_vaga, id_empresa: vaga.id_empresa, origem: "dnawork" as const, etapa: "recebido" as const, criado: true, candidato_novo: candidato.criado };
     } catch (error) {
       if ((error as { code?: string }).code === "23505") {
         const existente = await this.repo.aberto(this.db, idCandidato, vaga.id_vaga);
         if (existente) {
           await this.repo.gravarAtendimento(this.db, existente.id, dados);
-          return { id: existente.id, id_candidato: idCandidato, id_vaga: vaga.id_vaga, id_empresa: vaga.id_empresa, origem: "dnawork", etapa: existente.etapa, criado: false, candidato_novo: candidatoNovo };
+          return { id: existente.id, id_candidato: idCandidato, id_vaga: vaga.id_vaga, id_empresa: vaga.id_empresa, origem: "dnawork", etapa: existente.etapa, criado: false, candidato_novo: candidato.criado };
         }
       }
       throw error;

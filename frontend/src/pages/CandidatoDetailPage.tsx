@@ -18,6 +18,17 @@ type Candidate = {
   cidade: string | null; estado: string | null; curso: string | null; nome_escola: string | null; periodo: string | null;
   ctps: string | null; datanascimento: string | null; ultimaalteracao: string | null; curriculo: Curriculo;
   vinculo?: "dna" | "empresa"; empresa_nome?: string | null;
+  atendimento?: {
+    captado_por?: string;
+    resumo_cv?: string;
+    resumo_entrevista?: string;
+    teste_comportamental?: string;
+    info_conducao?: string;
+    descricao_vaga?: string;
+    escolaridade?: string;
+    idade?: string;
+    tipo_de_vaga?: string;
+  } | null;
 };
 
 function idade(data: string | null) {
@@ -50,9 +61,12 @@ export function CandidatoDetailPage() {
           <p className="text-sm text-slate-500">{data.email} · {formatPhone(data.celular || data.telefonefixo)}</p>
           <p className="text-sm text-slate-500">{endereco || "Endereço não informado"}</p>
           <p className="text-xs text-slate-400">Atualização {dateBr(data.ultimaalteracao)}{cv.origem ? ` · Origem: ${cv.origem}` : ""} · {data.vinculo === "empresa" ? `Empresa ${data.empresa_nome || "outra"}` : "Candidato DNA"}</p>
+          {data.atendimento?.captado_por === "dnawork" ? <p className="mt-1 text-sm font-semibold text-cyan-700">Captado pela DNAWORK</p> : null}
         </div>
         <div className="flex gap-2"><Link to={`/processos/novo?candidato=${id}`}><Button variant="secondary">Novo processo</Button></Link><Link to={`/candidatos/${id}/editar`}><Button variant="secondary">Editar</Button></Link></div>
       </div>
+      {data.atendimento?.resumo_cv ? <Card><h2 className="mb-2 font-bold">Currículo do atendimento</h2><p className="whitespace-pre-wrap text-sm text-slate-600">{data.atendimento.resumo_cv}</p></Card> : null}
+      {data.atendimento?.resumo_entrevista ? <Card><h2 className="mb-2 font-bold">Resumo da entrevista</h2><p className="whitespace-pre-wrap text-sm text-slate-600">{data.atendimento.resumo_entrevista}</p></Card> : null}
       <div className="grid gap-4 md:grid-cols-3">
         <Card><p className="text-xs text-slate-500">Objetivo</p><p className="font-semibold">{cv.objetivo || "Não informado"}</p></Card>
         <Card><p className="text-xs text-slate-500">Último cargo</p><p className="font-semibold">{cv.ultimo_cargo || "Sem experiência"}</p></Card>

@@ -47,6 +47,7 @@ export function presentCandidato(row: CandidatoRow, detail = false) {
     nome_conta: detail ? row.nome_conta : undefined,
     tipo_chave_pix: detail ? row.tipo_chave_pix : undefined,
     chave_pix: detail ? row.chave_pix : undefined,
+    atendimento: detail ? row.atendimento : undefined,
   };
 }
 

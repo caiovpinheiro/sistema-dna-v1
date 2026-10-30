@@ -123,7 +123,7 @@ export async function buildApp(context: AppContext): Promise<FastifyInstance> {
   app.addHook("onRequest", async (request) => {
     const path = request.url.split("?")[0];
     if (request.method === "OPTIONS") return;
-    if (path === "/health" || path === "/api/v1/auth/login" || path === "/api/v1/zapsign/webhook" || path === "/api/v1/asaas/webhook" || path === "/api/v1/servico/ping" || path === "/api/v1/servico/empresas" || path === "/api/v1/servico/processos" || path.startsWith("/docs")) return;
+    if (path === "/health" || path === "/api/v1/auth/login" || path === "/api/v1/zapsign/webhook" || path === "/api/v1/asaas/webhook" || path === "/api/v1/servico/ping" || path === "/api/v1/servico/empresas" || path === "/api/v1/servico/processos" || path === "/api/v1/servico/candidatos" || path.startsWith("/docs")) return;
     if (path.startsWith("/api/")) await app.authenticate(request);
     if (!path.startsWith("/api/v1/") || path.startsWith("/api/v1/auth/")) return;
     const sessao = await services.acesso.daSessao(request.user.sub, request.user.email);
@@ -155,6 +155,24 @@ export async function buildApp(context: AppContext): Promise<FastifyInstance> {
     }
     const empresas = await pingServico(context.config.EMPRESAS_API_URL, context.config.SERVICE_TOKEN);
     return { success: true, data: empresas };
+  });
+  app.post("/api/v1/servico/candidatos", async (request, reply) => {
+    if (!tokenDoServico(request.headers["x-service-token"], context.config.SERVICE_TOKEN)) {
+      return reply.code(401).send({ success: false, error: { code: "SERVICO_NEGADO", message: "Serviço não autorizado." } });
+    }
+    const corpo = atendimentoSchema.safeParse(normalizarAtendimento(request.body));
+    if (!corpo.success) {
+      return reply.code(422).send({ success: false, error: { code: "VALIDACAO", message: corpo.error.issues[0]?.message ?? "Dados inválidos.", details: corpo.error.issues } });
+    }
+    try {
+      const data = await services.processos.criarCandidato(corpo.data);
+      return reply.code(data.criado ? 201 : 200).send({ success: true, data, meta: {} });
+    } catch (error) {
+      if (error instanceof AppError) {
+        return reply.code(error.statusCode).send({ success: false, error: { code: error.code, message: error.message, details: error.details } });
+      }
+      throw error;
+    }
   });
   app.post("/api/v1/servico/processos", async (request, reply) => {
     if (!tokenDoServico(request.headers["x-service-token"], context.config.SERVICE_TOKEN)) {

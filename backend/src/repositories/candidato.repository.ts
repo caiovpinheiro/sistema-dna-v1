@@ -42,6 +42,7 @@ export type CandidatoRow = {
   tipo_chave_pix: string | null;
   chave_pix: string | null;
   pcd: string | null;
+  atendimento: Record<string, string> | null;
   empresa_nome?: string | null;
 };
 
@@ -50,7 +51,8 @@ const COLUMNS = `
   c.ultimaalteracao, c.telefonefixo, c.celular, c.email, c.logradouro, c.numero, c.complemento,
   c.bairro, c.cidade, c.estado, c.cep, c.escola, c.nome_escola, c.modalidadecurso, c.curso,
   c.periodo, c.semestre, c.ctps, c.sexo, c.estadocivil, c.obs, c.id_empresa, c.colaborador,
-  c.contador, c.banco, c.agencia, c.numero_conta, c.nome_conta, c.tipo_chave_pix, c.chave_pix, c.pcd
+  c.contador, c.banco, c.agencia, c.numero_conta, c.nome_conta, c.tipo_chave_pix, c.chave_pix, c.pcd,
+  c.atendimento
 `;
 
 const SORTS: Record<string, string> = {
