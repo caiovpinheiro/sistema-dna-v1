@@ -31,7 +31,6 @@ const termoLinks: LinkItem[] = [
 const vagaLinks: LinkItem[] = [
   { id: "vagas", to: "/vagas", label: "Consultar", end: true },
   { id: "vagas-modelos", to: "/vagas/modelos", label: "Consultar Modelos", end: true },
-  { id: "vagas-modelo", to: "/vagas/modelos/novo", label: "Cadastrar Modelo" },
 ];
 
 const instituicaoLinks: LinkItem[] = [
