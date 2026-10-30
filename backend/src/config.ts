@@ -51,6 +51,13 @@ const envSchema = z.object({
   DNA_WORK_DB_PASS: z.string().optional().default(""),
   DNA_WORK_DB_NAME: z.string().optional().default(""),
   GOOGLE_MAPS_API_KEY: z.string().optional().default(""),
+  NOTION_TOKEN: z.string().optional().default(""),
+  // Sem valor, o sync automático do Notion só liga em produção, para o servidor local não gravar sozinho.
+  NOTION_SYNC_AUTO: z.string().optional().default(""),
+  NOTION_SYNC_DRY: z
+    .string()
+    .optional()
+    .transform((value) => value === "1" || value === "true"),
 });
 
 export type AppConfig = z.infer<typeof envSchema> & {

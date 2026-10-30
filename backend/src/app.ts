@@ -36,12 +36,18 @@ import { CadastroService } from "./services/cadastro.service.js";
 import { TriagemService } from "./services/triagem.service.js";
 import { normalizarAtendimento } from "./lib/atendimento.js";
 import { atendimentoSchema } from "./schemas/processo.js";
+import { NotionSyncService } from "./services/notion-sync.service.js";
+import { VagasAbertasSyncService } from "./services/vagas-abertas-sync.service.js";
+import { SyncCicloService } from "./services/sync-ciclo.service.js";
+import { agendarPorSlot } from "./lib/agenda-sync.js";
 
 export type AppContext = {
   config: AppConfig;
   db: Pool;
   capabilities: SchemaCapabilities;
   mysql?: MysqlPool | null;
+  /** Só o server.ts liga: roda o sync (vagas abertas + Notion) nos slots 00, 06, 12 e 18 de São Paulo. */
+  agendarSyncNotion?: boolean;
 };
 
 export async function buildApp(context: AppContext): Promise<FastifyInstance> {
@@ -118,6 +124,11 @@ export async function buildApp(context: AppContext): Promise<FastifyInstance> {
     acesso: new AcessoService(context.db, context.config),
     cadastro: new CadastroService(context.db, context.mysql ?? null, context.config),
     triagem: new TriagemService(context.mysql ?? null, context.config),
+    sync: new SyncCicloService(
+      new VagasAbertasSyncService(context.db, context.mysql ?? null, context.config, app.log),
+      new NotionSyncService(context.db, context.mysql ?? null, context.config, app.log),
+      app.log,
+    ),
   };
 
   app.addHook("onRequest", async (request) => {
@@ -139,6 +150,13 @@ export async function buildApp(context: AppContext): Promise<FastifyInstance> {
   });
 
   await registerRoutes(app, context.config, services, context.db);
+  if (context.agendarSyncNotion) {
+    const parar = agendarPorSlot(
+      (slot) => services.sync.executar(context.config.NOTION_SYNC_DRY, slot),
+      (error) => app.log.error({ erro: error instanceof Error ? error.message : String(error) }, "sync: ciclo falhou"),
+    );
+    app.addHook("onClose", async () => parar());
+  }
   const { pingServico, tokenDoServico } = await import("./lib/servico.js");
   app.get("/api/v1/servico/ping", async (request, reply) => {
     if (!tokenDoServico(request.headers["x-service-token"], context.config.SERVICE_TOKEN)) {

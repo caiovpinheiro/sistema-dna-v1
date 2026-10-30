@@ -5,6 +5,7 @@ import { AppError } from "../lib/errors.js";
 import { supabaseRest } from "../lib/supabase-rest.js";
 import { distanciaKm, geocodeCepServidor, rotuloDoCep, type Ponto } from "../lib/triagem-geo.js";
 import { horariosPorCodigo } from "../lib/triagem-horario.js";
+import { vagasDoNotion } from "../lib/triagem-notion.js";
 
 export type TipoVaga = "CLT" | "Estágio";
 
@@ -137,11 +138,12 @@ export class TriagemService {
   }
 
   async buscar(input: BuscaTriagem) {
-    const [origem, originLabel, vagas, horarios] = await Promise.all([
+    const [origem, originLabel, vagas, horarios, notion] = await Promise.all([
       this.origem(input),
       rotuloDoCep(input.cep),
       this.vagasComCoordenada(input.tipos),
       horariosPorCodigo(),
+      vagasDoNotion(this.config.NOTION_TOKEN),
     ]);
 
     const noRaio = vagas
@@ -171,17 +173,20 @@ export class TriagemService {
         if (lista.length ? !lista.some(passa) : !passa(undefined)) continue;
       }
       const salario = Number(vaga.salary_max) || Number(vaga.salary_min) || 0;
-      const horario = codigo ? horarios.get(codigo) ?? null : null;
+      // Código na página Operacional: horário e bairro saem do Notion; senão, webhook e jobs_enriched.
+      const doNotion = codigo ? notion.get(codigo) : undefined;
+      const horarioWebhook = codigo ? horarios.get(codigo) ?? null : null;
+      const schedules = doNotion?.horarios.length ? [...doNotion.horarios] : horarioWebhook ? [horarioWebhook] : [];
       candidatas.push({
         id: vaga.id,
         title: vaga.title?.trim() || "Vaga",
         company: vaga.company_name?.trim() || "",
-        location: vaga.location?.trim() || "",
+        location: doNotion?.local || vaga.location?.trim() || "",
         contractType: vaga.contract_type?.trim() || "",
         salaryLabel: salario > 0 ? moeda.format(salario) : "salário a combinar",
         hasBenefits: Boolean(vaga.benefits?.trim()),
-        schedule: horario,
-        schedules: horario ? [horario] : [],
+        schedule: schedules[0] ?? null,
+        schedules,
         distanceKm: Math.round(distancia * 10) / 10,
       });
     }

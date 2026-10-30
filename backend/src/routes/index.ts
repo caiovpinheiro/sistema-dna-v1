@@ -31,6 +31,7 @@ import type { VagaService } from "../services/vaga.service.js";
 import { LegadoService } from "../services/legado.service.js";
 import type { CadastroService } from "../services/cadastro.service.js";
 import type { TriagemService } from "../services/triagem.service.js";
+import type { SyncCicloService } from "../services/sync-ciclo.service.js";
 import { sessionCookie } from "../plugins/auth.js";
 
 const ok = <T>(data: T, meta: Record<string, unknown> = {}) => ({ success: true as const, data, meta });
@@ -50,6 +51,7 @@ type Services = {
   acesso: AcessoService;
   cadastro: CadastroService;
   triagem: TriagemService;
+  sync: SyncCicloService;
 };
 
 function idempotencyKey(header: string | string[] | undefined): string {
@@ -445,6 +447,13 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
   api.post("/api/v1/asaas/notas/:id/cancelar", {
     schema: { tags: ["asaas"], params: z.object({ id: z.string().uuid() }) },
   }, async (request) => ok(await services.asaas.cancelarNota(request.params.id)));
+  // Disparo manual do sync: vagas abertas e Notion (só administrador, pelo prefixo /configuracoes). Ignora o slot já rodado.
+  api.post("/api/v1/configuracoes/sync", {
+    schema: { tags: ["configuracoes"], querystring: z.object({ dry: z.enum(["0", "1", "true", "false"]).optional() }) },
+  }, async (request) => {
+    const dry = request.query.dry === "1" || request.query.dry === "true" || config.NOTION_SYNC_DRY;
+    return ok(await services.sync.executar(dry, "manual"));
+  });
   api.get("/api/v1/configuracoes/acessos", { schema: { tags: ["configuracoes"] } }, async () => ok(await services.acesso.listar()));
   api.patch("/api/v1/configuracoes/usuarios/:id", {
     schema: {

@@ -15,7 +15,8 @@ const capabilities = await loadCapabilities(db);
 if (capabilities.missing.length) {
   console.warn(`Migrations da V1 ainda não aplicadas: ${capabilities.missing.join(", ")}`);
 }
-const app = await buildApp({ config, db, capabilities, mysql });
+const agendarSyncNotion = config.NOTION_SYNC_AUTO ? config.NOTION_SYNC_AUTO === "true" : process.env.NODE_ENV === "production";
+const app = await buildApp({ config, db, capabilities, mysql, agendarSyncNotion });
 const host = process.env.NODE_ENV === "production" ? "0.0.0.0" : config.HOST;
 await app.listen({ port: config.PORT, host });
 
