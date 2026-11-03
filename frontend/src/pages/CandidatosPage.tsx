@@ -83,7 +83,7 @@ export function CandidatosPage() {
             <tbody>
               {lista.data.map((item) => (
                 <tr key={item.id_candidato} className="border-b border-slate-100 last:border-0 hover:bg-slate-50" onMouseEnter={(event) => preview.mostrar(item.id_candidato, event)} onMouseLeave={preview.esconder}>
-                  <td className="px-4 py-3 font-semibold"><Link className="text-cyan-800" to={`/candidatos/${item.id_candidato}`}>{item.nome}</Link></td>
+                  <td className="px-4 py-3 font-semibold"><Link className="text-cyan-800" to={`/candidatos/${item.id_candidato}`}>{item.nome?.trim() || "Sem nome"}</Link></td>
                   <td>{formatCpf(item.cpf)}</td>
                   <td>{item.email}<div className="text-slate-500">{formatPhone(item.celular)}</div></td>
                   <td>{[item.cidade, item.estado].filter(Boolean).join(" / ") || "—"}</td>

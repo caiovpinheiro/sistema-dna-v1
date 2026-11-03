@@ -57,7 +57,7 @@ const COLUMNS = `
 
 const SORTS: Record<string, string> = {
   nome: "c.nome",
-  datacadastro: "c.datacadastro",
+  datacadastro: "c.data_adicao",
   cidade: "c.cidade",
   email: "c.email",
 };
@@ -187,7 +187,7 @@ export class CandidatoRepository {
     if (query.cadastro_ate) add("c.datacadastro <= $#", isoToLegacy(query.cadastro_ate));
 
     const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
-    const order = sortClause(query.sort, query.order, SORTS, "c.nome");
+    const order = query.sort ? sortClause(query.sort, query.order, SORTS, "c.data_adicao") : "c.data_adicao DESC NULLS LAST";
     const totalRow = await one<{ total: number }>(db, `SELECT count(*)::int AS total FROM dna_work.candidato c ${clause}`, params);
     const rows = await many<CandidatoRow>(db, `
       SELECT ${COLUMNS}, coalesce(emp.nome_fantasia, emp.razao_social) AS empresa_nome
