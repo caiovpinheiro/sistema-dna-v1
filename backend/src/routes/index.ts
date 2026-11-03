@@ -459,7 +459,7 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
     schema: {
       tags: ["configuracoes"],
       params: z.object({ id: z.string().uuid() }),
-      body: z.object({ ativo: z.boolean(), paginas: z.array(z.string()) }),
+      body: z.object({ ativo: z.boolean(), paginas: z.array(z.string()), senha: z.string().trim().min(8).max(80).optional() }),
     },
   }, async (request) => ok(await services.acesso.salvar(request.params.id, request.body)));
 

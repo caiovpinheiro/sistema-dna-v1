@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 
@@ -14,9 +14,9 @@ export function ConfiguracoesPage() {
   const dados = acessos.data?.data;
   const usuario = dados?.usuarios.find((item) => item.id === escolhido) ?? null;
   const salvar = useMutation({
-    mutationFn: (input: { id: string; ativo: boolean; paginas: string[] }) => api<Painel>(`/api/v1/configuracoes/usuarios/${input.id}`, {
+    mutationFn: (input: { id: string; ativo: boolean; paginas: string[]; senha?: string }) => api<Painel>(`/api/v1/configuracoes/usuarios/${input.id}`, {
       method: "PATCH",
-      body: JSON.stringify({ ativo: input.ativo, paginas: input.paginas }),
+      body: JSON.stringify({ ativo: input.ativo, paginas: input.paginas, ...(input.senha ? { senha: input.senha } : {}) }),
     }),
     onSuccess: async () => { await client.invalidateQueries({ queryKey: ["acessos"] }); },
   });
@@ -48,7 +48,7 @@ export function ConfiguracoesPage() {
                 </li>
               ))}
             </ul>
-            {usuario ? <Editor key={usuario.id} usuario={usuario} paginas={dados.paginas} pendente={salvar.isPending} erro={salvar.error instanceof ApiError ? salvar.error.message : ""} onSave={(ativo, paginas) => salvar.mutate({ id: usuario.id, ativo, paginas })} /> : <p className="text-sm text-slate-400">Escolha uma pessoa para definir o acesso.</p>}
+            {usuario ? <Editor key={usuario.id} usuario={usuario} paginas={dados.paginas} pendente={salvar.isPending} erro={salvar.error instanceof ApiError ? salvar.error.message : ""} onSave={(ativo, paginas, senha) => salvar.mutate({ id: usuario.id, ativo, paginas, senha })} /> : <p className="text-sm text-slate-400">Escolha uma pessoa para definir o acesso.</p>}
           </div>
         </>
       ) : null}
@@ -70,24 +70,41 @@ function Editor({ usuario, paginas, pendente, erro, onSave }: {
   paginas: Pagina[];
   pendente: boolean;
   erro: string;
-  onSave: (ativo: boolean, paginas: string[]) => void;
+  onSave: (ativo: boolean, paginas: string[], senha?: string) => void;
 }) {
   const [ativo, setAtivo] = useState(usuario.ativo);
   const [marcadas, setMarcadas] = useState<string[]>(usuario.paginas);
+  const [senha, setSenha] = useState("");
+  const [aviso, setAviso] = useState("");
   const grupos = [...new Set(paginas.map((pagina) => pagina.grupo))];
   function trocar(id: string) {
     setMarcadas((atual) => atual.includes(id) ? atual.filter((item) => item !== id) : [...atual, id]);
   }
+  function enviar(event: FormEvent) {
+    event.preventDefault();
+    const nova = senha.trim();
+    if (nova && nova.length < 8) {
+      setAviso("A senha precisa ter pelo menos 8 caracteres.");
+      return;
+    }
+    setAviso("");
+    onSave(ativo, marcadas, nova || undefined);
+    setSenha("");
+  }
   return (
-    <form className="grid gap-4 rounded-xl bg-[#12141a] p-4 ring-1 ring-white/10" onSubmit={(event) => { event.preventDefault(); onSave(ativo, marcadas); }} key={usuario.id}>
+    <form className="grid gap-4 rounded-xl bg-[#12141a] p-4 ring-1 ring-white/10" onSubmit={enviar} key={usuario.id}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-sm font-semibold text-white">{usuario.nome}</h2>
           <p className="text-xs text-slate-400">{usuario.email}</p>
         </div>
-        <Button type="submit" disabled={pendente || usuario.admin}>Salvar</Button>
+        <Button type="submit" disabled={pendente}>Salvar</Button>
       </div>
-      {erro ? <p className="text-sm text-rose-300">{erro}</p> : null}
+      {erro || aviso ? <p className="text-sm text-rose-300">{aviso || erro}</p> : null}
+      <label className="grid gap-1 text-sm text-slate-200">
+        Nova senha
+        <input type="password" autoComplete="new-password" value={senha} onChange={(event) => setSenha(event.target.value)} placeholder="Deixe em branco para manter a atual" className="h-10 rounded-lg border border-white/10 bg-white/5 px-3 text-white" />
+      </label>
       {usuario.admin ? <p className="text-sm text-slate-300">O administrador usa todas as páginas. Essa conta não é limitada aqui.</p> : (
         <>
           <label className="flex items-center gap-2 text-sm text-slate-200">

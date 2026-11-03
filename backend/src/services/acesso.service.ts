@@ -1,4 +1,5 @@
 import type { Pool } from "pg";
+import { hash } from "@node-rs/argon2";
 import type { AppConfig } from "../config.js";
 import { AppError } from "../lib/errors.js";
 import { IDS_PAGINA, PAGINAS } from "../lib/paginas.js";
@@ -54,18 +55,28 @@ export class AcessoService {
     };
   }
 
-  async salvar(id: string, input: { ativo: boolean; paginas: string[] }) {
+  async salvar(id: string, input: { ativo: boolean; paginas: string[]; senha?: string }) {
     const usuario = await one<{ id: string; email: string; admin: boolean }>(this.db, `
       SELECT id, email, admin FROM dna_work.app_usuario WHERE id = $1
     `, [id]);
     if (!usuario) throw new AppError(404, "USUARIO_NAO_ENCONTRADO", "Usuário não encontrado.");
     const admin = usuario.admin || usuario.email.toLowerCase() === this.config.ADMIN_EMAIL.toLowerCase();
-    if (admin) throw new AppError(409, "ADMIN_PROTEGIDO", "O administrador mantém acesso a todas as páginas.");
+    const senha = input.senha?.trim();
+    if (senha && senha.length < 8) throw new AppError(422, "SENHA_CURTA", "A senha precisa ter pelo menos 8 caracteres.");
+    if (admin && !senha) throw new AppError(409, "ADMIN_PROTEGIDO", "O administrador mantém acesso a todas as páginas.");
+    const senhaHash = senha ? await hash(senha) : null;
+    if (admin) {
+      await this.db.query("UPDATE dna_work.app_usuario SET senha_hash = $2 WHERE id = $1", [id, senhaHash]);
+      return this.listar();
+    }
     const paginas = [...new Set(input.paginas.filter((pagina) => IDS_PAGINA.has(pagina)))];
     const client = await this.db.connect();
     try {
       await client.query("BEGIN");
-      await client.query("UPDATE dna_work.app_usuario SET ativo = $2 WHERE id = $1", [id, input.ativo]);
+      await client.query(
+        "UPDATE dna_work.app_usuario SET ativo = $2, senha_hash = COALESCE($3, senha_hash) WHERE id = $1",
+        [id, input.ativo, senhaHash],
+      );
       await client.query("DELETE FROM dna_work.app_usuario_pagina WHERE id_usuario = $1", [id]);
       for (const pagina of paginas) {
         await client.query("INSERT INTO dna_work.app_usuario_pagina (id_usuario, pagina) VALUES ($1, $2)", [id, pagina]);
