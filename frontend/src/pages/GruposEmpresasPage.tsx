@@ -4,6 +4,7 @@ import { useSearchParams } from "react-router-dom";
 import { Button, Card, Empty, Field, Input, Select, Textarea } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 import { formatCnpj } from "@/lib/format";
+import { cargoDoModelo, type CargoOpcao } from "@/lib/cargo";
 
 type Aba = "grupo" | "empresa" | "vaga";
 type Grupo = { id: string; nome: string; email: string | null; telefone: string | null };
@@ -28,6 +29,10 @@ const abas: Array<{ id: Aba; label: string }> = [
   { id: "empresa", label: "Empresa" },
   { id: "vaga", label: "Vaga" },
 ];
+
+function Aviso({ texto }: { texto: string }) {
+  return texto ? <p role="alert" className="text-sm font-semibold text-rose-600">{texto}</p> : null;
+}
 
 function limpar(values: Record<string, string>) {
   return Object.fromEntries(Object.entries(values).filter(([, value]) => value !== ""));
@@ -75,20 +80,23 @@ function Erro({ error }: { error: unknown }) {
   return <p className="text-sm text-rose-600">{error.message}</p>;
 }
 
-function BuscaOpcao({ value, onChange, opcoes, placeholder }: {
+function BuscaOpcao({ value, onChange, opcoes, placeholder, fixas = [], onTexto }: {
   value: string;
   onChange: (id: string) => void;
   opcoes: Array<{ id: string; label: string }>;
   placeholder: string;
+  /** Sempre aparecem no fim da lista, sem passar pelo filtro do texto digitado. */
+  fixas?: Array<{ id: string; label: string }>;
+  onTexto?: (texto: string) => void;
 }) {
-  const selecionada = opcoes.find((item) => item.id === value);
+  const selecionada = [...opcoes, ...fixas].find((item) => item.id === value);
   const [texto, setTexto] = useState(selecionada?.label ?? "");
   const [aberto, setAberto] = useState(false);
   useEffect(() => {
     if (selecionada) setTexto(selecionada.label);
   }, [selecionada?.id, selecionada?.label]);
   const termo = normalizarBusca(texto.trim());
-  const lista = opcoes.filter((item) => !termo || normalizarBusca(item.label).includes(termo)).slice(0, 20);
+  const lista = [...opcoes.filter((item) => !termo || normalizarBusca(item.label).includes(termo)).slice(0, 20), ...fixas];
   return (
     <div className="relative">
       <Input
@@ -98,6 +106,7 @@ function BuscaOpcao({ value, onChange, opcoes, placeholder }: {
         onChange={(event) => {
           const proximo = event.target.value;
           setTexto(proximo);
+          onTexto?.(proximo);
           setAberto(true);
           if (!selecionada || proximo !== selecionada.label) onChange("");
         }}
@@ -181,15 +190,18 @@ function AbaGrupo({ selecionado, onSelect }: { selecionado: string; onSelect: (i
   }
   return (
     <div className="grid gap-5 lg:grid-cols-[320px_1fr]">
-      <Card className="grid content-start gap-3">
-        <h2 className="font-extrabold">Novo grupo</h2>
-        <Erro error={save.error} />
-        {save.isSuccess ? <p className="text-sm font-semibold text-emerald-700">Grupo gravado.</p> : null}
-        <Field label="Nome"><Input value={form.nome} onChange={(event) => setForm({ ...form, nome: event.target.value })} /></Field>
-        <Field label="E-mail"><Input type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></Field>
-        <Field label="Telefone"><Input value={form.telefone} onChange={(event) => setForm({ ...form, telefone: event.target.value })} /></Field>
-        <p className="text-xs text-slate-500">E-mail ou telefone, pode informar os dois.</p>
-        <Button type="button" disabled={save.isPending} onClick={() => save.mutate()}>{save.isPending ? "Salvando…" : "Salvar grupo"}</Button>
+      <Card className="content-start">
+        <form className="grid content-start gap-3" onSubmit={(event) => { event.preventDefault(); save.mutate(); }}>
+          <h2 className="font-extrabold">Novo grupo</h2>
+          <Erro error={save.error} />
+          {save.isSuccess ? <p className="text-sm font-semibold text-emerald-700">Grupo gravado.</p> : null}
+          <Field label="Nome"><Input required minLength={2} value={form.nome} onChange={(event) => setForm({ ...form, nome: event.target.value })} /></Field>
+          {/* Basta um dos dois contatos: cada um só é exigido enquanto o outro estiver vazio. */}
+          <Field label="E-mail"><Input type="email" required={!form.telefone.trim()} value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></Field>
+          <Field label="Telefone"><Input required={!form.email.trim()} value={form.telefone} onChange={(event) => setForm({ ...form, telefone: event.target.value })} /></Field>
+          <p className="text-xs text-slate-500">E-mail ou telefone, pode informar os dois.</p>
+          <Button disabled={save.isPending}>{save.isPending ? "Salvando…" : "Salvar grupo"}</Button>
+        </form>
       </Card>
       <Card className="grid content-start gap-3">
         <Field label="Pesquisar grupo">
@@ -217,6 +229,7 @@ function AbaEmpresa({ grupoInicial }: { grupoInicial: string }) {
     grupo_id: grupoInicial, cnpj: "", razao_social: "", nome_fantasia: "", cep: "", logradouro: "", numero: "",
     complemento: "", bairro: "", cidade: "", uf: "", email: "", telefone: "",
   });
+  const [aviso, setAviso] = useState("");
   const [avisoCep, setAvisoCep] = useState("");
   const save = useMutation({
     mutationFn: () => api<{ id: string; reativada: boolean }>("/api/v1/grupos-empresas/empresas", { method: "POST", body: JSON.stringify(limpar(form)) }),
@@ -245,8 +258,9 @@ function AbaEmpresa({ grupoInicial }: { grupoInicial: string }) {
     }));
   }
   return (
-    <form className="mx-auto grid w-full max-w-4xl gap-3" onSubmit={(event) => { event.preventDefault(); save.mutate(); }}>
+    <form className="grid w-full gap-3" onSubmit={(event) => { event.preventDefault(); if (!form.grupo_id) { setAviso("Escolha o grupo da empresa."); return; } setAviso(""); save.mutate(); }}>
       <Erro error={save.error} />
+      <Aviso texto={aviso} />
       {save.isSuccess ? <p className="text-sm font-semibold text-emerald-700">{save.data.data.reativada ? "Empresa reativada e copiada para o grupo." : "Empresa gravada."}</p> : null}
       <Card className="grid gap-3 md:grid-cols-3">
         <Field label="Grupo">
@@ -257,18 +271,19 @@ function AbaEmpresa({ grupoInicial }: { grupoInicial: string }) {
             placeholder="Pesquisar grupo"
           />
         </Field>
-        <Field label="CNPJ"><Input value={form.cnpj} onChange={(event) => setForm({ ...form, cnpj: event.target.value })} /></Field>
-        <Field label="Razão social"><Input value={form.razao_social} onChange={(event) => setForm({ ...form, razao_social: event.target.value })} /></Field>
-        <Field label="Nome fantasia"><Input value={form.nome_fantasia} onChange={(event) => setForm({ ...form, nome_fantasia: event.target.value })} /></Field>
-        <Field label="CEP"><Input value={form.cep} onBlur={() => void buscarCep()} onChange={(event) => setForm({ ...form, cep: event.target.value })} /></Field>
-        <Field label="Endereço"><Input value={form.logradouro} onChange={(event) => setForm({ ...form, logradouro: event.target.value })} /></Field>
+        <Field label="CNPJ"><Input required value={form.cnpj} onChange={(event) => setForm({ ...form, cnpj: event.target.value })} /></Field>
+        <Field label="Razão social"><Input required value={form.razao_social} onChange={(event) => setForm({ ...form, razao_social: event.target.value })} /></Field>
+        <Field label="Nome fantasia"><Input required value={form.nome_fantasia} onChange={(event) => setForm({ ...form, nome_fantasia: event.target.value })} /></Field>
+        <Field label="CEP"><Input required value={form.cep} onBlur={() => void buscarCep()} onChange={(event) => setForm({ ...form, cep: event.target.value })} /></Field>
+        <Field label="Endereço"><Input required value={form.logradouro} onChange={(event) => setForm({ ...form, logradouro: event.target.value })} /></Field>
         <Field label="Número"><Input value={form.numero} onChange={(event) => setForm({ ...form, numero: event.target.value })} /></Field>
         <Field label="Complemento"><Input value={form.complemento} onChange={(event) => setForm({ ...form, complemento: event.target.value })} /></Field>
-        <Field label="Bairro"><Input value={form.bairro} onChange={(event) => setForm({ ...form, bairro: event.target.value })} /></Field>
-        <Field label="Cidade"><Input value={form.cidade} onChange={(event) => setForm({ ...form, cidade: event.target.value })} /></Field>
-        <Field label="UF"><Input maxLength={2} value={form.uf} onChange={(event) => setForm({ ...form, uf: event.target.value })} /></Field>
-        <Field label="E-mail"><Input type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></Field>
-        <Field label="Telefone"><Input value={form.telefone} onChange={(event) => setForm({ ...form, telefone: event.target.value })} /></Field>
+        <Field label="Bairro"><Input required value={form.bairro} onChange={(event) => setForm({ ...form, bairro: event.target.value })} /></Field>
+        <Field label="Cidade"><Input required value={form.cidade} onChange={(event) => setForm({ ...form, cidade: event.target.value })} /></Field>
+        <Field label="UF"><Input required minLength={2} maxLength={2} value={form.uf} onChange={(event) => setForm({ ...form, uf: event.target.value })} /></Field>
+        <Field label="E-mail"><Input type="email" required={!form.telefone.trim()} value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></Field>
+        <Field label="Telefone"><Input required={!form.email.trim()} value={form.telefone} onChange={(event) => setForm({ ...form, telefone: event.target.value })} /></Field>
+        <p className="text-xs text-slate-500">E-mail ou telefone, pode informar os dois.</p>
       </Card>
       {avisoCep ? <p className="text-sm text-amber-700">{avisoCep}</p> : null}
       <div><Button disabled={save.isPending}>{save.isPending ? "Salvando…" : "Salvar empresa"}</Button></div>
@@ -280,6 +295,9 @@ type FormularioVaga = {
   tipo: string;
   carga_horaria: string;
   cargo: string;
+  cargo_id: string;
+  descricao?: string;
+  requisitos?: string;
   salario: string;
   horario_entrada: string;
   horario_saida: string;
@@ -302,9 +320,11 @@ type FormularioVaga = {
   domingo_entrada: string;
   domingo_saida: string;
 };
-type Modelo = { vagaId: string; empresaNome?: string; formulario: FormularioVaga };
+type Modelo = { vagaId: string; empresaNome?: string; formulario: Omit<FormularioVaga, "cargo_id"> & { cargo_id: string | null } };
+const NOVO_CARGO = "novo";
+const novoCargoVazio = { nome: "", descricao: "", requisitos: "" };
 const vagaVazia: FormularioVaga & { empresa_id: string; quantidade: string } = {
-  empresa_id: "", tipo: "estagio", carga_horaria: "30", cargo: "", salario: "", horario_entrada: "", horario_saida: "",
+  empresa_id: "", tipo: "estagio", carga_horaria: "30", cargo: "", cargo_id: "", salario: "", horario_entrada: "", horario_saida: "",
   sexo: "I", idade: "", idade_ate: "", atividades: "", quantidade: "1",
   segunda_entrada: "", segunda_saida: "", terca_entrada: "", terca_saida: "", quarta_entrada: "", quarta_saida: "",
   quinta_entrada: "", quinta_saida: "", sexta_entrada: "", sexta_saida: "", sab_entrada: "", sab_saida: "",
@@ -328,6 +348,38 @@ function minutosRelogio(hora: string) {
   const match = /^(\d{2}):(\d{2})$/.exec(hora);
   if (!match) return null;
   return Number(match[1]) * 60 + Number(match[2]);
+}
+
+const DIAS_SEMANA = ["segunda", "terca", "quarta", "quinta", "sexta", "sab", "domingo"] as const;
+
+/** Quantos dias a carga pede com essa entrada e saída: 30 h com 6 h por dia são 5 dias. */
+function diasPelaCarga(carga: string, entrada: string, saida: string): number | null {
+  const inicio = minutosRelogio(entrada);
+  const fim = minutosRelogio(saida);
+  if (inicio == null || fim == null || !Number(carga)) return null;
+  let minutos = fim - inicio;
+  if (minutos <= 0) minutos += 24 * 60;
+  return Math.min(7, Math.max(1, Math.round(Number(carga) / (minutos / 60))));
+}
+
+/**
+ * Preenche os dias a partir de segunda com a entrada e a saída, até cobrir a carga.
+ * Um dia editado à mão (diferente do horário base anterior) fica como está.
+ */
+function preencherDias<T extends FormularioVaga>(atual: T, proximo: T): T {
+  const dias = diasPelaCarga(proximo.carga_horaria, proximo.horario_entrada, proximo.horario_saida);
+  if (dias == null) return proximo;
+  const resultado: Record<string, string> = { ...proximo };
+  DIAS_SEMANA.forEach((dia, indice) => {
+    const entrada = `${dia}_entrada` as keyof FormularioVaga;
+    const saida = `${dia}_saida` as keyof FormularioVaga;
+    const vazio = !atual[entrada] && !atual[saida];
+    const automatico = atual[entrada] === atual.horario_entrada && atual[saida] === atual.horario_saida;
+    if (!vazio && !automatico) return;
+    resultado[entrada] = indice < dias ? proximo.horario_entrada : "";
+    resultado[saida] = indice < dias ? proximo.horario_saida : "";
+  });
+  return resultado as T;
 }
 
 function cargaDoHorario(form: FormularioVaga) {
@@ -386,6 +438,12 @@ function rotulosDistintos(lista: Modelo[]) {
 function AbaVaga({ empresaInicial, modeloInicial }: { empresaInicial: string; modeloInicial: string }) {
   const empresas = useQuery({ queryKey: ["empresas-tela"], queryFn: () => api<Empresa[]>("/api/v1/grupos-empresas/empresas") });
   const [form, setForm] = useState({ ...vagaVazia, empresa_id: empresaInicial });
+  const [aviso, setAviso] = useState("");
+  const queryClient = useQueryClient();
+  const cargos = useQuery({ queryKey: ["cargos"], queryFn: () => api<CargoOpcao[]>("/api/v1/cargos") });
+  const listaCargos = cargos.data?.data ?? [];
+  const [cargoNovo, setCargoNovo] = useState<typeof novoCargoVazio | null>(null);
+  const [textoCargo, setTextoCargo] = useState("");
   const [buscaModelo, setBuscaModelo] = useState("");
   const [modeloAberto, setModeloAberto] = useState(false);
   const aplicouModelo = useRef(false);
@@ -401,11 +459,13 @@ function AbaVaga({ empresaInicial, modeloInicial }: { empresaInicial: string; mo
   });
   useEffect(() => {
     const modelo = detalhe.data?.data;
-    if (!modelo || aplicouModelo.current) return;
+    // Espera a lista de cargos responder, com dados ou com erro: sem ela o modelo cai em "Novo cargo".
+    if (!modelo || !cargos.isFetched || aplicouModelo.current) return;
     aplicouModelo.current = true;
     setBuscaModelo(rotuloModelo(modelo));
-    setForm((atual) => ({ ...atual, ...modelo.formulario, empresa_id: atual.empresa_id || empresaInicial, quantidade: atual.quantidade }));
-  }, [detalhe.data, empresaInicial]);
+    const doCargo = cargoDoFormulario(modelo);
+    setForm((atual) => ({ ...atual, ...modelo.formulario, ...doCargo, empresa_id: atual.empresa_id || empresaInicial, quantidade: atual.quantidade }));
+  }, [detalhe.data, cargos.isFetched, empresaInicial]);
   const assinaturaHorario = [
     form.tipo, form.horario_entrada, form.horario_saida,
     form.segunda_entrada, form.segunda_saida, form.terca_entrada, form.terca_saida,
@@ -419,11 +479,33 @@ function AbaVaga({ empresaInicial, modeloInicial }: { empresaInicial: string; mo
     setForm((atual) => atual.carga_horaria === calculada ? atual : { ...atual, carga_horaria: calculada });
   }, [assinaturaHorario]);
   const save = useMutation({
-    mutationFn: () => api<{ codigo: string; quantidade: number }>("/api/v1/grupos-empresas/vagas", {
-      method: "POST",
-      body: JSON.stringify(limpar(form)),
-    }),
+    mutationFn: () => {
+      const { cargo: _cargo, cargo_id, descricao: _descricao, requisitos: _requisitos, ...resto } = form;
+      const body = { ...limpar(resto), ...(cargoNovo ? { novo_cargo: cargoNovo } : cargo_id ? { cargo_id } : {}) };
+      return api<{ codigo: string; quantidade: number; cargo: { nome: string; reaproveitado: boolean } }>("/api/v1/grupos-empresas/vagas", { method: "POST", body: JSON.stringify(body) });
+    },
+    onSuccess: () => {
+      if (cargoNovo) void queryClient.invalidateQueries({ queryKey: ["cargos"] });
+    },
   });
+  /** Cargo do modelo aplicado: da lista, ou "Novo cargo" já com o nome do modelo. */
+  function cargoDoFormulario(modelo: Modelo) {
+    const cargo = cargoDoModelo(modelo.formulario, listaCargos);
+    setCargoNovo(cargo ? null : { ...novoCargoVazio, nome: modelo.formulario.cargo });
+    return { cargo_id: cargo?.id ?? "", cargo: cargo?.nome ?? modelo.formulario.cargo };
+  }
+  function escolherCargo(id: string) {
+    if (id === NOVO_CARGO) {
+      const nome = textoCargo.trim() && textoCargo !== "+ Novo cargo" ? textoCargo.trim() : "";
+      setCargoNovo((atual) => atual ?? { ...novoCargoVazio, nome });
+      setForm((atual) => ({ ...atual, cargo_id: "" }));
+      return;
+    }
+    // Digitar no campo limpa a escolha; no modo "Novo cargo" os textos já digitados ficam.
+    if (!id && cargoNovo) return;
+    setCargoNovo(null);
+    setForm((atual) => ({ ...atual, cargo_id: id, cargo: listaCargos.find((cargo) => cargo.id === id)?.nome ?? "" }));
+  }
   const cargas = form.tipo === "estagio" ? ["20", "30"] : ["40", "44"];
   const lista = modelos.data?.data ?? [];
   const termoModelo = normalizarBusca(buscaModelo);
@@ -435,13 +517,16 @@ function AbaVaga({ empresaInicial, modeloInicial }: { empresaInicial: string; mo
   function aplicarModelo(modelo: Modelo, rotulo: string) {
     setBuscaModelo(rotulo);
     setModeloAberto(false);
-    setForm((atual) => ({ ...atual, ...modelo.formulario, empresa_id: atual.empresa_id, quantidade: atual.quantidade }));
+    const doCargo = cargoDoFormulario(modelo);
+    setForm((atual) => ({ ...atual, ...modelo.formulario, ...doCargo, empresa_id: atual.empresa_id, quantidade: atual.quantidade }));
   }
   return (
-    <form className="mx-auto grid w-full max-w-4xl gap-3" onSubmit={(event) => { event.preventDefault(); save.mutate(); }}>
+    <form className="grid w-full gap-3" onSubmit={(event) => { event.preventDefault(); const falta = !form.empresa_id ? "Escolha a empresa da vaga." : !form.cargo_id && !cargoNovo ? "Escolha um cargo da lista ou \"+ Novo cargo\"." : ""; setAviso(falta); if (!falta) save.mutate(); }}>
       <Erro error={save.error} />
+      <Aviso texto={aviso} />
       <Erro error={detalhe.error} />
-      {save.isSuccess ? <p className="text-sm font-semibold text-emerald-700">{save.data.data.quantidade} vaga(s) abertas com o código {save.data.data.codigo}.</p> : null}
+      <Erro error={cargos.error} />
+      {save.isSuccess ? <p className="text-sm font-semibold text-emerald-700">{save.data.data.quantidade} vaga(s) abertas com o código {save.data.data.codigo}.{save.data.data.cargo.reaproveitado ? ` O cargo ${save.data.data.cargo.nome} já existia: a vaga usa a descrição e os requisitos dele.` : ""}</p> : null}
       <Card className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div className="sm:col-span-2">
         <Field label="Empresa">
@@ -483,21 +568,30 @@ function AbaVaga({ empresaInicial, modeloInicial }: { empresaInicial: string; mo
         <Field label="Tipo">
           <Select value={form.tipo} onChange={(event) => {
             const tipo = event.target.value;
-            setForm({ ...form, tipo, carga_horaria: tipo === "estagio" ? "30" : "40" });
+            setForm((atual) => preencherDias(atual, { ...atual, tipo, carga_horaria: tipo === "estagio" ? "30" : "40" }));
           }}>
             <option value="estagio">Estágio</option>
             <option value="clt">CLT</option>
           </Select>
         </Field>
         <Field label="Carga horária">
-          <Select value={form.carga_horaria} onChange={(event) => setForm({ ...form, carga_horaria: event.target.value })}>
+          <Select value={form.carga_horaria} onChange={(event) => { const carga_horaria = event.target.value; setForm((atual) => preencherDias(atual, { ...atual, carga_horaria })); }}>
             {cargas.map((carga) => <option key={carga} value={carga}>{carga} horas</option>)}
           </Select>
         </Field>
-        <Field label="Cargo"><Input value={form.cargo} onChange={(event) => setForm({ ...form, cargo: event.target.value })} /></Field>
-        <Field label="Salário"><Input placeholder="1800,00" value={form.salario} onChange={(event) => setForm({ ...form, salario: event.target.value })} /></Field>
-        <Field label="Entrada"><Input type="time" value={form.horario_entrada} onChange={(event) => setForm({ ...form, horario_entrada: event.target.value })} /></Field>
-        <Field label="Saída"><Input type="time" value={form.horario_saida} onChange={(event) => setForm({ ...form, horario_saida: event.target.value })} /></Field>
+        <Field label="Cargo">
+          <BuscaOpcao
+            value={cargoNovo ? NOVO_CARGO : form.cargo_id}
+            onChange={escolherCargo}
+            opcoes={listaCargos.map((cargo) => ({ id: cargo.id, label: cargo.nome }))}
+            fixas={[{ id: NOVO_CARGO, label: "+ Novo cargo" }]}
+            onTexto={setTextoCargo}
+            placeholder={cargos.isLoading ? "Carregando cargos…" : "Pesquisar cargo"}
+          />
+        </Field>
+        <Field label="Salário"><Input required placeholder="1800,00" value={form.salario} onChange={(event) => setForm({ ...form, salario: event.target.value })} /></Field>
+        <Field label="Entrada"><Input type="time" required value={form.horario_entrada} onChange={(event) => { const horario_entrada = event.target.value; setForm((atual) => preencherDias(atual, { ...atual, horario_entrada })); }} /></Field>
+        <Field label="Saída"><Input type="time" required value={form.horario_saida} onChange={(event) => { const horario_saida = event.target.value; setForm((atual) => preencherDias(atual, { ...atual, horario_saida })); }} /></Field>
         <Field label="Sexo">
           <Select value={form.sexo} onChange={(event) => setForm({ ...form, sexo: event.target.value })}>
             <option value="I">Indiferente</option>
@@ -505,22 +599,30 @@ function AbaVaga({ empresaInicial, modeloInicial }: { empresaInicial: string; mo
             <option value="M">Masculino</option>
           </Select>
         </Field>
-        <Field label="Idade"><Input type="number" value={form.idade} onChange={(event) => setForm({ ...form, idade: event.target.value })} /></Field>
-        <Field label="Idade até"><Input type="number" value={form.idade_ate} onChange={(event) => setForm({ ...form, idade_ate: event.target.value })} /></Field>
-        <Field label="Quantidade"><Input type="number" min={1} value={form.quantidade} onChange={(event) => setForm({ ...form, quantidade: event.target.value })} /></Field>
+        <Field label="Idade"><Input type="number" required min={14} max={80} value={form.idade} onChange={(event) => setForm({ ...form, idade: event.target.value })} /></Field>
+        <Field label="Idade até"><Input type="number" required min={14} max={80} value={form.idade_ate} onChange={(event) => setForm({ ...form, idade_ate: event.target.value })} /></Field>
+        <Field label="Quantidade"><Input type="number" required min={1} max={20} value={form.quantidade} onChange={(event) => setForm({ ...form, quantidade: event.target.value })} /></Field>
         <div className="grid gap-2 sm:col-span-2 lg:col-span-4">
           <p className="text-sm font-medium text-slate-700">Dias do horário</p>
-          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-x-6 gap-y-2 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
             {diasHorario.map((dia) => (
-              <div key={dia.nome} className="grid grid-cols-[4.5rem_1fr_1fr] items-center gap-1.5">
+              <div key={dia.nome} className="grid min-w-0 grid-cols-[4.5rem_minmax(0,1fr)_minmax(0,1fr)] items-center gap-1.5">
                 <span className="text-sm text-slate-600">{dia.nome}</span>
-                <Input type="time" aria-label={`${dia.nome} entrada`} value={form[dia.entrada]} onChange={(event) => setForm({ ...form, [dia.entrada]: event.target.value })} />
-                <Input type="time" aria-label={`${dia.nome} saída`} value={form[dia.saida]} onChange={(event) => setForm({ ...form, [dia.saida]: event.target.value })} />
+                <Input type="time" className="min-w-0" aria-label={`${dia.nome} entrada`} value={form[dia.entrada]} onChange={(event) => setForm({ ...form, [dia.entrada]: event.target.value })} />
+                <Input type="time" className="min-w-0" aria-label={`${dia.nome} saída`} value={form[dia.saida]} onChange={(event) => setForm({ ...form, [dia.saida]: event.target.value })} />
               </div>
             ))}
           </div>
         </div>
-        <div className="sm:col-span-2 lg:col-span-4"><Field label="Atividades"><Textarea className="min-h-20" value={form.atividades} onChange={(event) => setForm({ ...form, atividades: event.target.value })} /></Field></div>
+        {cargoNovo ? (
+          <div className="grid gap-3 rounded-xl border border-dashed border-slate-300 p-3 sm:col-span-2 lg:col-span-4">
+            <p className="text-sm font-medium text-slate-700">Novo cargo: a descrição e os requisitos valem para todas as vagas deste cargo.</p>
+            <Field label="Nome do cargo"><Input required minLength={2} value={cargoNovo.nome} onChange={(event) => setCargoNovo({ ...cargoNovo, nome: event.target.value })} /></Field>
+            <Field label="Descrição"><Textarea required minLength={3} className="min-h-20" value={cargoNovo.descricao} onChange={(event) => setCargoNovo({ ...cargoNovo, descricao: event.target.value })} /></Field>
+            <Field label="Requisitos"><Textarea required minLength={3} className="min-h-20" value={cargoNovo.requisitos} onChange={(event) => setCargoNovo({ ...cargoNovo, requisitos: event.target.value })} /></Field>
+          </div>
+        ) : null}
+        <div className="sm:col-span-2 lg:col-span-4"><Field label="Atividades"><Textarea required minLength={3} className="min-h-20" value={form.atividades} onChange={(event) => setForm({ ...form, atividades: event.target.value })} /></Field></div>
       </Card>
       <div><Button disabled={save.isPending}>{save.isPending ? "Salvando…" : "Salvar vaga"}</Button></div>
     </form>

@@ -32,6 +32,7 @@ const REGRAS_API: Array<[string, string[]]> = [
   ["/api/v1/candidatos", ["candidatos"]],
   ["/api/v1/empresas", ["empresas"]],
   ["/api/v1/grupos-empresas", ["empresas"]],
+  ["/api/v1/cargos", ["empresas", "vagas", "vagas-modelos", "vagas-modelo"]],
   ["/api/v1/grupos", ["empresas"]],
   ["/api/v1/modalidades", ["vagas", "vagas-modelos", "vagas-modelo"]],
   ["/api/v1/vagas", ["vagas", "vagas-modelos", "vagas-modelo"]],

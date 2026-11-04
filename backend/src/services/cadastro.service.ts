@@ -7,6 +7,8 @@ import { legacyToday } from "../lib/dates.js";
 import { AppError } from "../lib/errors.js";
 import { formatMoneyLegacy, moneyToNumber, parseMoney } from "../lib/money.js";
 import { supabaseRest } from "../lib/supabase-rest.js";
+import type { CargoService } from "./cargo.service.js";
+import { chaveCargo } from "../lib/cargo.js";
 import type { EmpresaCadastro, GrupoCreate, VagaCadastro } from "../schemas/cadastro.js";
 
 type GrupoRow = { id: string; nome: string; email: string | null; telefone: string | null; criado_em: string };
@@ -106,6 +108,19 @@ CREATE TABLE IF NOT EXISTS public.vaga_repetida (
   latitude double precision,
   longitude double precision
 );
+CREATE TABLE IF NOT EXISTS public.cargo (
+  id uuid PRIMARY KEY,
+  nome text NOT NULL,
+  chave text NOT NULL,
+  descricao text,
+  requisitos text,
+  criado_em timestamptz NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS cargo_chave_unica ON public.cargo (chave);
+ALTER TABLE public.vaga ADD COLUMN IF NOT EXISTS cargo_id uuid REFERENCES public.cargo (id) ON DELETE SET NULL, ADD COLUMN IF NOT EXISTS descricao text, ADD COLUMN IF NOT EXISTS requisitos text;
+ALTER TABLE public.vaga_repetida ADD COLUMN IF NOT EXISTS cargo_id uuid REFERENCES public.cargo (id) ON DELETE SET NULL, ADD COLUMN IF NOT EXISTS descricao text, ADD COLUMN IF NOT EXISTS requisitos text;
+CREATE INDEX IF NOT EXISTS vaga_cargo_id ON public.vaga (cargo_id);
+CREATE INDEX IF NOT EXISTS vaga_repetida_cargo_id ON public.vaga_repetida (cargo_id);
 `;
 
 function maskCnpj(digits: string) {
@@ -167,6 +182,9 @@ type RepetidaLinha = {
   idade_ate: number | null;
   atividades: string | null;
   horario: string | null;
+  cargo_id: string | null;
+  descricao: string | null;
+  requisitos: string | null;
   empresa_nome?: string | null;
 };
 
@@ -174,7 +192,7 @@ function atividadesLegiveis(valor: string | null) {
   return (valor ?? "").replace(/,(\S)/g, ", $1").replace(/,\s*$/g, "").trim();
 }
 
-const CAMPOS_REPETIDA = "id, vaga_id, empresa_id, grupo_id, tipo_vaga, cargo, salario, carga_horaria, sexo, idade, idade_ate, atividades, horario";
+const CAMPOS_REPETIDA = "id, vaga_id, empresa_id, grupo_id, tipo_vaga, cargo, salario, carga_horaria, sexo, idade, idade_ate, atividades, horario, cargo_id, descricao, requisitos";
 const DIAS_HORARIO = ["domingo", "segunda", "terca", "quarta", "quinta", "sexta", "sab"] as const;
 type DiaHorario = (typeof DIAS_HORARIO)[number];
 
@@ -253,6 +271,9 @@ function formularioDaLinha(row: RepetidaLinha) {
     tipo,
     carga_horaria: carga,
     cargo: row.cargo ?? "",
+    cargo_id: row.cargo_id ?? null,
+    descricao: row.descricao ?? "",
+    requisitos: row.requisitos ?? "",
     salario: salarioTexto(row.salario),
     horario_entrada: base.entrada,
     horario_saida: base.saida,
@@ -284,6 +305,7 @@ export class CadastroService {
     private readonly db: Pool,
     private readonly mysql: MysqlPool | null,
     private readonly config: AppConfig,
+    private readonly cargos: CargoService,
   ) {}
 
   private rest() {
@@ -550,6 +572,10 @@ export class CadastroService {
     const empresa = empresas[0];
     if (!empresa) throw new AppError(422, "EMPRESA_FORA_DA_TELA", "A vaga só abre para uma empresa cadastrada nesta tela.");
 
+    // Cargo da lista ou cargo novo: a vaga recebe o nome padronizado, a descrição e os requisitos do cargo.
+    const { cargo, reaproveitado: cargoReaproveitado } = input.cargo_id
+      ? { cargo: await this.cargos.obter(input.cargo_id), reaproveitado: false }
+      : await this.cargos.resolverNovo(input.novo_cargo!);
     const endereco = await this.enderecoLightsail(input.empresa_id);
     const tipo = input.tipo === "estagio" ? 1 : 2;
     const salarioNumero = parseMoney(input.salario);
@@ -558,7 +584,7 @@ export class CadastroService {
     const horario = `${horas.entrada} às ${horas.saida}`;
     const igual = empresa.grupo_id
       ? await this.buscarModeloIgual(empresa.grupo_id, {
-        tipo, cargo: input.cargo, carga: input.carga_horaria, salario: salarioNumero, sexo: input.sexo,
+        tipo, cargo: cargo.nome, carga: input.carga_horaria, salario: salarioNumero, sexo: input.sexo,
         idade: input.idade, idadeAte: input.idade_ate ?? null, atividades: input.atividades, horario,
       })
       : null;
@@ -579,7 +605,10 @@ export class CadastroService {
       grupo_id: igual?.grupo_id || empresa.grupo_id,
       empresa_id: igual?.empresa_id || empresa.id,
       tipo_vaga: String(tipo),
-      cargo: input.cargo,
+      cargo: cargo.nome,
+      cargo_id: cargo.id,
+      descricao: cargo.descricao,
+      requisitos: cargo.requisitos,
       salario: salarioNumero,
       carga_horaria: input.carga_horaria,
       sexo: input.sexo,
@@ -599,7 +628,10 @@ export class CadastroService {
       grupo_id: empresa.grupo_id,
       empresa_id: empresa.id,
       tipo_vaga: tipo,
-      cargo: input.cargo,
+      cargo: cargo.nome,
+      cargo_id: cargo.id,
+      descricao: cargo.descricao,
+      requisitos: cargo.requisitos,
       salario: salarioNumero,
       carga_horaria: input.carga_horaria,
       sexo: input.sexo,
@@ -630,7 +662,7 @@ export class CadastroService {
             sede, dataabertura, tipo_vaga, sexo, status, carga_horaria, publicar, codigo, km, faturar, texto_carga
           ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,10,?,?,?,0,?,1,?,?, 'S', ?)`,
           [
-            id, comparador, empresa.id, input.cargo, salario, String(input.idade), input.idade_ate ? String(input.idade_ate) : null,
+            id, comparador, empresa.id, cargo.nome, salario, String(input.idade), input.idade_ate ? String(input.idade_ate) : null,
             horas.entrada, horas.saida,
             horas.segunda_entrada, horas.segunda_saida, horas.terca_entrada, horas.terca_saida,
             horas.quarta_entrada, horas.quarta_saida, horas.quinta_entrada, horas.quinta_saida,
@@ -686,27 +718,31 @@ export class CadastroService {
       const pg = await this.db.connect();
       try {
         await pg.query("BEGIN");
+        // O cargo pode existir só no Supabase (criado direto lá ou espelho que falhou): a chave estrangeira do Postgres exige a linha.
+        const cargoPostgres = await this.cargos.idNoPostgres(pg, cargo);
         if (!reutilizou) {
           await pg.query(
             `INSERT INTO public.vaga_repetida (
-              id, vaga_id, grupo_id, empresa_id, tipo_vaga, cargo, salario, carga_horaria, sexo, idade, idade_ate, km, atividades, horario, cep, latitude, longitude
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+              id, vaga_id, grupo_id, empresa_id, tipo_vaga, cargo, salario, carga_horaria, sexo, idade, idade_ate, km, atividades, horario, cep, latitude, longitude,
+              cargo_id, descricao, requisitos
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
             [
               modelo.id, modelo.vaga_id, modelo.grupo_id, modelo.empresa_id, modelo.tipo_vaga, modelo.cargo, modelo.salario,
               modelo.carga_horaria, modelo.sexo, modelo.idade, modelo.idade_ate, modelo.km, modelo.atividades, modelo.horario,
-              modelo.cep, modelo.latitude, modelo.longitude,
+              modelo.cep, modelo.latitude, modelo.longitude, cargoPostgres, modelo.descricao, modelo.requisitos,
             ],
           );
         }
         for (const linha of linhas) {
           await pg.query(
             `INSERT INTO public.vaga (
-              id, vaga_id, grupo_id, empresa_id, tipo_vaga, cargo, salario, carga_horaria, sexo, idade, idade_ate, km, atividades, horario, cep, latitude, longitude
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+              id, vaga_id, grupo_id, empresa_id, tipo_vaga, cargo, salario, carga_horaria, sexo, idade, idade_ate, km, atividades, horario, cep, latitude, longitude,
+              cargo_id, descricao, requisitos
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
             [
               linha.id, linha.vaga_id, linha.grupo_id, linha.empresa_id, linha.tipo_vaga, linha.cargo, linha.salario,
               linha.carga_horaria, linha.sexo, linha.idade, linha.idade_ate, linha.km, linha.atividades, linha.horario,
-              linha.cep, linha.latitude, linha.longitude,
+              linha.cep, linha.latitude, linha.longitude, cargoPostgres, linha.descricao, linha.requisitos,
             ],
           );
         }
@@ -720,7 +756,7 @@ export class CadastroService {
               sede, dataabertura, tipo_vaga, sexo, status, carga_horaria, publicar, codigo, km, faturar, texto_carga, quantidade_posicoes
             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,10,$26,$27,$28,0,$29,1,$30,'30','S',$31,1)`,
             [
-              id, comparador, empresa.id, input.cargo, salario, String(input.idade), input.idade_ate ? String(input.idade_ate) : null,
+              id, comparador, empresa.id, cargo.nome, salario, String(input.idade), input.idade_ate ? String(input.idade_ate) : null,
               horas.entrada, horas.saida,
               horas.segunda_entrada, horas.segunda_saida, horas.terca_entrada, horas.terca_saida,
               horas.quarta_entrada, horas.quarta_saida, horas.quinta_entrada, horas.quinta_saida,
@@ -784,7 +820,7 @@ export class CadastroService {
       conn.release();
     }
 
-    return { codigo, comparador, quantidade: ids.length, ids };
+    return { codigo, comparador, quantidade: ids.length, ids, cargo: { nome: cargo.nome, reaproveitado: cargoReaproveitado } };
   }
 
   private async reverterEmpresaPostgres(id: string, previa: Record<string, unknown> | null) {
@@ -902,7 +938,7 @@ export class CadastroService {
 
   private async linhasDoGrupo(grupoId: string): Promise<RepetidaLinha[]> {
     const consulta = await this.db.query<RepetidaLinha>(
-      `SELECT r.id, r.vaga_id, r.empresa_id, r.grupo_id, r.tipo_vaga, r.cargo, r.salario, r.carga_horaria, r.sexo, r.idade, r.idade_ate, r.atividades, r.horario,
+      `SELECT r.id, r.vaga_id, r.empresa_id, r.grupo_id, r.tipo_vaga, r.cargo, r.salario, r.carga_horaria, r.sexo, r.idade, r.idade_ate, r.atividades, r.horario, r.cargo_id, r.descricao, r.requisitos,
               coalesce(nullif(btrim(e.nome_fantasia), ''), e.razao_social) AS empresa_nome
        FROM public.vaga_repetida r
        LEFT JOIN public.empresa e ON e.id = r.empresa_id
@@ -921,7 +957,7 @@ export class CadastroService {
     const grupoId = grupo.rows[0]?.grupo_id;
     if (grupoId) return this.linhasDoGrupo(grupoId);
     const consulta = await this.db.query<RepetidaLinha>(
-      `SELECT r.id, r.vaga_id, r.empresa_id, r.grupo_id, r.tipo_vaga, r.cargo, r.salario, r.carga_horaria, r.sexo, r.idade, r.idade_ate, r.atividades, r.horario,
+      `SELECT r.id, r.vaga_id, r.empresa_id, r.grupo_id, r.tipo_vaga, r.cargo, r.salario, r.carga_horaria, r.sexo, r.idade, r.idade_ate, r.atividades, r.horario, r.cargo_id, r.descricao, r.requisitos,
               coalesce(nullif(btrim(e.nome_fantasia), ''), e.razao_social) AS empresa_nome
        FROM public.vaga_repetida r
        LEFT JOIN public.empresa e ON e.id = r.empresa_id
@@ -982,7 +1018,7 @@ export class CadastroService {
       const idadeAte = row.idade_ate == null ? null : Number(row.idade_ate);
       const carga = String(row.carga_horaria ?? "").match(/\d+/)?.[0] ?? "";
       return String(row.tipo_vaga) === String(alvo.tipo)
-        && (row.cargo ?? "").trim() === alvo.cargo.trim()
+        && chaveCargo(row.cargo ?? "") === chaveCargo(alvo.cargo)
         && carga === alvo.carga
         && (row.sexo ?? "") === alvo.sexo
         && Number(row.idade) === alvo.idade

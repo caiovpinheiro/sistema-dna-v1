@@ -34,11 +34,13 @@ import { AcessoService } from "./services/acesso.service.js";
 import { VagaService } from "./services/vaga.service.js";
 import { CadastroService } from "./services/cadastro.service.js";
 import { TriagemService } from "./services/triagem.service.js";
+import { CargoService } from "./services/cargo.service.js";
 import { normalizarAtendimento } from "./lib/atendimento.js";
 import { atendimentoSchema } from "./schemas/processo.js";
 import { NotionSyncService } from "./services/notion-sync.service.js";
 import { VagasAbertasSyncService } from "./services/vagas-abertas-sync.service.js";
 import { SyncCicloService } from "./services/sync-ciclo.service.js";
+import { CargosSyncService } from "./services/cargos-sync.service.js";
 import { agendarPorSlot } from "./lib/agenda-sync.js";
 
 export type AppContext = {
@@ -110,6 +112,7 @@ export async function buildApp(context: AppContext): Promise<FastifyInstance> {
   const contratacoes = new ContratacaoRepository();
   const processos = new ProcessoService(context.db, new ProcessoRepository(), vagas, candidatos, empresas);
   const termos = new TermoService(context.db, context.config);
+  const cargos = new CargoService(context.db, context.config);
   const services = {
     candidatos: new CandidatoService(context.db, candidatos),
     empresas: new EmpresaService(context.db, empresas),
@@ -122,10 +125,12 @@ export async function buildApp(context: AppContext): Promise<FastifyInstance> {
     asaas: new AsaasService(context.db, context.config),
     regua: new ReguaService(context.db, context.config),
     acesso: new AcessoService(context.db, context.config),
-    cadastro: new CadastroService(context.db, context.mysql ?? null, context.config),
+    cadastro: new CadastroService(context.db, context.mysql ?? null, context.config, cargos),
+    cargos,
     triagem: new TriagemService(context.mysql ?? null, context.config),
     sync: new SyncCicloService(
       new VagasAbertasSyncService(context.db, context.mysql ?? null, context.config, app.log),
+      new CargosSyncService(context.db, context.config, cargos, app.log),
       new NotionSyncService(context.db, context.mysql ?? null, context.config, app.log),
       app.log,
     ),

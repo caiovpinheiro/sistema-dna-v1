@@ -31,6 +31,7 @@ import type { VagaService } from "../services/vaga.service.js";
 import { LegadoService } from "../services/legado.service.js";
 import type { CadastroService } from "../services/cadastro.service.js";
 import type { TriagemService } from "../services/triagem.service.js";
+import type { CargoService } from "../services/cargo.service.js";
 import type { SyncCicloService } from "../services/sync-ciclo.service.js";
 import { sessionCookie } from "../plugins/auth.js";
 
@@ -51,6 +52,7 @@ type Services = {
   acesso: AcessoService;
   cadastro: CadastroService;
   triagem: TriagemService;
+  cargos: CargoService;
   sync: SyncCicloService;
 };
 
@@ -519,6 +521,7 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
   api.post("/api/v1/grupos", { schema: { tags: ["grupos"], body: grupoCreateSchema } }, async (request, reply) => {
     return reply.code(201).send(ok(await services.cadastro.criarGrupo(request.body)));
   });
+  api.get("/api/v1/cargos", { schema: { tags: ["vagas"] } }, async () => ok(await services.cargos.listar()));
   api.get("/api/v1/grupos-empresas/empresas", { schema: { tags: ["grupos"] } }, async () => ok(await services.cadastro.listarEmpresas()));
   api.post("/api/v1/grupos-empresas/empresas", { schema: { tags: ["grupos"], body: empresaCadastroSchema } }, async (request, reply) => {
     return reply.code(201).send(ok(await services.cadastro.criarEmpresa(request.body)));
