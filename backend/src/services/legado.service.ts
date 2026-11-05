@@ -367,12 +367,13 @@ export class LegadoService {
           html,
         });
         await this.db.query(`
-          INSERT INTO dna_work.cobranca_email (id_empresa, ano, mes, data, texto)
-          VALUES ($1, $2, $3, $4, $5)
+          INSERT INTO dna_work.cobranca_email (id, id_empresa, ano, mes, data, texto)
+          SELECT coalesce(max(id), 0) + 1, $1, $2, $3, $4, $5
+          FROM dna_work.cobranca_email
         `, [id, ano, mes, data, `Relatório e boleto ${mes}/${ano}`]);
         enviados.push(relatorio.empresa || id);
       } catch (error) {
-        falhas.push({ empresa: relatorio.empresa, motivo: error instanceof AppError ? error.message : "Não foi possível enviar." });
+        falhas.push({ empresa: relatorio.empresa, motivo: error instanceof Error ? error.message : "Não foi possível enviar." });
       }
     }
     return { enviados: enviados.length, boletos: boletos.length, pulados: pulados.length, empresas: enviados, falhas };
