@@ -73,7 +73,7 @@ export const vagaListSchema = z.object({
   grupo_id: z.string().uuid().optional(),
   cargo: z.string().trim().optional(),
   tipo_vaga: z.coerce.number().int().optional(),
-  situacao: z.enum(["aberta", "preenchida", "encerrada", "capacidade_pendente"]).optional(),
+  situacao: z.enum(["aberta", "preenchida", "encerrada", "desativada", "capacidade_pendente"]).optional(),
   q: z.string().trim().optional(),
 });
 

@@ -62,6 +62,7 @@ export function VagasPage() {
           <option value="aberta">Aberta</option>
           <option value="preenchida">Preenchida</option>
           <option value="encerrada">Encerrada</option>
+          <option value="desativada">Desativada</option>
           <option value="capacidade_pendente">Capacidade pendente</option>
         </Select>
       </Card>

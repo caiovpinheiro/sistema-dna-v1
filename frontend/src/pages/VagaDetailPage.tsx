@@ -37,12 +37,12 @@ export function VagaDetailPage() {
   const job = useQuery({ queryKey: ["vaga", id], queryFn: () => api<Job>(`/api/v1/vagas/${id}`) });
   const [aviso, setAviso] = useState("");
   const desativar = useMutation({
-    mutationFn: () => api(`/api/v1/vagas/${id}`, { method: "PATCH", body: JSON.stringify({ status: 5 }) }),
+    mutationFn: (status: number) => api(`/api/v1/vagas/${id}`, { method: "PATCH", body: JSON.stringify({ status }) }),
     onSuccess: async () => {
       setAviso("");
       await job.refetch();
     },
-    onError: (error) => setAviso(error instanceof ApiError ? error.message : "Não foi possível desativar a vaga."),
+    onError: (error) => setAviso(error instanceof ApiError ? error.message : "Não foi possível alterar o status da vaga."),
   });
   const contracts = useQuery({ queryKey: ["vaga-contratos", id], queryFn: () => api<Contract[]>(`/api/v1/vagas/${id}/contratacoes`) });
   const sugestoes = useQuery({ queryKey: ["vaga-sugeridos", id], queryFn: () => api<Sugestoes>(`/api/v1/vagas/${id}/sugeridos`) });
@@ -67,9 +67,15 @@ export function VagaDetailPage() {
           <p className="text-sm text-slate-500"><Link className="text-cyan-800" to={`/empresas/${data.id_empresa}`}>{data.nome_fantasia || data.razao_social}</Link> · {data.modalidade || regimeLabel[data.regime]} · {money(data.salario)}</p>
         </div>
         <div className="flex gap-2">
-          {data.status !== 5 ? <Button type="button" variant="danger" disabled={desativar.isPending} onClick={() => {
-            if (window.confirm("Desativar esta vaga? Ela deixa de aparecer como aberta.")) desativar.mutate();
-          }}>{desativar.isPending ? "Desativando..." : "Desativar vaga"}</Button> : null}
+          {data.status === 5 ? (
+            <Button type="button" disabled={desativar.isPending} onClick={() => {
+              if (window.confirm("Reativar esta vaga? Ela volta a ficar aberta.")) desativar.mutate(0);
+            }}>{desativar.isPending ? "Reativando..." : "Reativar vaga"}</Button>
+          ) : (
+            <Button type="button" variant="danger" disabled={desativar.isPending} onClick={() => {
+              if (window.confirm("Desativar esta vaga? O cadastro permanece e ela pode ser reativada depois.")) desativar.mutate(5);
+            }}>{desativar.isPending ? "Desativando..." : "Desativar vaga"}</Button>
+          )}
           <Link to={`/processos/novo?vaga=${id}&empresa=${data.id_empresa}`}><Button variant="secondary">Novo processo</Button></Link><Link to={`/contratacoes/nova?vaga=${id}&empresa=${data.id_empresa}`}><Button>Contratar</Button></Link><Link to={`/vagas/${id}/editar`}><Button variant="secondary">Editar vaga</Button></Link>
         </div>
       </div>

@@ -75,6 +75,7 @@ export function situacaoDaVaga(row: Pick<VagaRow, "status" | "quantidade_posicoe
     return row.quantidade_posicoes != null && row.ocupadas >= row.quantidade_posicoes ? "preenchida" as const : "aberta" as const;
   }
   if (status === statusOcupada) return "preenchida" as const;
+  if (status === 5) return "desativada" as const;
   return "encerrada" as const;
 }
 

@@ -63,13 +63,14 @@ export const statusVagaLabel: Record<number, string> = {
   2: "Suspensa",
   3: "Stand by",
   4: "Em andamento",
-  5: "Encerrada",
+  5: "Desativada",
 };
 
 export const situacaoLabel: Record<string, string> = {
   aberta: "Aberta",
   preenchida: "Preenchida",
   encerrada: "Encerrada",
+  desativada: "Desativada",
   capacidade_pendente: "Capacidade pendente",
   ativa: "Ativa",
   indefinida: "Indefinida",

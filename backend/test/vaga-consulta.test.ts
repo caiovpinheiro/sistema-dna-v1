@@ -11,6 +11,7 @@ test("situação pela vaga do Lightsail: status 0 é aberta, mesmo sem capacidad
   for (const status of [2, 3, 6, 7, 8, null]) {
     assert.equal(situacaoDaVaga({ status, quantidade_posicoes: 1, ocupadas: 0 }, 1), "encerrada");
   }
+  assert.equal(situacaoDaVaga({ status: 5, quantidade_posicoes: 1, ocupadas: 0 }, 1), "desativada");
 });
 
 test("cada unidade da empresa sai com nome próprio", () => {

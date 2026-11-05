@@ -350,7 +350,8 @@ export class VagaRepository {
       const ocupada = `v.status = ${Number(this.statusOcupada)}`;
       if (query.situacao === "aberta") where.push(`${aberta} AND NOT (${cheia})`);
       if (query.situacao === "preenchida") where.push(`((${aberta} AND ${cheia}) OR ${ocupada})`);
-      if (query.situacao === "encerrada") where.push(`COALESCE(v.status, -1) NOT IN (${VAGA_STATUS_ABERTA}, ${Number(this.statusOcupada)})`);
+      if (query.situacao === "encerrada") where.push(`COALESCE(v.status, -1) NOT IN (${VAGA_STATUS_ABERTA}, ${Number(this.statusOcupada)}, 5)`);
+      if (query.situacao === "desativada") where.push("v.status = 5");
       if (query.situacao === "capacidade_pendente") where.push(`${aberta} AND v.quantidade_posicoes IS NULL`);
     }
     const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
