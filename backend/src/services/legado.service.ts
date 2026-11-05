@@ -334,8 +334,8 @@ export class LegadoService {
         await enviarEmailMailjet({
           apiKey: config.MAILJET_API_KEY,
           secret: config.MAILJET_SECRET_KEY,
-          fromEmail: config.MAILJET_FROM,
-          fromName: config.MAILJET_FROM_NAME,
+          fromEmail: "financeiro@dnawork.ai",
+          fromName: "Financeiro DNA Work",
           to: [{ email, nome: relatorio.empresa || "Empresa" }],
           subject: `Relatório e boleto DNA Work ${mes}/${ano}`,
           html,
