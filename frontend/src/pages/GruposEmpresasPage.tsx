@@ -540,9 +540,9 @@ function AbaVaga({ empresaInicial, modeloInicial }: { empresaInicial: string; mo
         <Field label="Saída"><Input type="time" required value={form.horario_saida} onChange={(event) => { const horario_saida = event.target.value; setForm((atual) => preencherDias(atual, { ...atual, horario_saida })); }} /></Field>
         <Field label="Sexo">
           <Select value={form.sexo} onChange={(event) => setForm({ ...form, sexo: event.target.value })}>
-            <option value="I">Indiferente</option>
-            <option value="F">Feminino</option>
-            <option value="M">Masculino</option>
+            <option value="I">Aceita os dois</option>
+            <option value="F">Feminina</option>
+            <option value="M">Masculina</option>
           </Select>
         </Field>
         <Field label="Idade"><Input type="number" required min={14} max={80} value={form.idade} onChange={(event) => setForm({ ...form, idade: event.target.value })} /></Field>

@@ -145,12 +145,13 @@ export class VagaRepository {
       domindo_entrada: string | null;
       domindo_saida: string | null;
       texto_carga: string | null;
+      sexo: string | null;
       quantidade: number;
     }>(db, `
       SELECT v.codigo, v.km::text AS km, v.atribuicaoes, v.atribu_contrato, v.requisitos_desejaveis, v.destaque,
              v.horabase, v.hora_saida_base, v.segunda_entrada, v.segunda_saida, v.terca_entrada, v.terca_saida,
              v.quarta_entrada, v.quarta_saida, v.quinta_entrada, v.quinta_saida, v.sexta_entrada, v.sexta_saida,
-             v.sab_entrada, v.sab_saida, v.domindo_entrada, v.domindo_saida, v.texto_carga,
+             v.sab_entrada, v.sab_saida, v.domindo_entrada, v.domindo_saida, v.texto_carga, v.sexo,
              CASE WHEN coalesce(v.comparador, '') = '' THEN 0
                   ELSE (SELECT count(*)::int FROM dna_work.vaga x WHERE x.comparador = v.comparador)
              END AS quantidade
@@ -192,6 +193,7 @@ export class VagaRepository {
       domindo_entrada: texto?.domindo_entrada ?? null,
       domindo_saida: texto?.domindo_saida ?? null,
       texto_carga: texto?.texto_carga ?? null,
+      sexo: texto?.sexo ?? null,
       quantidade: texto?.quantidade ?? 0,
       inscritos,
       entrevistas_agente: agente,
@@ -248,8 +250,8 @@ export class VagaRepository {
       INSERT INTO dna_work.vaga (
         id_vaga, id_empresa, cargo, tipo_vaga, salario, status, comparador, dataabertura,
         publicar, carga_horaria, obs, quantidade_posicoes, data_adicao,
-        km, atribuicaoes, atribu_contrato, requisitos_desejaveis, destaque
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12, now(), $13,$14,$15,$16,$17)
+        km, atribuicaoes, atribu_contrato, requisitos_desejaveis, destaque, sexo
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12, now(), $13,$14,$15,$16,$17,$18)
     `, [
       id,
       input.id_empresa,
@@ -268,6 +270,7 @@ export class VagaRepository {
       input.atribu_contrato ?? null,
       input.requisitos_desejaveis ?? null,
       input.destaque ?? null,
+      input.sexo ?? "I",
     ]);
   }
 
@@ -298,6 +301,7 @@ export class VagaRepository {
       domindo_entrada: input.domindo_entrada,
       domindo_saida: input.domindo_saida,
       texto_carga: input.texto_carga,
+      sexo: input.sexo,
     };
     const entries = Object.entries(map).filter(([, value]) => value !== undefined);
     if (entries.length === 0) return;

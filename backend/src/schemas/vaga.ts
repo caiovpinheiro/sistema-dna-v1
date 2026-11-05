@@ -33,6 +33,7 @@ const fields = {
   domindo_entrada: z.string().trim().max(20).optional(),
   domindo_saida: z.string().trim().max(20).optional(),
   texto_carga: z.string().trim().max(255).optional(),
+  sexo: z.enum(["M", "F", "I"]).optional(),
 };
 
 export const vagaCreateSchema = z.object(fields);
@@ -63,6 +64,7 @@ export const vagaPatchSchema = z.object({
   domindo_entrada: fields.domindo_entrada,
   domindo_saida: fields.domindo_saida,
   texto_carga: fields.texto_carga,
+  sexo: fields.sexo,
 });
 
 export const vagaListSchema = z.object({

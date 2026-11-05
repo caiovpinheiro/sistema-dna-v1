@@ -38,6 +38,7 @@ const schema = z.object({
   domindo_entrada: z.string().optional(),
   domindo_saida: z.string().optional(),
   texto_carga: z.string().optional(),
+  sexo: z.enum(["M", "F", "I"]),
 });
 type Form = z.infer<typeof schema>;
 type Company = { id_empresa: string; razao_social: string; nome_fantasia: string | null };
@@ -76,7 +77,7 @@ export function VagaFormPage() {
   const modes = useQuery({ queryKey: ["modalidades"], queryFn: () => api<Mode[]>("/api/v1/modalidades") });
   const modelo = useQuery({ queryKey: ["modelo", modeloId], enabled: Boolean(modeloId) && !id, queryFn: () => api<Modelo>(`/api/v1/modelos/${modeloId}`) });
   const current = useQuery({ queryKey: ["vaga", id], enabled: Boolean(id), queryFn: () => api<Form & { salario: number | null; razao_social?: string | null; nome_fantasia?: string | null }>(`/api/v1/vagas/${id}`) });
-  const form = useForm<Form>({ resolver: zodResolver(schema), defaultValues: { id_empresa: params.get("empresa") ?? "", quantidade_posicoes: 1, tipo_vaga: 2 } });
+  const form = useForm<Form>({ resolver: zodResolver(schema), defaultValues: { id_empresa: params.get("empresa") ?? "", quantidade_posicoes: 1, tipo_vaga: 2, sexo: "I" } });
   useEffect(() => {
     if (!current.data) return;
     const data = current.data.data;
@@ -106,6 +107,7 @@ export function VagaFormPage() {
       domindo_entrada: hora(data.domindo_entrada),
       domindo_saida: hora(data.domindo_saida),
       texto_carga: hora(data.texto_carga),
+      sexo: data.sexo === "M" || data.sexo === "F" ? data.sexo : "I",
     });
   }, [current.data, form]);
   useEffect(() => {
@@ -124,6 +126,7 @@ export function VagaFormPage() {
       requisitos_desejaveis: textoPlano(item.requisitos_desejaveis),
       destaque: textoPlano(item.destaque),
       obs: "",
+      sexo: "I",
     });
   }, [modelo.data, id, form, empresaId]);
   const save = useMutation({
@@ -169,6 +172,13 @@ export function VagaFormPage() {
         <Field label="Quantidade de vagas" error={form.formState.errors.quantidade_posicoes?.message}><Input type="number" min={1} {...form.register("quantidade_posicoes")} /></Field>
         <Field label="Distância (km)"><Input {...form.register("km")} /></Field>
         <Field label="Carga horária"><Input {...form.register("carga_horaria")} /></Field>
+        <Field label="Sexo">
+          <Select {...form.register("sexo")}>
+            <option value="M">Masculina</option>
+            <option value="F">Feminina</option>
+            <option value="I">Aceita os dois</option>
+          </Select>
+        </Field>
         <Field label="Entrada"><Input placeholder="08:00" {...form.register("horabase")} /></Field>
         <Field label="Saída"><Input placeholder="17:00" {...form.register("hora_saida_base")} /></Field>
         <div className="md:col-span-2 grid gap-3">
