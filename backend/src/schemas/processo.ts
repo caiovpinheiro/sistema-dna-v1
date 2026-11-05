@@ -36,7 +36,7 @@ export const processoListSchema = z.object({
 
 export const atendimentoSchema = z.object({
   nome: z.string().trim().min(3).max(180),
-  celular: z.string().trim().min(8).max(20),
+  celular: z.string().trim().max(20).nullish().or(z.literal("")),
   email: z.union([z.string().trim().email(), z.literal("")]).nullish(),
   cpf: z.string().trim().nullish(),
   id_vaga: z.string().trim().nullish(),

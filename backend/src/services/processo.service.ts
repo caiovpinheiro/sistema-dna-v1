@@ -123,7 +123,7 @@ export class ProcessoService {
   }
 
   async criarCandidato(input: Atendimento) {
-    const fones = telefones(input.celular);
+    const fones = input.celular?.trim() ? telefones(input.celular) : [];
     const cpf = input.cpf ? onlyDigits(input.cpf) : "";
     if (cpf && !isValidCpf(cpf)) throw new AppError(422, "CPF_INVALIDO", "CPF inválido.");
     const data = input.data_recebimento || hojeSp();
@@ -131,7 +131,16 @@ export class ProcessoService {
     const cep = cepCadastro(input.cep);
     const sexo = sexoCadastro(input.sexo);
     const escola = escolaridadeCadastro(input.escolaridade);
-    let idCandidato = await this.candidatoDoAtendimento(cpf, fones);
+    let idCandidato: string | null = null;
+    if (input.deal_id?.trim()) {
+      const porDeal = await one<{ id_candidato: string }>(this.db, `
+        SELECT id_candidato FROM dna_work.candidato
+        WHERE atendimento->>'deal_id' = $1
+        LIMIT 1
+      `, [input.deal_id.trim()]);
+      idCandidato = porDeal?.id_candidato ?? null;
+    }
+    if (!idCandidato) idCandidato = await this.candidatoDoAtendimento(cpf, fones);
     let criado = false;
     if (!idCandidato) {
       idCandidato = randomUUID();
@@ -139,7 +148,7 @@ export class ProcessoService {
       await this.db.query(`
         INSERT INTO dna_work.candidato (id_candidato, nome, cpf, celular, email, cep, sexo, escola, datacadastro, colaborador, obs, atendimento)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 0, $10, $11::jsonb)
-      `, [idCandidato, input.nome.trim(), cpf || null, fones[0], input.email?.trim().toLowerCase() || null, cep, sexo, escola, data.replaceAll("-", "/"), observacao, JSON.stringify(dadosAtendimento(input))]);
+      `, [idCandidato, input.nome.trim(), cpf || null, fones[0] ?? null, input.email?.trim().toLowerCase() || null, cep, sexo, escola, data.replaceAll("-", "/"), observacao, JSON.stringify(dadosAtendimento(input))]);
     } else {
       await this.db.query(`
         UPDATE dna_work.candidato SET
@@ -147,16 +156,16 @@ export class ProcessoService {
           sexo = CASE WHEN sexo IS NULL OR btrim(sexo) = '' THEN $3 ELSE sexo END,
           escola = CASE WHEN escola IS NULL OR btrim(escola) = '' THEN $4 ELSE escola END,
           email = CASE WHEN email IS NULL OR btrim(email) = '' THEN $5 ELSE email END,
-          celular = CASE WHEN celular IS NULL OR btrim(celular) = '' THEN $6 ELSE celular END,
+          celular = CASE WHEN celular IS NULL OR btrim(celular) = '' THEN COALESCE($6, celular) ELSE celular END,
           atendimento = coalesce(atendimento, '{}'::jsonb) || $7::jsonb
         WHERE id_candidato = $1
-      `, [idCandidato, cep, sexo, escola, input.email?.trim().toLowerCase() || null, fones[0], JSON.stringify(dadosAtendimento(input))]);
+      `, [idCandidato, cep, sexo, escola, input.email?.trim().toLowerCase() || null, fones[0] ?? null, JSON.stringify(dadosAtendimento(input))]);
     }
-    return { id_candidato: idCandidato, nome: input.nome.trim(), celular: fones[0], criado, captado_por: "dnawork" as const };
+    return { id_candidato: idCandidato, nome: input.nome.trim(), celular: fones[0] ?? null, criado, captado_por: "dnawork" as const };
   }
 
   async atualizarCandidato(input: Atendimento) {
-    const fones = telefones(input.celular);
+    const fones = input.celular?.trim() ? telefones(input.celular) : [];
     const cpf = input.cpf ? onlyDigits(input.cpf) : "";
     if (cpf && !isValidCpf(cpf)) throw new AppError(422, "CPF_INVALIDO", "CPF inválido.");
     let id: string | null = null;
@@ -177,7 +186,7 @@ export class ProcessoService {
     await this.db.query(`
       UPDATE dna_work.candidato SET
         nome = $2,
-        celular = $3,
+        celular = COALESCE($3, celular),
         cpf = COALESCE($4, cpf),
         email = COALESCE($5, email),
         cep = COALESCE($6, cep),
@@ -185,7 +194,7 @@ export class ProcessoService {
         escola = COALESCE($8, escola),
         atendimento = coalesce(atendimento, '{}'::jsonb) || $9::jsonb
       WHERE id_candidato = $1
-    `, [id, input.nome.trim(), fones[0], cpf || null, input.email?.trim().toLowerCase() || null, cep, sexo, escola, JSON.stringify(dados)]);
+    `, [id, input.nome.trim(), fones[0] ?? null, cpf || null, input.email?.trim().toLowerCase() || null, cep, sexo, escola, JSON.stringify(dados)]);
     await this.db.query(`
       UPDATE dna_work.processo_seletivo
       SET atendimento = coalesce(atendimento, '{}'::jsonb) || $2::jsonb
