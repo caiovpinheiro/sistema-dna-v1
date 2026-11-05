@@ -38,6 +38,7 @@ export type Cobranca = {
   situacao: string;
   url_pagamento: string | null;
   data_pagamento: string | null;
+  envio: string | null;
   notas: Array<{ id: string; tipo: string; valor: number; status: string; pdf_url: string | null }>;
 };
 
@@ -66,7 +67,17 @@ export class AsaasService {
     const cobrancas = await this.db.query<Omit<Cobranca, "notas"> & { valor: string; valor_liquido: string | null }>(`
       SELECT c.id, c.id_empresa, e.razao_social AS empresa_razao, e.nome_fantasia AS empresa_fantasia, e.cnpj AS empresa_cnpj,
              c.descricao, c.valor::float8 AS valor, c.valor_liquido::float8 AS valor_liquido, c.vencimento::text AS vencimento,
-             c.forma, c.status, c.situacao, c.url_pagamento, c.data_pagamento::text AS data_pagamento
+             c.forma, c.status, c.situacao, c.url_pagamento, c.data_pagamento::text AS data_pagamento,
+             (
+               SELECT ce.data::text
+               FROM dna_work.cobranca_email ce
+               WHERE ce.id_empresa::text = c.id_empresa::text
+                 AND c.descricao ~ '^Faturamento [0-9]+/[0-9]{4}$'
+                 AND ltrim(split_part(regexp_replace(c.descricao, '^Faturamento ', ''), '/', 1), '0') = ltrim(ce.mes::text, '0')
+                 AND split_part(regexp_replace(c.descricao, '^Faturamento ', ''), '/', 2) = ce.ano::text
+               ORDER BY ce.id DESC
+               LIMIT 1
+             ) AS envio
       FROM dna_work.cobranca_asaas c
       LEFT JOIN dna_work.empresa e ON e.id_empresa = c.id_empresa
       ${clause}
@@ -183,15 +194,28 @@ export class AsaasService {
   }
 
   async boletoDoFaturamento(input: { idEmpresa: string; valor: number; vencimento: string; descricao: string }) {
-    const existente = await this.db.query<{ id: string; url_pagamento: string | null; vencimento: string }>(`
-      SELECT id, url_pagamento, vencimento::text AS vencimento
+    const existente = await this.db.query<{ id: string; url_pagamento: string | null; vencimento: string; asaas_payment_id: string | null }>(`
+      SELECT id, url_pagamento, vencimento::text AS vencimento, asaas_payment_id
       FROM dna_work.cobranca_asaas
-      WHERE id_empresa = $1 AND descricao = $2 AND situacao = 'aberta'
+      WHERE id_empresa::text = $1
+        AND situacao = 'aberta'
+        AND descricao ~ '^Faturamento [0-9]+/[0-9]{4}$'
+        AND ltrim(split_part(regexp_replace(descricao, '^Faturamento ', ''), '/', 1), '0') = ltrim(split_part(regexp_replace($2, '^Faturamento ', ''), '/', 1), '0')
+        AND split_part(regexp_replace(descricao, '^Faturamento ', ''), '/', 2) = split_part(regexp_replace($2, '^Faturamento ', ''), '/', 2)
       ORDER BY vencimento DESC
       LIMIT 1
     `, [input.idEmpresa, input.descricao]);
     const atual = existente.rows[0];
-    if (atual?.url_pagamento) return { id: atual.id, url: atual.url_pagamento, vencimento: atual.vencimento.slice(0, 10) };
+    if (atual) {
+      let url = atual.url_pagamento;
+      if (!url && atual.asaas_payment_id) {
+        const payment = await this.client().consultarCobranca(atual.asaas_payment_id);
+        url = payment.invoiceUrl ?? null;
+        if (url) await this.db.query("UPDATE dna_work.cobranca_asaas SET url_pagamento = $2 WHERE id = $1", [atual.id, url]);
+      }
+      if (!url) throw new AppError(502, "BOLETO_SEM_LINK", "O boleto deste mês já existe e o Asaas não devolveu o link. Nenhuma cobrança nova foi criada.");
+      return { id: atual.id, url, vencimento: atual.vencimento.slice(0, 10) };
+    }
     const cobranca = await this.criar({ ...input, forma: "BOLETO", avisar: false });
     return { id: cobranca.id, url: cobranca.url_pagamento, vencimento: input.vencimento };
   }

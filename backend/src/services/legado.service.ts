@@ -273,6 +273,7 @@ export class LegadoService {
   ) {
     const enviados: string[] = [];
     const boletos: string[] = [];
+    const pulados: string[] = [];
     const falhas: Array<{ empresa: string | null; motivo: string }> = [];
     const mailjetPronto = Boolean(config.MAILJET_API_KEY && config.MAILJET_SECRET_KEY);
     const hoje = new Date();
@@ -293,6 +294,19 @@ export class LegadoService {
         falhas.push({ empresa: relatorio.empresa, motivo: "Não há valor a cobrar neste mês." });
         continue;
       }
+      const jaEnviado = await one<{ data: string }>(this.db, `
+        SELECT data::text AS data
+        FROM dna_work.cobranca_email
+        WHERE id_empresa::text = $1
+          AND ano::text = $2
+          AND ltrim(coalesce(mes::text, ''), '0') = ltrim($3, '0')
+        ORDER BY id DESC
+        LIMIT 1
+      `, [id, ano, mes]);
+      if (jaEnviado) {
+        pulados.push(relatorio.empresa || id);
+        continue;
+      }
       try {
         const vencimento = vencimentoDia10(ano, mes);
         const cobranca = await boleto({ idEmpresa: id, valor: relatorio.total, vencimento, descricao });
@@ -303,6 +317,18 @@ export class LegadoService {
         boletos.push(relatorio.empresa || id);
         if (!mailjetPronto) {
           falhas.push({ empresa: relatorio.empresa, motivo: "Boleto gerado. Falta MAILJET_API_KEY e MAILJET_SECRET_KEY no servidor para enviar o e-mail." });
+          continue;
+        }
+        const repetido = await one<{ data: string }>(this.db, `
+          SELECT data::text AS data
+          FROM dna_work.cobranca_email
+          WHERE id_empresa::text = $1
+            AND ano::text = $2
+            AND ltrim(coalesce(mes::text, ''), '0') = ltrim($3, '0')
+          LIMIT 1
+        `, [id, ano, mes]);
+        if (repetido) {
+          pulados.push(relatorio.empresa || id);
           continue;
         }
         const corpo = relatorio.itens.map((linha) => `
@@ -349,7 +375,7 @@ export class LegadoService {
         falhas.push({ empresa: relatorio.empresa, motivo: error instanceof AppError ? error.message : "Não foi possível enviar." });
       }
     }
-    return { enviados: enviados.length, boletos: boletos.length, empresas: enviados, falhas };
+    return { enviados: enviados.length, boletos: boletos.length, pulados: pulados.length, empresas: enviados, falhas };
   }
 
   async procfy(query: { de?: string; ate?: string; status?: string; tipoData?: string; sistema?: string; page?: number; pageSize?: number }) {
