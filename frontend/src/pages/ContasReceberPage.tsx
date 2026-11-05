@@ -170,7 +170,6 @@ export function ContasReceberPage() {
         <p className="text-sm text-slate-500">Cobranças enviadas ao Asaas. O cliente da empresa é criado ou atualizado na hora de faturar.</p>
       </div>
       {erro ? <p className="text-sm text-rose-600">{erro}</p> : null}
-      {aviso ? <p className="text-sm text-slate-600">{aviso}</p> : null}
       <Card className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
         <div className="relative md:col-span-2">
           <Field label="Empresa">
@@ -227,6 +226,7 @@ export function ContasReceberPage() {
           <p className="text-sm text-slate-500">{progresso.feito} de {progresso.total}</p>
         </div>
       ) : null}
+      {aviso ? <p className="text-sm text-rose-500">{aviso}</p> : null}
       <Card className="overflow-x-auto p-0">
         <table className="w-full min-w-[960px] text-left text-sm">
           <thead className="text-xs uppercase text-slate-400">

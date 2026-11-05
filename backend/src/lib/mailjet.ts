@@ -38,9 +38,16 @@ export async function enviarEmailMailjet(input: {
       }],
     }),
   });
-  const payload = await response.json().catch(() => null) as { Messages?: Array<{ Status?: string }> } | null;
+  const payload = await response.json().catch(() => null) as {
+    ErrorMessage?: string;
+    Messages?: Array<{ Status?: string; Errors?: Array<{ ErrorMessage?: string }> }>;
+  } | null;
+  if (response.status === 401) {
+    throw new AppError(502, "MAILJET_RECUSOU", "A Mailjet recusou a chave. Confira MAILJET_API_KEY e MAILJET_SECRET_KEY no servidor. Nenhuma cobrança nova foi criada.");
+  }
+  const detalhe = payload?.Messages?.[0]?.Errors?.map((item) => item.ErrorMessage).filter(Boolean).join(" ") || payload?.ErrorMessage;
   if (!response.ok || payload?.Messages?.[0]?.Status !== "success") {
-    throw new AppError(502, "MAILJET_RECUSOU", "A Mailjet não enviou o e-mail.");
+    throw new AppError(502, "MAILJET_RECUSOU", detalhe || "A Mailjet não enviou o e-mail. Nenhuma cobrança nova foi criada.");
   }
   return { enviados: destinos.map((item) => item.email) };
 }
