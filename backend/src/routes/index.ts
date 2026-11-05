@@ -469,8 +469,18 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
   const pagina = { page: z.coerce.number().int().min(1).default(1), pageSize: z.coerce.number().int().min(1).max(100).default(50) };
   api.get("/api/v1/faturamento", { schema: { tags: ["faturamento"], querystring: z.object({ ...pagina, empresa: z.string().optional(), fechamento: z.string().optional(), mes: z.string().optional(), ano: z.string().optional(), status: z.string().optional() }) } }, async (request) => {
     const result = await legado.faturamento(request.query);
-    return ok(result.data, result.meta);
+    const conferencia = await legado.faturasAbertas();
+    let asaas: { valor: number; quantidade: number } | null = null;
+    try {
+      asaas = await services.asaas.aReceber();
+    } catch {
+      asaas = null;
+    }
+    return ok(result.data, { ...result.meta, asaas, conferencia });
   });
+  api.post("/api/v1/faturamento/boletos", {
+    schema: { tags: ["faturamento"], body: z.object({ mes: z.string().regex(/^\d{1,2}$/), ano: z.string().regex(/^\d{4}$/) }) },
+  }, async (request) => ok(await services.asaas.boletosDoMes(request.body.mes, request.body.ano)));
   api.get("/api/v1/procfy", { schema: { tags: ["procfy"], querystring: z.object({ ...pagina, de: z.string().optional(), ate: z.string().optional(), status: z.string().optional(), tipoData: z.string().optional(), sistema: z.string().optional() }) } }, async (request) => {
     const result = await legado.procfy(request.query);
     return ok(result.data, result.meta);

@@ -150,6 +150,18 @@ export class LegadoService {
     };
   }
 
+  async faturasAbertas() {
+    const row = await one<{ quantidade: number; valor: string }>(this.db, `
+      SELECT count(*)::int AS quantidade,
+             round(coalesce(sum(CASE WHEN replace(coalesce(valor_final, ''), ',', '.') ~ '^[0-9]+(\\.[0-9]+)?$'
+                  THEN replace(valor_final, ',', '.')::numeric ELSE 0 END), 0), 2)::text AS valor
+      FROM dna_work.fatura
+      WHERE status_fatura IS DISTINCT FROM 1
+        AND coalesce(tipo_fatura, '') <> 'Subfatura'
+    `);
+    return { quantidade: row?.quantidade ?? 0, valor: Number(row?.valor ?? 0) };
+  }
+
   async procfy(query: { de?: string; ate?: string; status?: string; tipoData?: string; sistema?: string; page?: number; pageSize?: number }) {
     const tipo = ["vencimento_fatura", "data_pg", "data_cadastro"].includes(texto(query.tipoData)) ? texto(query.tipoData) : "vencimento_fatura";
     const sistema = texto(query.sistema) || "ambos";

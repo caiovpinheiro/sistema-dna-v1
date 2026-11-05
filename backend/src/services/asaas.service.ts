@@ -87,6 +87,66 @@ export class AsaasService {
     }));
   }
 
+  async aReceber() {
+    const asaas = this.client();
+    const [pendente, vencido] = await Promise.all([
+      asaas.estatisticas({ status: "PENDING" }),
+      asaas.estatisticas({ status: "OVERDUE" }),
+    ]);
+    return {
+      valor: Number(pendente.value ?? 0) + Number(vencido.value ?? 0),
+      quantidade: Number(pendente.quantity ?? 0) + Number(vencido.quantity ?? 0),
+    };
+  }
+
+  async boletosDoMes(mes: string, ano: string) {
+    const linhas = await this.db.query<{
+      id_fatura: number; id_empresa: string; valor: string; vencimento: string | null; nome: string | null;
+    }>(`
+      SELECT f.id_fatura, f.id_empresa::text AS id_empresa, f.valor_final AS valor,
+             f.vencimento_fatura AS vencimento, coalesce(e.nome_fantasia, e.razao_social) AS nome
+      FROM dna_work.fatura f
+      JOIN dna_work.empresa e ON e.id_empresa = f.id_empresa
+      WHERE ltrim(f.mes::text, '0') = ltrim($1, '0')
+        AND f.ano::text = $2
+        AND f.status_fatura IS DISTINCT FROM 1
+        AND coalesce(f.tipo_fatura, '') <> 'Subfatura'
+        AND nullif(btrim(f.id_asaas::text), '') IS NULL
+        AND replace(coalesce(f.valor_final, ''), ',', '.') ~ '^[0-9]+(\\.[0-9]+)?$'
+        AND replace(f.valor_final, ',', '.')::numeric > 0
+      ORDER BY e.razao_social
+    `, [mes, ano]);
+    const gerados: Array<{ empresa: string | null; valor: number; vencimento: string }> = [];
+    const falhas: Array<{ empresa: string | null; motivo: string }> = [];
+    for (const linha of linhas.rows) {
+      const vencimento = (linha.vencimento ?? "").slice(0, 10).replaceAll("/", "-");
+      const valor = Number(String(linha.valor).replace(",", "."));
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(vencimento)) {
+        falhas.push({ empresa: linha.nome, motivo: "Vencimento inválido." });
+        continue;
+      }
+      try {
+        const cobranca = await this.criar({
+          idEmpresa: linha.id_empresa,
+          valor,
+          vencimento,
+          descricao: `Faturamento ${mes}/${ano}`,
+          forma: "BOLETO",
+        });
+        const pagamento = await this.db.query<{ asaas_payment_id: string }>(
+          "SELECT asaas_payment_id FROM dna_work.cobranca_asaas WHERE id = $1",
+          [cobranca.id],
+        );
+        const asaasId = pagamento.rows[0]?.asaas_payment_id;
+        if (asaasId) await this.db.query("UPDATE dna_work.fatura SET id_asaas = $2 WHERE id_fatura = $1", [linha.id_fatura, asaasId]);
+        gerados.push({ empresa: linha.nome, valor, vencimento });
+      } catch (error) {
+        falhas.push({ empresa: linha.nome, motivo: error instanceof AppError ? error.message : "O Asaas não gerou o boleto." });
+      }
+    }
+    return { gerados: gerados.length, falhas, itens: gerados };
+  }
+
   async criar(input: { idEmpresa: string; valor: number; vencimento: string; descricao: string; forma: string }) {
     const empresa = await this.empresa(input.idEmpresa);
     const asaas = this.client();

@@ -70,6 +70,11 @@ export class AsaasClient {
     return this.request<{ id: string; status?: string; pdfUrl?: string }>("GET", `/v3/invoices/${id}`);
   }
 
+  estatisticas(params: Record<string, string>) {
+    const consulta = new URLSearchParams(params).toString();
+    return this.request<{ quantity?: number; value?: number; netValue?: number }>("GET", `/v3/finance/payment/statistics?${consulta}`);
+  }
+
   cancelarNota(id: string) {
     return this.request<{ id: string; status?: string }>("POST", `/v3/invoices/${id}/cancel`);
   }

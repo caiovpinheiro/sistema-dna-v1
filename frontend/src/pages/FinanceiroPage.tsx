@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent, type ReactNode } from "react";
 import { Paginacao } from "@/components/paginacao";
 import { Button, Card, Field, Input, Select } from "@/components/ui";
@@ -135,17 +135,46 @@ function Consulta({ carregando, erro }: { carregando: boolean; erro: unknown }) 
 }
 
 export function GerarFaturamentoPage() {
+  const client = useQueryClient();
   const inicial = { mes: nowMonth(), ano: nowYear(), status: "3" };
   const [busca, setBusca] = useState(inicial);
   const [pagina, setPagina] = useState(1);
+  const [aviso, setAviso] = useState("");
   const result = useQuery({
     queryKey: ["faturamento", busca, pagina],
     queryFn: () => api<{ matriz: Array<{ razao_social: string | null; nome_fantasia: string | null; cnpj: string | null; datafechamento: string | null; status: string }>; itens: Array<{ razao_social: string | null; nome_fantasia: string | null; cnpj: string | null; tipo: string | null; datafechamento: string | null; itens: number; valor: number | null; status: string; envio: string | null }> }>(`/api/v1/faturamento?${new URLSearchParams({ ...busca, page: String(pagina), pageSize: String(TAMANHO) })}`),
   });
+  const boletos = useMutation({
+    mutationFn: () => api<{ gerados: number; falhas: Array<{ empresa: string | null; motivo: string }> }>("/api/v1/faturamento/boletos", {
+      method: "POST",
+      body: JSON.stringify({ mes: busca.mes, ano: busca.ano }),
+    }),
+    onSuccess: async (resposta) => {
+      const falhas = resposta.data.falhas.length;
+      setAviso(resposta.data.gerados === 0 && falhas === 0
+        ? "Este mês não tem fatura em aberto sem boleto."
+        : `${resposta.data.gerados} boleto(s) gerado(s)${falhas ? `. ${falhas} não saíram.` : "."}`);
+      await client.invalidateQueries({ queryKey: ["faturamento"] });
+    },
+    onError: (error: Error) => setAviso(error.message),
+  });
   const dados = result.data?.data;
   const total = Number(result.data?.meta?.total ?? 0);
+  const meta = result.data?.meta as { asaas?: { valor: number; quantidade: number } | null; conferencia?: { valor: number; quantidade: number }; totalReceber?: number } | undefined;
   return (
     <Screen title="Faturamento" subtitle="Gerar Faturamento">
+      <div className="grid gap-3 md:grid-cols-2">
+        <Card>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Valor a receber</p>
+          <p className="mt-2 text-3xl font-extrabold">{meta?.asaas ? reais(meta.asaas.valor) : "—"}</p>
+          <p className="mt-1 text-sm text-slate-500">{meta?.asaas ? `${meta.asaas.quantidade} cobranças em aberto no Asaas` : "Asaas indisponível neste momento"}</p>
+        </Card>
+        <Card>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Conferência do banco</p>
+          <p className="mt-2 text-3xl font-extrabold">{reais(meta?.conferencia?.valor)}</p>
+          <p className="mt-1 text-sm text-slate-500">{meta?.conferencia ? `${meta.conferencia.quantidade} faturas em aberto no banco` : "Carregando a conferência"}</p>
+        </Card>
+      </div>
       <form onSubmit={(event) => { event.preventDefault(); setBusca({ ...inicial, ...lerFiltros(event, ["empresa", "mes", "ano", "status"]) }); setPagina(1); }}>
       <Card className="grid items-end gap-3 md:grid-cols-2 xl:grid-cols-5">
         <EmpresaField />
@@ -176,7 +205,13 @@ export function GerarFaturamentoPage() {
         rows={(dados?.itens ?? []).map((item) => [item.razao_social, item.nome_fantasia, formatCnpj(item.cnpj), item.tipo, item.datafechamento, item.itens, item.valor == null ? "—" : money(item.valor), item.status, dateBr(item.envio)])}
       />
       <Paginacao pagina={pagina} tamanho={TAMANHO} total={total} onPagina={setPagina} />
-      <ListingFooter count={total} total={reais(result.data?.meta?.totalReceber)} />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <ListingFooter count={total} total={reais(meta?.totalReceber)} />
+        <Button type="button" disabled={boletos.isPending} onClick={() => {
+          if (window.confirm(`Gerar os boletos de ${busca.mes}/${busca.ano} no Asaas para as faturas em aberto que ainda não têm cobrança?`)) boletos.mutate();
+        }}>{boletos.isPending ? "Gerando..." : "Gerar boletos do mês"}</Button>
+      </div>
+      {aviso ? <p className="text-sm text-slate-600">{aviso}</p> : null}
     </Screen>
   );
 }
