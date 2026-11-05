@@ -1,5 +1,8 @@
 import type { Db } from "../repositories/sql.js";
 import { many, one } from "../repositories/sql.js";
+import type { AppConfig } from "../config.js";
+import { enviarModelo, textoHtml } from "../lib/email-modelo.js";
+import { AppError } from "../lib/errors.js";
 
 type Pagina = { page: number; pageSize: number };
 
@@ -27,6 +30,24 @@ function aceitaStatus(filtro: string, status: number | null) {
   if (filtro === "2") return status === 2;
   return true;
 }
+
+function numero(expr: string) {
+  return `CASE WHEN replace(coalesce(${expr}, ''), ',', '.') ~ '^[0-9]+(\\.[0-9]+)?$' THEN replace(${expr}, ',', '.')::numeric ELSE 0 END`;
+}
+
+const VALOR_CONTRATO = `
+  COALESCE(
+    CASE WHEN vv.cobra_recorrente::text = '1' THEN ${numero("vv.valor_recorrente")} END,
+    CASE WHEN fe.cobra_recorrente::text = '1' THEN ${numero("fe.valor")} END,
+    0
+  )
+  + CASE WHEN cv.data_contratacao LIKE $4 || '%' THEN
+      CASE WHEN upper(coalesce(vv.tipo_selecao, fe.tipo_selecao, '')) = 'P'
+           THEN ${numero("v.salario")} * ${numero("coalesce(nullif(vv.valor_selecao, ''), fe.valor_selecao)")} / 100
+           ELSE ${numero("coalesce(nullif(vv.valor_selecao, ''), fe.valor_selecao)")}
+      END
+    ELSE 0 END
+`;
 
 function periodo(mes: string, ano: string) {
   const mesNum = Number(mes);
@@ -60,6 +81,7 @@ export class LegadoService {
       matriz: string | null;
       usa_asaas: string | null;
       itens: number;
+      valor: string;
     }>(this.db, `
       SELECT e.id_empresa::text AS id_empresa,
              e.razao_social, e.nome_fantasia, e.cnpj,
@@ -67,12 +89,13 @@ export class LegadoService {
              CASE WHEN e.tipo_empresa::text = '1' THEN 'Matriz' ELSE 'Filial' END AS tipo,
              e.matriz::text AS matriz,
              e.usa_asaas::text AS usa_asaas,
-             count(DISTINCT cv.id_vaga)::int AS itens
+             count(*) FILTER (WHERE (${VALOR_CONTRATO}) > 0)::int AS itens,
+             round(coalesce(sum(${VALOR_CONTRATO}), 0), 2)::text AS valor
       FROM dna_work.conratacaovaga cv
       JOIN dna_work.vaga v ON v.id_vaga = cv.id_vaga
       JOIN dna_work.empresa e ON v.id_empresa = e.id_empresa
       JOIN dna_work.faturamento_empresa fe ON fe.id_empresa = e.id_empresa AND fe.modalidade_vaga::text = v.tipo_vaga::text
-      JOIN dna_work.vaga_valores vv ON vv.comparador::text = v.comparador::text
+      LEFT JOIN dna_work.vaga_valores vv ON vv.comparador::text = v.comparador::text
       WHERE (
         cv.data_demicao IS NULL OR cv.data_demicao = ''
         OR (
@@ -87,7 +110,7 @@ export class LegadoService {
         OR CASE WHEN e.datafechamento::text LIKE '30' THEN cv.datainicio <= $3
                 ELSE cv.datainicio <= ($4 || e.datafechamento::text) END
       )
-      AND v.status::text NOT IN ('5', '4', '3')
+      AND v.status::text NOT IN ('5', '4', '3', '0')
       AND ($5 = '' OR trim(e.datafechamento::text) = $5 OR ltrim(trim(e.datafechamento::text), '0') = ltrim($5, '0'))
       AND ($6 = '' OR e.razao_social ILIKE $6 OR e.nome_fantasia ILIKE $6 OR e.razao_sem_acento ILIKE $6 OR e.fantasia_sem_acento ILIKE $6 OR e.cnpj ILIKE $6)
       GROUP BY e.id_empresa, e.razao_social, e.nome_fantasia, e.cnpj, e.datafechamento, e.tipo_empresa, e.matriz, e.usa_asaas
@@ -115,17 +138,17 @@ export class LegadoService {
     const faturaPorEmpresa = new Map(faturas.map((item) => [item.id_empresa, item]));
     const envioPorEmpresa = new Map(envios.map((item) => [item.id_empresa, item.data]));
     const filtro = texto(query.status);
-    const itens = empresas.filter((item) => aceitaStatus(filtro, faturaPorEmpresa.get(item.id_empresa)?.status_fatura ?? null)).map((item) => {
+    const itens = empresas.filter((item) => aceitaStatus(filtro, faturaPorEmpresa.get(item.id_empresa)?.status_fatura ?? null) && Number(item.valor) > 0).map((item) => {
       const fatura = faturaPorEmpresa.get(item.id_empresa);
-      const valor = fatura?.valor != null ? Number(fatura.valor) : null;
       return {
+        id_empresa: item.id_empresa,
         razao_social: item.razao_social,
         nome_fantasia: item.nome_fantasia,
         cnpj: item.cnpj,
         tipo: item.tipo,
         datafechamento: item.datafechamento,
         itens: item.itens,
-        valor,
+        valor: Number(item.valor),
         status: statusFatura(fatura?.status_fatura ?? null),
         envio: envioPorEmpresa.get(item.id_empresa) ?? null,
       };
@@ -160,6 +183,111 @@ export class LegadoService {
         AND coalesce(tipo_fatura, '') <> 'Subfatura'
     `);
     return { quantidade: row?.quantidade ?? 0, valor: Number(row?.valor ?? 0) };
+  }
+
+  async relatorioEmpresa(idEmpresa: string, mes: string, ano: string) {
+    const datas = periodo(mes, ano);
+    const empresa = await one<{ nome: string | null; cnpj: string | null; email: string | null; email_financeiro: string | null }>(this.db, `
+      SELECT coalesce(nome_fantasia, razao_social) AS nome, cnpj, email, email_financeiro
+      FROM dna_work.empresa WHERE id_empresa = $1
+    `, [idEmpresa]);
+    if (!empresa) throw new AppError(404, "EMPRESA_NAO_ENCONTRADA", "Empresa não encontrada.");
+    const linhas = await many<{
+      nome: string | null; cargo: string | null; modalidade: string | null; inicio: string | null; demissao: string | null; valor: string;
+    }>(this.db, `
+      SELECT c.nome, v.cargo, m.descricao AS modalidade, cv.datainicio AS inicio, cv.data_demicao AS demissao,
+             round((${VALOR_CONTRATO}), 2)::text AS valor
+      FROM dna_work.conratacaovaga cv
+      JOIN dna_work.vaga v ON v.id_vaga = cv.id_vaga
+      JOIN dna_work.empresa e ON v.id_empresa = e.id_empresa
+      JOIN dna_work.faturamento_empresa fe ON fe.id_empresa = e.id_empresa AND fe.modalidade_vaga::text = v.tipo_vaga::text
+      LEFT JOIN dna_work.vaga_valores vv ON vv.comparador::text = v.comparador::text
+      LEFT JOIN dna_work.candidato c ON c.id_candidato = cv.id_candidato
+      LEFT JOIN dna_work.modalidade_vaga m ON m.id = v.tipo_vaga
+      WHERE e.id_empresa = $7
+        AND (
+          cv.data_demicao IS NULL OR cv.data_demicao = ''
+          OR (
+            CASE WHEN e.datafechamento::text LIKE '30' THEN cv.data_demicao >= $1
+                 ELSE cv.data_demicao >= ($2 || e.datafechamento::text) END
+            AND cv.data_demicao <> cv.data_contratacao
+          )
+        )
+        AND (
+          CASE WHEN e.datafechamento::text LIKE '30' THEN cv.data_contratacao <= $3
+               ELSE cv.data_contratacao <= ($4 || e.datafechamento::text) END
+          OR CASE WHEN e.datafechamento::text LIKE '30' THEN cv.datainicio <= $3
+                  ELSE cv.datainicio <= ($4 || e.datafechamento::text) END
+        )
+        AND v.status::text NOT IN ('5', '4', '3', '0')
+        AND (${VALOR_CONTRATO}) > 0
+      ORDER BY c.nome
+    `, [datas.dataInicio30, datas.dataInicio10e20, datas.data30, datas.data10e20, "", "", idEmpresa]);
+    const itens = linhas.map((linha) => ({
+      nome: linha.nome,
+      cargo: linha.cargo,
+      modalidade: linha.modalidade,
+      inicio: linha.inicio,
+      situacao: linha.demissao ? "Desligado" : "Ativo",
+      valor: Number(linha.valor),
+    }));
+    return {
+      empresa: empresa.nome,
+      cnpj: empresa.cnpj,
+      email: empresa.email_financeiro || empresa.email,
+      itens,
+      total: itens.reduce((soma, item) => soma + item.valor, 0),
+    };
+  }
+
+  async enviarRelatorios(config: AppConfig, ids: string[], mes: string, ano: string) {
+    const enviados: string[] = [];
+    const falhas: Array<{ empresa: string | null; motivo: string }> = [];
+    const hoje = new Date();
+    const data = `${hoje.getFullYear()}/${String(hoje.getMonth() + 1).padStart(2, "0")}/${String(hoje.getDate()).padStart(2, "0")}`;
+    for (const id of ids) {
+      const relatorio = await this.relatorioEmpresa(id, mes, ano).catch(() => null);
+      if (!relatorio) {
+        falhas.push({ empresa: id, motivo: "Empresa não encontrada." });
+        continue;
+      }
+      const email = (relatorio.email || "").trim().toLowerCase();
+      if (!email.includes("@")) {
+        falhas.push({ empresa: relatorio.empresa, motivo: "Sem e-mail financeiro." });
+        continue;
+      }
+      const corpo = relatorio.itens.map((linha) => `
+        <tr>
+          <td>Mensalidade</td>
+          <td>${textoHtml(linha.nome ?? "")}</td>
+          <td>${textoHtml(linha.cargo ?? "")}</td>
+          <td>${textoHtml(linha.modalidade ?? "")}</td>
+          <td>${textoHtml(linha.situacao)}</td>
+        </tr>
+      `).join("");
+      const valor = relatorio.total.toFixed(2).replace(".", ",");
+      const tabela = `<table style="width:1000px"><tr><td>Cobrança</td><td>Candidato</td><td>Cargo</td><td>Modalidade</td><td>Situação</td></tr>${corpo}<tr><td></td><td></td><td></td><td>Total</td><td>R$ ${valor}</td></tr></table>`;
+      try {
+        if (this.db && "query" in this.db) {
+          await enviarModelo(this.db as import("pg").Pool, config, "Relatorio cobrança", {
+            email,
+            nome: relatorio.empresa || "Empresa",
+          }, {
+            "@Nome-Fantasia-Empresa": textoHtml(relatorio.empresa ?? ""),
+            "@CNPJ-Empresa": textoHtml(relatorio.cnpj ?? ""),
+            "@tabela-cobranca": tabela,
+          });
+        }
+        await this.db.query(`
+          INSERT INTO dna_work.cobranca_email (id_empresa, ano, mes, data, texto)
+          VALUES ($1, $2, $3, $4, $5)
+        `, [id, ano, mes, data, `Relatório ${mes}/${ano}`]);
+        enviados.push(relatorio.empresa || id);
+      } catch (error) {
+        falhas.push({ empresa: relatorio.empresa, motivo: error instanceof AppError ? error.message : "Não foi possível enviar." });
+      }
+    }
+    return { enviados: enviados.length, empresas: enviados, falhas };
   }
 
   async procfy(query: { de?: string; ate?: string; status?: string; tipoData?: string; sistema?: string; page?: number; pageSize?: number }) {

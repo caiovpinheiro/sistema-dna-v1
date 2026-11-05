@@ -140,9 +140,11 @@ export function GerarFaturamentoPage() {
   const [busca, setBusca] = useState(inicial);
   const [pagina, setPagina] = useState(1);
   const [aviso, setAviso] = useState("");
+  const [marcadas, setMarcadas] = useState<string[]>([]);
+  const [aberta, setAberta] = useState<string | null>(null);
   const result = useQuery({
     queryKey: ["faturamento", busca, pagina],
-    queryFn: () => api<{ matriz: Array<{ razao_social: string | null; nome_fantasia: string | null; cnpj: string | null; datafechamento: string | null; status: string }>; itens: Array<{ razao_social: string | null; nome_fantasia: string | null; cnpj: string | null; tipo: string | null; datafechamento: string | null; itens: number; valor: number | null; status: string; envio: string | null }> }>(`/api/v1/faturamento?${new URLSearchParams({ ...busca, page: String(pagina), pageSize: String(TAMANHO) })}`),
+    queryFn: () => api<{ matriz: Array<{ razao_social: string | null; nome_fantasia: string | null; cnpj: string | null; datafechamento: string | null; status: string }>; itens: Array<{ id_empresa: string; razao_social: string | null; nome_fantasia: string | null; cnpj: string | null; tipo: string | null; datafechamento: string | null; itens: number; valor: number | null; status: string; envio: string | null }> }>(`/api/v1/faturamento?${new URLSearchParams({ ...busca, page: String(pagina), pageSize: String(TAMANHO) })}`),
   });
   const boletos = useMutation({
     mutationFn: () => api<{ gerados: number; falhas: Array<{ empresa: string | null; motivo: string }> }>("/api/v1/faturamento/boletos", {
@@ -158,6 +160,23 @@ export function GerarFaturamentoPage() {
     },
     onError: (error: Error) => setAviso(error.message),
   });
+  const relatorio = useQuery({
+    queryKey: ["faturamento-relatorio", aberta, busca.mes, busca.ano],
+    queryFn: () => api<{ empresa: string | null; cnpj: string | null; email: string | null; total: number; itens: Array<{ nome: string | null; cargo: string | null; modalidade: string | null; inicio: string | null; situacao: string; valor: number }> }>(`/api/v1/faturamento/relatorio?${new URLSearchParams({ empresa: aberta ?? "", mes: busca.mes, ano: busca.ano })}`),
+    enabled: Boolean(aberta),
+  });
+  const enviar = useMutation({
+    mutationFn: (empresas: string[]) => api<{ enviados: number; falhas: Array<{ empresa: string | null; motivo: string }> }>("/api/v1/faturamento/relatorios", {
+      method: "POST",
+      body: JSON.stringify({ empresas, mes: busca.mes, ano: busca.ano }),
+    }),
+    onSuccess: async (resposta) => {
+      setAviso(`${resposta.data.enviados} relatório(s) enviado(s)${resposta.data.falhas.length ? `. ${resposta.data.falhas.length} não saíram.` : "."}`);
+      setMarcadas([]);
+      await client.invalidateQueries({ queryKey: ["faturamento"] });
+    },
+    onError: (error: Error) => setAviso(error.message),
+  });
   const dados = result.data?.data;
   const total = Number(result.data?.meta?.total ?? 0);
   const meta = result.data?.meta as { asaas?: { valor: number; quantidade: number } | null; conferencia?: { valor: number; quantidade: number }; totalReceber?: number } | undefined;
@@ -166,13 +185,13 @@ export function GerarFaturamentoPage() {
       <div className="grid gap-3 md:grid-cols-2">
         <Card>
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Valor a receber</p>
-          <p className="mt-2 text-3xl font-extrabold">{meta?.asaas ? reais(meta.asaas.valor) : "—"}</p>
-          <p className="mt-1 text-sm text-slate-500">{meta?.asaas ? `${meta.asaas.quantidade} cobranças em aberto no Asaas` : "Asaas indisponível neste momento"}</p>
+          <p className="mt-2 text-3xl font-extrabold">{reais(meta?.totalReceber)}</p>
+          <p className="mt-1 text-sm text-slate-500">Calculado neste mês, como no sistema antigo: recorrente mais recrutamento.</p>
         </Card>
         <Card>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Conferência do banco</p>
-          <p className="mt-2 text-3xl font-extrabold">{reais(meta?.conferencia?.valor)}</p>
-          <p className="mt-1 text-sm text-slate-500">{meta?.conferencia ? `${meta.conferencia.quantidade} faturas em aberto no banco` : "Carregando a conferência"}</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Asaas</p>
+          <p className="mt-2 text-3xl font-extrabold">{meta?.asaas ? reais(meta.asaas.valor) : "—"}</p>
+          <p className="mt-1 text-sm text-slate-500">{meta?.asaas ? `${meta.asaas.quantidade} cobranças em aberto no Asaas` : "Asaas indisponível neste momento"}</p>
         </Card>
       </div>
       <form onSubmit={(event) => { event.preventDefault(); setBusca({ ...inicial, ...lerFiltros(event, ["empresa", "mes", "ano", "status"]) }); setPagina(1); }}>
@@ -200,10 +219,62 @@ export function GerarFaturamentoPage() {
         />
       </div>
       <Consulta carregando={result.isLoading} erro={result.error} />
-      <DataTable
-        columns={["Razão Social", "Nome Fantasia", "CNPJ", "Tipo", "DT Fechamento", "Itens", "Faturar", "Status", "Envio do Relatório"]}
-        rows={(dados?.itens ?? []).map((item) => [item.razao_social, item.nome_fantasia, formatCnpj(item.cnpj), item.tipo, item.datafechamento, item.itens, item.valor == null ? "—" : money(item.valor), item.status, dateBr(item.envio)])}
-      />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Button type="button" variant="secondary" disabled={!marcadas.length || enviar.isPending} onClick={() => enviar.mutate(marcadas)}>
+          {enviar.isPending ? "Enviando..." : `Enviar relatórios selecionados (${marcadas.length})`}
+        </Button>
+      </div>
+      <Card className="overflow-x-auto p-0">
+        <table className="w-full min-w-[960px] text-left text-sm">
+          <thead className="text-slate-500">
+            <tr className="border-b">
+              <th className="px-4 py-3"><input aria-label="Selecionar página" type="checkbox" checked={Boolean(dados?.itens.length) && (dados?.itens.every((item) => marcadas.includes(item.id_empresa)) ?? false)} onChange={(event) => {
+                const ids = dados?.itens.map((item) => item.id_empresa) ?? [];
+                setMarcadas((atual) => event.target.checked ? [...new Set([...atual, ...ids])] : atual.filter((id) => !ids.includes(id)));
+              }} /></th>
+              {["Razão Social", "Nome Fantasia", "CNPJ", "Tipo", "DT Fechamento", "Itens", "Faturar", "Status", "Envio do Relatório"].map((coluna) => <th key={coluna} className="px-4 py-3 font-semibold whitespace-nowrap">{coluna}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {(dados?.itens ?? []).map((item) => (
+              <tr key={item.id_empresa} className="border-b border-slate-100">
+                <td className="px-4 py-3"><input aria-label={`Selecionar ${item.nome_fantasia || item.razao_social}`} type="checkbox" checked={marcadas.includes(item.id_empresa)} onChange={() => setMarcadas((atual) => atual.includes(item.id_empresa) ? atual.filter((id) => id !== item.id_empresa) : [...atual, item.id_empresa])} /></td>
+                <td className="px-4 py-3"><button type="button" className="font-semibold text-cyan-800" onClick={() => setAberta(item.id_empresa)}>{item.razao_social}</button></td>
+                <td className="px-4 py-3">{item.nome_fantasia}</td>
+                <td className="px-4 py-3">{formatCnpj(item.cnpj)}</td>
+                <td className="px-4 py-3">{item.tipo}</td>
+                <td className="px-4 py-3">{item.datafechamento}</td>
+                <td className="px-4 py-3">{item.itens}</td>
+                <td className="px-4 py-3">{item.valor == null ? "—" : money(item.valor)}</td>
+                <td className="px-4 py-3">{item.status}</td>
+                <td className="px-4 py-3">{dateBr(item.envio)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Card>
+      {aberta ? (
+        <Card>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold">{relatorio.data?.data.empresa || "Relatório"}</h2>
+              <p className="text-xs text-slate-500">{relatorio.data?.data.email || "Sem e-mail financeiro"}</p>
+            </div>
+            <div className="flex gap-2">
+              <Button type="button" variant="secondary" disabled={enviar.isPending} onClick={() => enviar.mutate([aberta])}>Enviar este relatório</Button>
+              <Button type="button" variant="secondary" onClick={() => setAberta(null)}>Fechar</Button>
+            </div>
+          </div>
+          {relatorio.isLoading ? <p className="text-sm text-slate-500">Carregando relatório...</p> : (
+            <div className="grid gap-2 text-sm">
+              {(relatorio.data?.data.itens ?? []).map((linha, index) => (
+                <p key={`${linha.nome}-${index}`}><strong>{linha.nome || "Sem nome"}</strong> · {linha.cargo} · {linha.modalidade} · {linha.situacao} · {money(linha.valor)}</p>
+              ))}
+              <p className="font-semibold">Total {money(relatorio.data?.data.total)}</p>
+            </div>
+          )}
+        </Card>
+      ) : null}
       <Paginacao pagina={pagina} tamanho={TAMANHO} total={total} onPagina={setPagina} />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <ListingFooter count={total} total={reais(meta?.totalReceber)} />

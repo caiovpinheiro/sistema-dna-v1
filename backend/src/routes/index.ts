@@ -481,6 +481,12 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
   api.post("/api/v1/faturamento/boletos", {
     schema: { tags: ["faturamento"], body: z.object({ mes: z.string().regex(/^\d{1,2}$/), ano: z.string().regex(/^\d{4}$/) }) },
   }, async (request) => ok(await services.asaas.boletosDoMes(request.body.mes, request.body.ano)));
+  api.get("/api/v1/faturamento/relatorio", {
+    schema: { tags: ["faturamento"], querystring: z.object({ empresa: z.string().min(1), mes: z.string(), ano: z.string() }) },
+  }, async (request) => ok(await legado.relatorioEmpresa(request.query.empresa, request.query.mes, request.query.ano)));
+  api.post("/api/v1/faturamento/relatorios", {
+    schema: { tags: ["faturamento"], body: z.object({ empresas: z.array(z.string().min(1)).min(1).max(200), mes: z.string(), ano: z.string() }) },
+  }, async (request) => ok(await legado.enviarRelatorios(config, request.body.empresas, request.body.mes, request.body.ano)));
   api.get("/api/v1/procfy", { schema: { tags: ["procfy"], querystring: z.object({ ...pagina, de: z.string().optional(), ate: z.string().optional(), status: z.string().optional(), tipoData: z.string().optional(), sistema: z.string().optional() }) } }, async (request) => {
     const result = await legado.procfy(request.query);
     return ok(result.data, result.meta);
