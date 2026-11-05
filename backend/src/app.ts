@@ -108,7 +108,7 @@ export async function buildApp(context: AppContext): Promise<FastifyInstance> {
 
   const candidatos = new CandidatoRepository(context.config.CONTRATACAO_STATUS_ATIVO, context.config.CONTRATACAO_STATUS_ENCERRADO);
   const empresas = new EmpresaRepository();
-  const vagas = new VagaRepository(context.config.CONTRATACAO_STATUS_ATIVO, context.config.vagaStatusBloqueadas, context.config.VAGA_STATUS_OCUPADA);
+  const vagas = new VagaRepository(context.config.CONTRATACAO_STATUS_ATIVO, context.config.vagaStatusBloqueadas);
   const contratacoes = new ContratacaoRepository();
   const processos = new ProcessoService(context.db, new ProcessoRepository(), vagas, candidatos, empresas);
   const termos = new TermoService(context.db, context.config);
@@ -116,7 +116,7 @@ export async function buildApp(context: AppContext): Promise<FastifyInstance> {
   const services = {
     candidatos: new CandidatoService(context.db, candidatos),
     empresas: new EmpresaService(context.db, empresas),
-    vagas: new VagaService(context.db, vagas, empresas, context.config, context.capabilities),
+    vagas: new VagaService(context.db, vagas, empresas, context.config, context.capabilities, context.mysql ?? null),
     contratacoes: new ContratacaoService(context.db, contratacoes, vagas, candidatos, context.config, context.capabilities, processos),
     processos,
     dashboard: new DashboardService(context.db, contratacoes, context.config),

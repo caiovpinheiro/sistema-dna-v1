@@ -4,6 +4,8 @@ import type { AppConfig } from "../config.js";
 import { migrationRequired, AppError } from "../lib/errors.js";
 import { formatMoneyLegacy, parseMoney } from "../lib/money.js";
 import type { SchemaCapabilities } from "../db/capabilities.js";
+import type { MysqlPool } from "../db/mysql.js";
+import { codigoParaStatus } from "../lib/vaga-status.js";
 import { EmpresaRepository } from "../repositories/empresa.repository.js";
 import { one } from "../repositories/sql.js";
 import { VagaRepository } from "../repositories/vaga.repository.js";
@@ -17,7 +19,14 @@ export class VagaService {
     private readonly empresas: EmpresaRepository,
     private readonly config: AppConfig,
     private readonly capabilities: SchemaCapabilities,
+    private readonly mysql: MysqlPool | null = null,
   ) {}
+
+  /** Grava o código no Lightsail antes do Postgres: se o Lightsail recusar, nada muda. Só o número do status, sem mexer em tabela. */
+  private async statusNoLightsail(id: string, codigo: number) {
+    if (!this.mysql) throw new AppError(503, "LIGHTSAIL_INDISPONIVEL", "Não foi possível falar com o Lightsail para mudar a situação.");
+    await this.mysql.query("UPDATE vaga SET status = ? WHERE id_vaga = ?", [codigo, id]);
+  }
 
   private ensureCapacityColumn() {
     if (!this.capabilities.quantidadePosicoes) throw migrationRequired(this.capabilities.missing);
@@ -34,8 +43,9 @@ export class VagaService {
     if (!empresa) throw new AppError(422, "EMPRESA_INVALIDA", "A vaga precisa pertencer a uma empresa existente.");
     await this.assertModalidade(input.tipo_vaga);
     const id = randomUUID();
-    await this.repo.insert(this.db, input, id);
-    return presentVaga((await this.repo.findById(this.db, id))!, this.config.VAGA_STATUS_OCUPADA);
+    const { situacao, ...dados } = input;
+    await this.repo.insert(this.db, situacao ? { ...dados, status: codigoParaStatus(situacao) } : dados, id);
+    return presentVaga((await this.repo.findById(this.db, id))!);
   }
 
   async update(id: string, input: VagaPatch) {
@@ -51,8 +61,16 @@ export class VagaService {
     const salario = input.salario ? formatMoneyLegacy(parseMoney(input.salario)) : undefined;
     const hasChange = Object.entries(input).some(([, value]) => value !== undefined);
     if (!hasChange) throw new AppError(400, "NADA_PARA_ATUALIZAR", "Nenhum campo informado para atualização.");
-    await this.repo.update(this.db, id, input, salario);
-    return presentVaga((await this.repo.findById(this.db, id))!, this.config.VAGA_STATUS_OCUPADA);
+    const { situacao, ...dados } = input;
+    if (situacao) {
+      const codigo = codigoParaStatus(situacao, current.status);
+      if (codigo !== Number(current.status)) {
+        await this.statusNoLightsail(id, codigo);
+        dados.status = codigo;
+      }
+    }
+    await this.repo.update(this.db, id, dados, salario);
+    return presentVaga((await this.repo.findById(this.db, id))!);
   }
 
   async sugeridos(id: string) {
@@ -67,7 +85,7 @@ export class VagaService {
     const row = await this.repo.findById(this.db, id);
     if (!row) throw new AppError(404, "VAGA_NAO_ENCONTRADA", "Vaga não encontrada.");
     const ficha = await this.repo.ficha(this.db, id, row.comparador);
-    return { ...presentVaga(row, this.config.VAGA_STATUS_OCUPADA), ...ficha };
+    return { ...presentVaga(row), ...ficha };
   }
 
   opcoesFiltro() {
@@ -78,7 +96,7 @@ export class VagaService {
     this.ensureCapacityColumn();
     const result = await this.repo.list(this.db, query);
     return {
-      data: result.rows.map((row) => presentVaga(row, this.config.VAGA_STATUS_OCUPADA)),
+      data: result.rows.map((row) => presentVaga(row)),
       meta: { page: query.page, pageSize: query.pageSize, total: result.total },
     };
   }

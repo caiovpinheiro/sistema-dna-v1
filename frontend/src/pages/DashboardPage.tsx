@@ -75,7 +75,7 @@ export function DashboardPage() {
               key={valor}
               type="button"
               aria-pressed={dias === valor}
-              className={`rounded-lg px-3 py-1.5 text-sm ${dias === valor ? "bg-cyan-400/15 text-cyan-200" : "text-slate-400 hover:bg-white/5"}`}
+              className={`rounded-lg px-3 py-1.5 text-sm ${dias === valor ? "bg-cyan-700 font-semibold text-white" : "text-slate-600 hover:bg-slate-100"}`}
               onClick={() => { setDias(valor); setDe(""); setAte(""); }}
             >
               {valor} dias

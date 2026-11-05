@@ -1,17 +1,23 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { nomesDistintos } from "../src/repositories/vaga.repository.js";
-import { situacaoDaVaga } from "../src/services/presenters.js";
+import { cargosDistintos, nomesDistintos } from "../src/repositories/vaga.repository.js";
+import { codigoParaStatus, statusDaVaga } from "../src/lib/vaga-status.js";
 
-test("situação pela vaga do Lightsail: status 0 é aberta, mesmo sem capacidade", () => {
-  assert.equal(situacaoDaVaga({ status: 0, quantidade_posicoes: null, ocupadas: 0 }, 1), "aberta");
-  assert.equal(situacaoDaVaga({ status: 0, quantidade_posicoes: 2, ocupadas: 1 }, 1), "aberta");
-  assert.equal(situacaoDaVaga({ status: 0, quantidade_posicoes: 1, ocupadas: 1 }, 1), "preenchida");
-  assert.equal(situacaoDaVaga({ status: 1, quantidade_posicoes: null, ocupadas: 0 }, 1), "preenchida");
-  for (const status of [2, 3, 6, 7, 8, null]) {
-    assert.equal(situacaoDaVaga({ status, quantidade_posicoes: 1, ocupadas: 0 }, 1), "encerrada");
-  }
-  assert.equal(situacaoDaVaga({ status: 5, quantidade_posicoes: 1, ocupadas: 0 }, 1), "desativada");
+test("código do Lightsail vira um dos quatro status", () => {
+  for (const codigo of [0, 3, 4, 5, 9]) assert.equal(statusDaVaga(codigo), "aberta");
+  assert.equal(statusDaVaga(8), "pausada");
+  assert.equal(statusDaVaga(1), "contratada");
+  for (const codigo of [2, 6, 7, null, 42]) assert.equal(statusDaVaga(codigo), "fechada");
+});
+
+test("edição grava o código antigo e mantém o atual se o status não mudou", () => {
+  assert.equal(codigoParaStatus("aberta", 9), 9);
+  assert.equal(codigoParaStatus("aberta", 6), 0);
+  assert.equal(codigoParaStatus("pausada", 0), 8);
+  assert.equal(codigoParaStatus("contratada", 3), 1);
+  assert.equal(codigoParaStatus("fechada", 7), 7);
+  assert.equal(codigoParaStatus("fechada", 0), 6);
+  assert.equal(codigoParaStatus("aberta"), 0);
 });
 
 test("cada unidade da empresa sai com nome próprio", () => {
@@ -32,4 +38,9 @@ test("cada unidade da empresa sai com nome próprio", () => {
     "Paraná Supermercados - Baronesa",
     "Paraná Supermercados - Jardim Itacolomi",
   ]);
+});
+
+test("cargos já abertos juntam as grafias diferentes", () => {
+  const cargos = cargosDistintos(["Operador De Loja", "Operador de Loja", "operador de loja ", "Açougueiro:", "  "]);
+  assert.deepEqual(cargos.map((item) => [item.nome, item.variantes.length]), [["Açougueiro", 1], ["Operador de Loja", 3]]);
 });

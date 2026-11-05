@@ -57,21 +57,22 @@ export function textoPlano(valor: string | null | undefined) {
     .trim();
 }
 
-export const statusVagaLabel: Record<number, string> = {
-  0: "Aberta",
-  1: "Ocupada",
-  2: "Suspensa",
-  3: "Stand by",
-  4: "Em andamento",
-  5: "Desativada",
-};
+/** Os quatro status de vaga do sistema novo; o código do Lightsail é convertido no servidor. */
+export const STATUS_VAGA = [
+  { id: "aberta", nome: "Aberta" },
+  { id: "pausada", nome: "Pausada" },
+  { id: "contratada", nome: "Contratada" },
+  { id: "fechada", nome: "Fechada" },
+] as const;
 
 export const situacaoLabel: Record<string, string> = {
   aberta: "Aberta",
   preenchida: "Preenchida",
   encerrada: "Encerrada",
-  desativada: "Desativada",
   capacidade_pendente: "Capacidade pendente",
+  pausada: "Pausada",
+  contratada: "Contratada",
+  fechada: "Fechada",
   ativa: "Ativa",
   indefinida: "Indefinida",
   sem_vinculo: "Sem vínculo",

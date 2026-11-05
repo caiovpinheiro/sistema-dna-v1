@@ -1,7 +1,8 @@
 import { legacyToday } from "../lib/dates.js";
 import { formatMoneyLegacy, parseMoney } from "../lib/money.js";
 import type { VagaCreate, VagaListQuery, VagaPatch } from "../schemas/vaga.js";
-import { VAGA_STATUS_ABERTA } from "../services/presenters.js";
+import { chaveCargo, nomePadronizado } from "../lib/cargo.js";
+import { CODIGOS_POR_STATUS } from "../lib/vaga-status.js";
 import { many, one, sortClause, type Db } from "./sql.js";
 
 export type VagaRow = {
@@ -70,6 +71,19 @@ const SORTS: Record<string, string> = {
   status: "v.status",
 };
 
+/** Cargos que já tiveram vaga, juntando as grafias diferentes pela mesma chave ("Operador De Loja" e "Operador de Loja"). */
+export function cargosDistintos(nomes: string[]) {
+  const porChave = new Map<string, { chave: string; nome: string; variantes: string[] }>();
+  for (const bruto of nomes) {
+    const chave = chaveCargo(bruto);
+    if (!chave) continue;
+    const item = porChave.get(chave) ?? { chave, nome: nomePadronizado(bruto), variantes: [] };
+    item.variantes.push(bruto);
+    porChave.set(chave, item);
+  }
+  return [...porChave.values()].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+}
+
 /**
  * O nome do cadastro do sistema já diferencia as unidades ("Paraná Supermercados - Jardim Itacolomi").
  * Sem ele, ou se ainda repetir, entra o bairro e, por último, o começo do id.
@@ -94,7 +108,6 @@ export class VagaRepository {
   constructor(
     private readonly statusAtivo: number,
     private readonly statusBloqueadas: number[],
-    private readonly statusOcupada: number,
   ) {}
 
   private select(extraWhere = ""): string {
@@ -326,7 +339,13 @@ export class VagaRepository {
       WHERE EXISTS (SELECT 1 FROM dna_work.vaga v WHERE v.id_empresa = e.id_empresa)
     `);
     const grupos = await many<{ id: string; nome: string }>(db, "SELECT id::text AS id, nome FROM public.grupo ORDER BY nome");
-    return { empresas: nomesDistintos(empresas), grupos };
+    const cargos = cargosDistintos(await this.nomesDeCargo(db)).map(({ chave, nome }) => ({ chave, nome }));
+    return { empresas: nomesDistintos(empresas), grupos, cargos };
+  }
+
+  private async nomesDeCargo(db: Db) {
+    const linhas = await many<{ cargo: string }>(db, "SELECT DISTINCT cargo FROM dna_work.vaga WHERE cargo IS NOT NULL AND btrim(cargo) <> ''");
+    return linhas.map((linha) => linha.cargo);
   }
 
   async list(db: Db, query: VagaListQuery): Promise<{ rows: VagaRow[]; total: number }> {
@@ -340,19 +359,18 @@ export class VagaRepository {
     };
     if (query.id_empresa) add("v.id_empresa = $#", query.id_empresa);
     if (query.cargo) add("v.cargo ILIKE $#", `%${query.cargo}%`);
+    if (query.cargo_chave) {
+      // Todas as grafias do cargo escolhido.
+      const variantes = cargosDistintos(await this.nomesDeCargo(db)).find((item) => item.chave === query.cargo_chave)?.variantes ?? [];
+      add("v.cargo = ANY($#::text[])", variantes);
+    }
     if (query.tipo_vaga) add("v.tipo_vaga = $#", query.tipo_vaga);
     if (query.q) add("(v.cargo ILIKE $# OR e.nome_fantasia ILIKE $# OR e.razao_social ILIKE $# OR pe.nome_fantasia ILIKE $#)", `%${query.q}%`);
     if (query.grupo_id) add("pe.grupo_id::text = $#", query.grupo_id);
     if (query.situacao) {
-      // Mesma regra de situacaoDaVaga: a vaga aberta é a de status 0 no Lightsail.
-      const cheia = "v.quantidade_posicoes IS NOT NULL AND COALESCE(o.ocupadas, 0) >= v.quantidade_posicoes";
-      const aberta = `v.status = ${VAGA_STATUS_ABERTA}`;
-      const ocupada = `v.status = ${Number(this.statusOcupada)}`;
-      if (query.situacao === "aberta") where.push(`${aberta} AND NOT (${cheia})`);
-      if (query.situacao === "preenchida") where.push(`((${aberta} AND ${cheia}) OR ${ocupada})`);
-      if (query.situacao === "encerrada") where.push(`COALESCE(v.status, -1) NOT IN (${VAGA_STATUS_ABERTA}, ${Number(this.statusOcupada)}, 5)`);
-      if (query.situacao === "desativada") where.push("v.status = 5");
-      if (query.situacao === "capacidade_pendente") where.push(`${aberta} AND v.quantidade_posicoes IS NULL`);
+      // Os quatro status juntam vários códigos do Lightsail (ver lib/vaga-status.ts).
+      if (query.situacao === "fechada") add("(v.status IS NULL OR NOT (v.status = ANY($#::int[])))", [...CODIGOS_POR_STATUS.aberta, ...CODIGOS_POR_STATUS.pausada, ...CODIGOS_POR_STATUS.contratada]);
+      else add("v.status = ANY($#::int[])", CODIGOS_POR_STATUS[query.situacao]);
     }
     const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
     const order = sortClause(query.sort ?? "dataabertura", query.sort ? query.order : "desc", SORTS, "v.dataabertura");

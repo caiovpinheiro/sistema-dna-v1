@@ -6,7 +6,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { z } from "zod";
 import { Button, Card, Field, Input, Select, Textarea } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
-import { textoPlano } from "@/lib/format";
+import { STATUS_VAGA, textoPlano } from "@/lib/format";
 
 const schema = z.object({
   id_empresa: z.string().min(1, "Selecione a empresa."),
@@ -39,6 +39,7 @@ const schema = z.object({
   domindo_saida: z.string().optional(),
   texto_carga: z.string().optional(),
   sexo: z.enum(["M", "F", "I"]),
+  situacao: z.enum(["aberta", "pausada", "contratada", "fechada"]),
 });
 type Form = z.infer<typeof schema>;
 type Company = { id_empresa: string; razao_social: string; nome_fantasia: string | null };
@@ -77,7 +78,7 @@ export function VagaFormPage() {
   const modes = useQuery({ queryKey: ["modalidades"], queryFn: () => api<Mode[]>("/api/v1/modalidades") });
   const modelo = useQuery({ queryKey: ["modelo", modeloId], enabled: Boolean(modeloId) && !id, queryFn: () => api<Modelo>(`/api/v1/modelos/${modeloId}`) });
   const current = useQuery({ queryKey: ["vaga", id], enabled: Boolean(id), queryFn: () => api<Form & { salario: number | null; razao_social?: string | null; nome_fantasia?: string | null }>(`/api/v1/vagas/${id}`) });
-  const form = useForm<Form>({ resolver: zodResolver(schema), defaultValues: { id_empresa: params.get("empresa") ?? "", quantidade_posicoes: 1, tipo_vaga: 2, sexo: "I" } });
+  const form = useForm<Form>({ resolver: zodResolver(schema), defaultValues: { id_empresa: params.get("empresa") ?? "", quantidade_posicoes: 1, tipo_vaga: 2, sexo: "I", situacao: "aberta" } });
   useEffect(() => {
     if (!current.data) return;
     const data = current.data.data;
@@ -127,6 +128,7 @@ export function VagaFormPage() {
       destaque: textoPlano(item.destaque),
       obs: "",
       sexo: "I",
+      situacao: "aberta",
     });
   }, [modelo.data, id, form, empresaId]);
   const save = useMutation({
@@ -165,6 +167,9 @@ export function VagaFormPage() {
           </Select>
         </Field>
         <Field label="Cargo" error={form.formState.errors.cargo?.message}><Input {...form.register("cargo")} /></Field>
+        <Field label="Situação">
+          <Select {...form.register("situacao")}>{STATUS_VAGA.map((item) => <option key={item.id} value={item.id}>{item.nome}</option>)}</Select>
+        </Field>
         <Field label="Modalidade">
           <Select {...form.register("tipo_vaga")}>{modes.data?.data.map((item) => <option key={item.id} value={item.id}>{item.descricao}</option>)}</Select>
         </Field>

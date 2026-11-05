@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { STATUS_VAGA } from "../lib/vaga-status.js";
 import { moneySchema, pageSchema } from "./common.js";
 
 const fields = {
@@ -36,7 +37,7 @@ const fields = {
   sexo: z.enum(["M", "F", "I"]).optional(),
 };
 
-export const vagaCreateSchema = z.object(fields);
+export const vagaCreateSchema = z.object({ ...fields, situacao: z.enum(STATUS_VAGA).optional() });
 
 export const vagaPatchSchema = z.object({
   cargo: fields.cargo.optional(),
@@ -44,6 +45,7 @@ export const vagaPatchSchema = z.object({
   salario: moneySchema.optional(),
   quantidade_posicoes: fields.quantidade_posicoes.optional(),
   status: fields.status,
+  situacao: z.enum(STATUS_VAGA).optional(),
   publicar: fields.publicar,
   carga_horaria: fields.carga_horaria,
   obs: fields.obs,
@@ -72,8 +74,9 @@ export const vagaListSchema = z.object({
   id_empresa: z.string().trim().optional(),
   grupo_id: z.string().uuid().optional(),
   cargo: z.string().trim().optional(),
+  cargo_chave: z.string().trim().optional(),
   tipo_vaga: z.coerce.number().int().optional(),
-  situacao: z.enum(["aberta", "preenchida", "encerrada", "desativada", "capacidade_pendente"]).optional(),
+  situacao: z.enum(STATUS_VAGA).optional(),
   q: z.string().trim().optional(),
 });
 

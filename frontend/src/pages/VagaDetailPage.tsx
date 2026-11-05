@@ -3,7 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { useState } from "react";
 import { Badge, Button, Card, Skeleton } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
-import { dateBr, formatCpf, formatPhone, money, regimeLabel, situacaoLabel, statusVagaLabel, textoPlano } from "@/lib/format";
+import { dateBr, formatCpf, formatPhone, money, regimeLabel, situacaoLabel, textoPlano } from "@/lib/format";
 import { ProcessosRelacionados } from "@/pages/ProcessosPage";
 
 type Job = {
@@ -37,7 +37,8 @@ export function VagaDetailPage() {
   const job = useQuery({ queryKey: ["vaga", id], queryFn: () => api<Job>(`/api/v1/vagas/${id}`) });
   const [aviso, setAviso] = useState("");
   const desativar = useMutation({
-    mutationFn: (status: number) => api(`/api/v1/vagas/${id}`, { method: "PATCH", body: JSON.stringify({ status }) }),
+    // Grava o código equivalente no Lightsail e no Postgres (ver lib/vaga-status.ts no backend).
+    mutationFn: (situacao: "aberta" | "fechada") => api(`/api/v1/vagas/${id}`, { method: "PATCH", body: JSON.stringify({ situacao }) }),
     onSuccess: async () => {
       setAviso("");
       await job.refetch();
@@ -52,7 +53,7 @@ export function VagaDetailPage() {
   const lista = sugestoes.data?.data;
   const inscritos = lista?.total ?? data.inscritos;
   const quantidade = data.quantidade || data.quantidade_posicoes || 0;
-  const status = data.status == null ? situacaoLabel[data.situacao] : (statusVagaLabel[data.status] ?? situacaoLabel[data.situacao]);
+  const status = situacaoLabel[data.situacao] ?? data.situacao;
   const blocos = [
     ["Atividades da vaga", data.atribuicaoes],
     ["Atividades no contrato", data.atribu_contrato],
@@ -67,14 +68,14 @@ export function VagaDetailPage() {
           <p className="text-sm text-slate-500"><Link className="text-cyan-800" to={`/empresas/${data.id_empresa}`}>{data.nome_fantasia || data.razao_social}</Link> · {data.modalidade || regimeLabel[data.regime]} · {money(data.salario)}</p>
         </div>
         <div className="flex gap-2">
-          {data.status === 5 ? (
+          {data.situacao === "fechada" ? (
             <Button type="button" disabled={desativar.isPending} onClick={() => {
-              if (window.confirm("Reativar esta vaga? Ela volta a ficar aberta.")) desativar.mutate(0);
-            }}>{desativar.isPending ? "Reativando..." : "Reativar vaga"}</Button>
+              if (window.confirm("Reabrir esta vaga? Ela volta a ficar aberta.")) desativar.mutate("aberta");
+            }}>{desativar.isPending ? "Reabrindo..." : "Reabrir vaga"}</Button>
           ) : (
             <Button type="button" variant="danger" disabled={desativar.isPending} onClick={() => {
-              if (window.confirm("Desativar esta vaga? O cadastro permanece e ela pode ser reativada depois.")) desativar.mutate(5);
-            }}>{desativar.isPending ? "Desativando..." : "Desativar vaga"}</Button>
+              if (window.confirm("Fechar esta vaga? O cadastro permanece e ela pode ser reaberta depois.")) desativar.mutate("fechada");
+            }}>{desativar.isPending ? "Fechando..." : "Fechar vaga"}</Button>
           )}
           <Link to={`/processos/novo?vaga=${id}&empresa=${data.id_empresa}`}><Button variant="secondary">Novo processo</Button></Link><Link to={`/contratacoes/nova?vaga=${id}&empresa=${data.id_empresa}`}><Button>Contratar</Button></Link><Link to={`/vagas/${id}/editar`}><Button variant="secondary">Editar vaga</Button></Link>
         </div>

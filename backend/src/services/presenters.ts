@@ -1,4 +1,5 @@
 import { legacyToIso } from "../lib/dates.js";
+import { statusDaVaga } from "../lib/vaga-status.js";
 import { classifyRegime } from "../lib/normalize.js";
 import { moneyToNumber } from "../lib/money.js";
 import type { CandidatoRow } from "../repositories/candidato.repository.js";
@@ -65,22 +66,9 @@ export function vagaSituacao(row: Pick<VagaRow, "status" | "quantidade_posicoes"
   return "aberta" as const;
 }
 
-/** No Lightsail a vaga aberta tem status 0; os outros status (exceto o de ocupada) são vagas fechadas. */
-export const VAGA_STATUS_ABERTA = 0;
-
-/** Situação mostrada na consulta de vagas, pelo status do Lightsail. A contratação continua usando vagaSituacao. */
-export function situacaoDaVaga(row: Pick<VagaRow, "status" | "quantidade_posicoes" | "ocupadas">, statusOcupada: number) {
-  const status = row.status == null ? null : Number(row.status);
-  if (status === VAGA_STATUS_ABERTA) {
-    return row.quantidade_posicoes != null && row.ocupadas >= row.quantidade_posicoes ? "preenchida" as const : "aberta" as const;
-  }
-  if (status === statusOcupada) return "preenchida" as const;
-  if (status === 5) return "desativada" as const;
-  return "encerrada" as const;
-}
-
-export function presentVaga(row: VagaRow, statusOcupada: number) {
-  const situacao = situacaoDaVaga(row, statusOcupada);
+/** situacao é um dos quatro status do sistema novo (aberta, pausada, contratada, fechada), convertido do código do Lightsail. */
+export function presentVaga(row: VagaRow) {
+  const situacao = statusDaVaga(row.status);
   const disponiveis = row.quantidade_posicoes == null ? null : Math.max(row.quantidade_posicoes - row.ocupadas, 0);
   return {
     id_vaga: row.id_vaga,

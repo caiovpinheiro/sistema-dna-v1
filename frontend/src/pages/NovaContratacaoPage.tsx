@@ -27,7 +27,7 @@ export function NovaContratacaoPage() {
   const companies = useQuery({ queryKey: ["busca-empresas", companyQuery], queryFn: () => api<Company[]>(`/api/v1/empresas?pageSize=8&q=${encodeURIComponent(companyQuery)}`), enabled: companyQuery.length >= 2 });
   const jobs = useQuery({ queryKey: ["vagas-empresa", companyId], queryFn: () => api<Job[]>(`/api/v1/empresas/${companyId}/vagas?pageSize=50`), enabled: Boolean(companyId) });
   const people = useQuery({ queryKey: ["busca-candidatos", personQuery], queryFn: () => api<Person[]>(`/api/v1/candidatos?pageSize=8&nome=${encodeURIComponent(personQuery)}`), enabled: personQuery.length >= 2 });
-  const available = useMemo(() => (jobs.data?.data ?? []).filter((job) => job.situacao === "aberta"), [jobs.data]);
+  const available = useMemo(() => (jobs.data?.data ?? []).filter((job) => job.situacao === "aberta" && (job.disponiveis ?? 0) > 0), [jobs.data]);
   const selectedJob = jobs.data?.data.find((job) => job.id_vaga === jobId);
 
   const createPerson = useMutation({
