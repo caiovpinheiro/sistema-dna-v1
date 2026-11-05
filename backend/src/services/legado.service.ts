@@ -116,7 +116,12 @@ export class LegadoService {
         OR CASE WHEN e.datafechamento::text LIKE '30' THEN cv.datainicio <= $3
                 ELSE cv.datainicio <= ($4 || e.datafechamento::text) END
       )
-      AND v.status::text NOT IN ('5', '4', '3', '0')
+      AND v.status::text NOT IN ('5', '4', '3', '0', '6')
+      AND (
+        vv.comparador IS NOT NULL
+        OR cv.datainicio IS NULL OR btrim(cv.datainicio) = ''
+        OR cv.datainicio <= to_char((date_trunc('month', to_date(replace($4, '/', '-') || '01', 'YYYY-MM-DD')) + interval '1 month' - interval '1 day' + interval '3 day')::date, 'YYYY/MM/DD')
+      )
       AND ($5 = '' OR trim(e.datafechamento::text) = $5 OR ltrim(trim(e.datafechamento::text), '0') = ltrim($5, '0'))
       AND ($6 = '' OR e.razao_social ILIKE $6 OR e.nome_fantasia ILIKE $6 OR e.razao_sem_acento ILIKE $6 OR e.fantasia_sem_acento ILIKE $6 OR e.cnpj ILIKE $6)
       GROUP BY e.id_empresa, e.razao_social, e.nome_fantasia, e.cnpj, e.datafechamento, e.tipo_empresa, e.matriz, e.usa_asaas
@@ -225,7 +230,12 @@ export class LegadoService {
           OR CASE WHEN e.datafechamento::text LIKE '30' THEN cv.datainicio <= $3
                   ELSE cv.datainicio <= ($4 || e.datafechamento::text) END
         )
-        AND v.status::text NOT IN ('5', '4', '3', '0')
+        AND v.status::text NOT IN ('5', '4', '3', '0', '6')
+      AND (
+        vv.comparador IS NOT NULL
+        OR cv.datainicio IS NULL OR btrim(cv.datainicio) = ''
+        OR cv.datainicio <= to_char((date_trunc('month', to_date(replace($4, '/', '-') || '01', 'YYYY-MM-DD')) + interval '1 month' - interval '1 day' + interval '3 day')::date, 'YYYY/MM/DD')
+      )
         AND (${VALOR_CONTRATO}) > 0
       ORDER BY c.nome
     `, [datas.dataInicio30, datas.dataInicio10e20, datas.data30, datas.data10e20, "", "", idEmpresa]);
