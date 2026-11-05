@@ -220,7 +220,7 @@ export class LegadoService {
       LEFT JOIN dna_work.vaga_valores vv ON vv.comparador::text = v.comparador::text
       LEFT JOIN dna_work.candidato c ON c.id_candidato = cv.id_candidato
       LEFT JOIN dna_work.modalidade_vaga m ON m.id = v.tipo_vaga
-      WHERE e.id_empresa = $7
+      WHERE e.id_empresa = $5
         AND (
           cv.data_demicao IS NULL OR btrim(cv.data_demicao) = ''
           OR (
@@ -244,7 +244,7 @@ export class LegadoService {
       )
         AND (${VALOR_CONTRATO}) > 0
       ORDER BY c.nome
-    `, [datas.dataInicio30, datas.dataInicio10e20, datas.data30, datas.data10e20, "", "", idEmpresa]);
+    `, [datas.dataInicio30, datas.dataInicio10e20, datas.data30, datas.data10e20, idEmpresa]);
     const itens = linhas.map((linha) => ({
       nome: linha.nome,
       cargo: linha.cargo,
@@ -276,11 +276,11 @@ export class LegadoService {
     const data = `${hoje.getFullYear()}/${String(hoje.getMonth() + 1).padStart(2, "0")}/${String(hoje.getDate()).padStart(2, "0")}`;
     const descricao = `Faturamento ${mes}/${ano}`;
     for (const id of ids) {
-      const relatorio = await this.relatorioEmpresa(id, mes, ano).catch(() => null);
-      if (!relatorio) {
-        falhas.push({ empresa: id, motivo: "Empresa não encontrada." });
-        continue;
-      }
+      const relatorio = await this.relatorioEmpresa(id, mes, ano).catch((error: unknown) => {
+        falhas.push({ empresa: id, motivo: error instanceof Error ? error.message : "Não foi possível montar o relatório." });
+        return null;
+      });
+      if (!relatorio) continue;
       const email = (relatorio.email || "").trim().toLowerCase();
       if (!email.includes("@")) {
         falhas.push({ empresa: relatorio.empresa, motivo: "Sem e-mail financeiro." });
