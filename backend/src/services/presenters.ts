@@ -65,14 +65,29 @@ export function vagaSituacao(row: Pick<VagaRow, "status" | "quantidade_posicoes"
   return "aberta" as const;
 }
 
-export function presentVaga(row: VagaRow, bloqueadas: number[]) {
-  const situacao = vagaSituacao(row, bloqueadas);
+/** No Lightsail a vaga aberta tem status 0; os outros status (exceto o de ocupada) são vagas fechadas. */
+export const VAGA_STATUS_ABERTA = 0;
+
+/** Situação mostrada na consulta de vagas, pelo status do Lightsail. A contratação continua usando vagaSituacao. */
+export function situacaoDaVaga(row: Pick<VagaRow, "status" | "quantidade_posicoes" | "ocupadas">, statusOcupada: number) {
+  const status = row.status == null ? null : Number(row.status);
+  if (status === VAGA_STATUS_ABERTA) {
+    return row.quantidade_posicoes != null && row.ocupadas >= row.quantidade_posicoes ? "preenchida" as const : "aberta" as const;
+  }
+  if (status === statusOcupada) return "preenchida" as const;
+  return "encerrada" as const;
+}
+
+export function presentVaga(row: VagaRow, statusOcupada: number) {
+  const situacao = situacaoDaVaga(row, statusOcupada);
   const disponiveis = row.quantidade_posicoes == null ? null : Math.max(row.quantidade_posicoes - row.ocupadas, 0);
   return {
     id_vaga: row.id_vaga,
     id_empresa: row.id_empresa,
     razao_social: row.razao_social,
     nome_fantasia: row.nome_fantasia,
+    empresa: row.empresa_nome ?? row.nome_fantasia ?? row.razao_social,
+    grupo: row.grupo_nome,
     cargo: row.cargo,
     tipo_vaga: row.tipo_vaga,
     modalidade: row.modalidade,

@@ -35,7 +35,7 @@ export class VagaService {
     await this.assertModalidade(input.tipo_vaga);
     const id = randomUUID();
     await this.repo.insert(this.db, input, id);
-    return presentVaga((await this.repo.findById(this.db, id))!, this.config.vagaStatusBloqueadas);
+    return presentVaga((await this.repo.findById(this.db, id))!, this.config.VAGA_STATUS_OCUPADA);
   }
 
   async update(id: string, input: VagaPatch) {
@@ -52,7 +52,7 @@ export class VagaService {
     const hasChange = Object.entries(input).some(([, value]) => value !== undefined);
     if (!hasChange) throw new AppError(400, "NADA_PARA_ATUALIZAR", "Nenhum campo informado para atualização.");
     await this.repo.update(this.db, id, input, salario);
-    return presentVaga((await this.repo.findById(this.db, id))!, this.config.vagaStatusBloqueadas);
+    return presentVaga((await this.repo.findById(this.db, id))!, this.config.VAGA_STATUS_OCUPADA);
   }
 
   async sugeridos(id: string) {
@@ -67,14 +67,18 @@ export class VagaService {
     const row = await this.repo.findById(this.db, id);
     if (!row) throw new AppError(404, "VAGA_NAO_ENCONTRADA", "Vaga não encontrada.");
     const ficha = await this.repo.ficha(this.db, id, row.comparador);
-    return { ...presentVaga(row, this.config.vagaStatusBloqueadas), ...ficha };
+    return { ...presentVaga(row, this.config.VAGA_STATUS_OCUPADA), ...ficha };
+  }
+
+  opcoesFiltro() {
+    return this.repo.opcoesFiltro(this.db);
   }
 
   async list(query: VagaListQuery) {
     this.ensureCapacityColumn();
     const result = await this.repo.list(this.db, query);
     return {
-      data: result.rows.map((row) => presentVaga(row, this.config.vagaStatusBloqueadas)),
+      data: result.rows.map((row) => presentVaga(row, this.config.VAGA_STATUS_OCUPADA)),
       meta: { page: query.page, pageSize: query.pageSize, total: result.total },
     };
   }

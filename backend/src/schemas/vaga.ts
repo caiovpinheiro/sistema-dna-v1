@@ -34,6 +34,7 @@ export const vagaPatchSchema = z.object({
 export const vagaListSchema = z.object({
   ...pageSchema,
   id_empresa: z.string().trim().optional(),
+  grupo_id: z.string().uuid().optional(),
   cargo: z.string().trim().optional(),
   tipo_vaga: z.coerce.number().int().optional(),
   situacao: z.enum(["aberta", "preenchida", "encerrada", "capacidade_pendente"]).optional(),

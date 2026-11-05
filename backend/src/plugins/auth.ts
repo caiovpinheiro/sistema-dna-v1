@@ -33,7 +33,7 @@ export async function registerAuth(app: FastifyInstance, config: AppConfig): Pro
   await app.register(cookie);
   await app.register(jwt, {
     secret: config.JWT_SECRET,
-    sign: { expiresIn: "8h" },
+    sign: { expiresIn: `${config.SESSAO_HORAS}h` },
     cookie: { cookieName: "dnawork_session", signed: false },
   });
   app.decorate("verifyAdminPassword", async (password: string) => verify(passwordHash, password));
@@ -55,6 +55,6 @@ export function sessionCookie(config: AppConfig) {
     sameSite: "lax" as const,
     path: "/",
     secure: config.COOKIE_SECURE,
-    maxAge: 60 * 60 * 8,
+    maxAge: 60 * 60 * config.SESSAO_HORAS,
   };
 }

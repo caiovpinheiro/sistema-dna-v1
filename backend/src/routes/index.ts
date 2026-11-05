@@ -186,6 +186,7 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
   api.get("/api/v1/vagas/modelos/:vagaId", {
     schema: { tags: ["vagas"], params: z.object({ vagaId: z.string().uuid() }) },
   }, async (request) => ok(await services.cadastro.obterModelo(request.params.vagaId)));
+  api.get("/api/v1/vagas/filtros", { schema: { tags: ["vagas"] } }, async () => ok(await services.vagas.opcoesFiltro()));
   api.get("/api/v1/vagas", { schema: { tags: ["vagas"], querystring: vagaListSchema } }, async (request) => {
     const result = await services.vagas.list(request.query);
     return ok(result.data, result.meta);

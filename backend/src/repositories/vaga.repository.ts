@@ -1,6 +1,7 @@
 import { legacyToday } from "../lib/dates.js";
 import { formatMoneyLegacy, parseMoney } from "../lib/money.js";
 import type { VagaCreate, VagaListQuery, VagaPatch } from "../schemas/vaga.js";
+import { VAGA_STATUS_ABERTA } from "../services/presenters.js";
 import { many, one, sortClause, type Db } from "./sql.js";
 
 export type VagaRow = {
@@ -20,6 +21,9 @@ export type VagaRow = {
   nome_fantasia: string | null;
   modalidade: string | null;
   ocupadas: number;
+  /** Só na listagem: nome da unidade no cadastro do sistema (public.empresa) e o grupo dela. */
+  empresa_nome?: string | null;
+  grupo_nome?: string | null;
 };
 
 type ContextoVaga = {
@@ -66,10 +70,31 @@ const SORTS: Record<string, string> = {
   status: "v.status",
 };
 
+/**
+ * O nome do cadastro do sistema já diferencia as unidades ("Paraná Supermercados - Jardim Itacolomi").
+ * Sem ele, ou se ainda repetir, entra o bairro e, por último, o começo do id.
+ */
+export function nomesDistintos<T extends { id: string; nome: string | null; fantasia: string | null; razao: string | null; bairro: string | null; grupo_id: string | null; grupo: string | null }>(linhas: T[]) {
+  const base = linhas.map((linha) => ({ linha, nome: linha.nome ?? linha.fantasia ?? linha.razao ?? "Sem nome" }));
+  const contar = (nomes: string[]) => nomes.reduce((mapa, nome) => mapa.set(nome.toLowerCase(), (mapa.get(nome.toLowerCase()) ?? 0) + 1), new Map<string, number>());
+  const repetidos = contar(base.map((item) => item.nome));
+  const comBairro = base.map((item) => repetidos.get(item.nome.toLowerCase())! > 1 && item.linha.bairro ? `${item.nome} - ${item.linha.bairro}` : item.nome);
+  const aindaRepetidos = contar(comBairro);
+  return base
+    .map((item, indice) => ({
+      id: item.linha.id,
+      nome: aindaRepetidos.get(comBairro[indice].toLowerCase())! > 1 ? `${comBairro[indice]} (${item.linha.id.slice(0, 4)})` : comBairro[indice],
+      grupo_id: item.linha.grupo_id,
+      grupo: item.linha.grupo,
+    }))
+    .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+}
+
 export class VagaRepository {
   constructor(
     private readonly statusAtivo: number,
     private readonly statusBloqueadas: number[],
+    private readonly statusOcupada: number,
   ) {}
 
   private select(extraWhere = ""): string {
@@ -232,6 +257,20 @@ export class VagaRepository {
     await db.query("UPDATE dna_work.vaga SET status = $2 WHERE id_vaga = $1", [id, status]);
   }
 
+  /** Empresas que têm vaga e os grupos, para os filtros da consulta. Cada unidade sai com um nome próprio. */
+  async opcoesFiltro(db: Db) {
+    const empresas = await many<{ id: string; nome: string | null; fantasia: string | null; razao: string | null; bairro: string | null; grupo_id: string | null; grupo: string | null }>(db, `
+      SELECT e.id_empresa::text AS id, NULLIF(btrim(pe.nome_fantasia), '') AS nome, NULLIF(btrim(e.nome_fantasia), '') AS fantasia,
+             NULLIF(btrim(e.razao_social), '') AS razao, NULLIF(btrim(e.bairro), '') AS bairro, g.id::text AS grupo_id, g.nome AS grupo
+      FROM dna_work.empresa e
+      LEFT JOIN public.empresa pe ON pe.id::text = e.id_empresa::text
+      LEFT JOIN public.grupo g ON g.id = pe.grupo_id
+      WHERE EXISTS (SELECT 1 FROM dna_work.vaga v WHERE v.id_empresa = e.id_empresa)
+    `);
+    const grupos = await many<{ id: string; nome: string }>(db, "SELECT id::text AS id, nome FROM public.grupo ORDER BY nome");
+    return { empresas: nomesDistintos(empresas), grupos };
+  }
+
   async list(db: Db, query: VagaListQuery): Promise<{ rows: VagaRow[]; total: number }> {
     const where: string[] = [];
     const params: unknown[] = [this.statusAtivo];
@@ -244,15 +283,17 @@ export class VagaRepository {
     if (query.id_empresa) add("v.id_empresa = $#", query.id_empresa);
     if (query.cargo) add("v.cargo ILIKE $#", `%${query.cargo}%`);
     if (query.tipo_vaga) add("v.tipo_vaga = $#", query.tipo_vaga);
-    if (query.q) add("(v.cargo ILIKE $# OR e.nome_fantasia ILIKE $# OR e.razao_social ILIKE $#)", `%${query.q}%`);
+    if (query.q) add("(v.cargo ILIKE $# OR e.nome_fantasia ILIKE $# OR e.razao_social ILIKE $# OR pe.nome_fantasia ILIKE $#)", `%${query.q}%`);
+    if (query.grupo_id) add("pe.grupo_id::text = $#", query.grupo_id);
     if (query.situacao) {
+      // Mesma regra de situacaoDaVaga: a vaga aberta é a de status 0 no Lightsail.
       const cheia = "v.quantidade_posicoes IS NOT NULL AND COALESCE(o.ocupadas, 0) >= v.quantidade_posicoes";
-      if (query.situacao === "encerrada") where.push(blockedExpr);
-      if (query.situacao === "capacidade_pendente") where.push(`v.quantidade_posicoes IS NULL AND NOT (${blockedExpr})`);
-      if (query.situacao === "preenchida") where.push(`${cheia} AND NOT (${blockedExpr})`);
-      if (query.situacao === "aberta") {
-        where.push(`v.quantidade_posicoes IS NOT NULL AND COALESCE(o.ocupadas, 0) < v.quantidade_posicoes AND NOT (${blockedExpr})`);
-      }
+      const aberta = `v.status = ${VAGA_STATUS_ABERTA}`;
+      const ocupada = `v.status = ${Number(this.statusOcupada)}`;
+      if (query.situacao === "aberta") where.push(`${aberta} AND NOT (${cheia})`);
+      if (query.situacao === "preenchida") where.push(`((${aberta} AND ${cheia}) OR ${ocupada})`);
+      if (query.situacao === "encerrada") where.push(`COALESCE(v.status, -1) NOT IN (${VAGA_STATUS_ABERTA}, ${Number(this.statusOcupada)})`);
+      if (query.situacao === "capacidade_pendente") where.push(`${aberta} AND v.quantidade_posicoes IS NULL`);
     }
     const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
     const order = sortClause(query.sort ?? "dataabertura", query.sort ? query.order : "desc", SORTS, "v.dataabertura");
@@ -260,6 +301,8 @@ export class VagaRepository {
       FROM dna_work.vaga v
       LEFT JOIN dna_work.empresa e ON e.id_empresa = v.id_empresa
       LEFT JOIN dna_work.modalidade_vaga m ON m.id = v.tipo_vaga
+      LEFT JOIN public.empresa pe ON pe.id::text = v.id_empresa::text
+      LEFT JOIN public.grupo g ON g.id = pe.grupo_id
       LEFT JOIN (
         SELECT id_vaga, count(*)::int AS ocupadas
         FROM dna_work.conratacaovaga
@@ -273,6 +316,7 @@ export class VagaRepository {
       SELECT v.id_vaga, v.id_empresa, v.cargo, v.tipo_vaga, v.salario, v.status, v.comparador,
              v.dataabertura, v.publicar, v.carga_horaria, v.obs, v.quantidade_posicoes,
              e.razao_social, e.nome_fantasia, m.descricao AS modalidade,
+             NULLIF(btrim(pe.nome_fantasia), '') AS empresa_nome, g.nome AS grupo_nome,
              COALESCE(o.ocupadas, 0)::int AS ocupadas
       ${from}
       ORDER BY CASE WHEN v.cargo ILIKE 'teste%' AND ${blockedExpr} THEN 1 ELSE 0 END, ${order} NULLS LAST, v.id_vaga

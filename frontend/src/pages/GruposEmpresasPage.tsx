@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { BuscaOpcao, normalizarBusca } from "@/components/busca-opcao";
 import { Button, Card, Empty, Field, Input, Select, Textarea } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 import { formatCnpj } from "@/lib/format";
@@ -78,57 +79,6 @@ export function GruposEmpresasPage() {
 function Erro({ error }: { error: unknown }) {
   if (!(error instanceof ApiError)) return null;
   return <p className="text-sm text-rose-600">{error.message}</p>;
-}
-
-function BuscaOpcao({ value, onChange, opcoes, placeholder, fixas = [], onTexto }: {
-  value: string;
-  onChange: (id: string) => void;
-  opcoes: Array<{ id: string; label: string }>;
-  placeholder: string;
-  /** Sempre aparecem no fim da lista, sem passar pelo filtro do texto digitado. */
-  fixas?: Array<{ id: string; label: string }>;
-  onTexto?: (texto: string) => void;
-}) {
-  const selecionada = [...opcoes, ...fixas].find((item) => item.id === value);
-  const [texto, setTexto] = useState(selecionada?.label ?? "");
-  const [aberto, setAberto] = useState(false);
-  useEffect(() => {
-    if (selecionada) setTexto(selecionada.label);
-  }, [selecionada?.id, selecionada?.label]);
-  const termo = normalizarBusca(texto.trim());
-  const lista = [...opcoes.filter((item) => !termo || normalizarBusca(item.label).includes(termo)).slice(0, 20), ...fixas];
-  return (
-    <div className="relative">
-      <Input
-        value={texto}
-        placeholder={placeholder}
-        autoComplete="off"
-        onChange={(event) => {
-          const proximo = event.target.value;
-          setTexto(proximo);
-          onTexto?.(proximo);
-          setAberto(true);
-          if (!selecionada || proximo !== selecionada.label) onChange("");
-        }}
-        onFocus={() => setAberto(true)}
-        onBlur={() => window.setTimeout(() => setAberto(false), 150)}
-      />
-      {aberto ? (
-        <ul className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-xl border border-slate-200 bg-white shadow-lg">
-          {lista.length ? lista.map((item) => (
-            <li key={item.id}>
-              <button type="button" className="w-full px-3 py-2 text-left text-sm hover:bg-slate-50" onMouseDown={(event) => {
-                event.preventDefault();
-                onChange(item.id);
-                setTexto(item.label);
-                setAberto(false);
-              }}>{item.label}</button>
-            </li>
-          )) : <li className="px-3 py-2 text-sm text-slate-500">Nenhum resultado</li>}
-        </ul>
-      ) : null}
-    </div>
-  );
 }
 
 function AbaGrupo({ selecionado, onSelect }: { selecionado: string; onSelect: (id: string) => void }) {
@@ -339,10 +289,6 @@ const diasHorario: Array<{ nome: string; entrada: keyof FormularioVaga; saida: k
   { nome: "Sábado", entrada: "sab_entrada", saida: "sab_saida" },
   { nome: "Domingo", entrada: "domingo_entrada", saida: "domingo_saida" },
 ];
-
-function normalizarBusca(value: string) {
-  return value.normalize("NFD").replace(/\p{M}/gu, "").toLocaleLowerCase();
-}
 
 function minutosRelogio(hora: string) {
   const match = /^(\d{2}):(\d{2})$/.exec(hora);

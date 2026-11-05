@@ -14,6 +14,8 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3333),
   HOST: z.string().default("127.0.0.1"),
   CORS_ORIGIN: z.string().default("http://localhost:5173"),
+  /** Duração do login. Em produção fica 8 h; no .env local pode ser maior para não precisar entrar a cada teste. */
+  SESSAO_HORAS: z.coerce.number().int().min(1).max(24 * 90).default(8),
   COOKIE_SECURE: z
     .string()
     .optional()
