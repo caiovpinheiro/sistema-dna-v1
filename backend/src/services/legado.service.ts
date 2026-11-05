@@ -105,9 +105,10 @@ export class LegadoService {
       JOIN dna_work.faturamento_empresa fe ON fe.id_empresa = e.id_empresa AND fe.modalidade_vaga::text = v.tipo_vaga::text
       LEFT JOIN dna_work.vaga_valores vv ON vv.comparador::text = v.comparador::text
       WHERE (
-        cv.data_demicao IS NULL OR cv.data_demicao = ''
+        cv.data_demicao IS NULL OR btrim(cv.data_demicao) = ''
         OR (
-          CASE WHEN e.datafechamento::text LIKE '30' THEN cv.data_demicao >= $1
+          cv.data_demicao ~ '^[0-9]{4}/[0-9]{2}/[0-9]{2}$'
+          AND CASE WHEN e.datafechamento::text LIKE '30' THEN cv.data_demicao >= $1
                ELSE cv.data_demicao >= ($2 || e.datafechamento::text) END
           AND cv.data_demicao <> cv.data_contratacao
         )
@@ -124,6 +125,8 @@ export class LegadoService {
         OR cv.datainicio IS NULL OR btrim(cv.datainicio) = ''
         OR cv.datainicio <= to_char((date_trunc('month', to_date(replace($4, '/', '-') || '01', 'YYYY-MM-DD')) + interval '1 month' - interval '1 day' + interval '3 day')::date, 'YYYY/MM/DD')
       )
+      AND e.sede::text = '10'
+      AND e.usa_asaas::text IN ('1', '2')
       AND ($5 = '' OR trim(e.datafechamento::text) = $5 OR ltrim(trim(e.datafechamento::text), '0') = ltrim($5, '0'))
       AND ($6 = '' OR e.razao_social ILIKE $6 OR e.nome_fantasia ILIKE $6 OR e.razao_sem_acento ILIKE $6 OR e.fantasia_sem_acento ILIKE $6 OR e.cnpj ILIKE $6)
       GROUP BY e.id_empresa, e.razao_social, e.nome_fantasia, e.cnpj, e.datafechamento, e.tipo_empresa, e.matriz, e.usa_asaas
@@ -219,9 +222,10 @@ export class LegadoService {
       LEFT JOIN dna_work.modalidade_vaga m ON m.id = v.tipo_vaga
       WHERE e.id_empresa = $7
         AND (
-          cv.data_demicao IS NULL OR cv.data_demicao = ''
+          cv.data_demicao IS NULL OR btrim(cv.data_demicao) = ''
           OR (
-            CASE WHEN e.datafechamento::text LIKE '30' THEN cv.data_demicao >= $1
+            cv.data_demicao ~ '^[0-9]{4}/[0-9]{2}/[0-9]{2}$'
+            AND CASE WHEN e.datafechamento::text LIKE '30' THEN cv.data_demicao >= $1
                  ELSE cv.data_demicao >= ($2 || e.datafechamento::text) END
             AND cv.data_demicao <> cv.data_contratacao
           )
