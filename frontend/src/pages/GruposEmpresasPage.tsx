@@ -432,7 +432,8 @@ function AbaVaga({ empresaInicial, modeloInicial }: { empresaInicial: string; mo
   const cargos = useQuery({ queryKey: ["cargos"], queryFn: () => api<CargoOpcao[]>("/api/v1/cargos") });
   const listaCargos = cargos.data?.data ?? [];
   const [cargoNovo, setCargoNovo] = useState<typeof novoCargoVazio | null>(null);
-  const [textoCargo, setTextoCargo] = useState("");
+  const cargoNovoRef = useRef<typeof novoCargoVazio | null>(null);
+  const textoCargoRef = useRef("");
   const [buscaModelo, setBuscaModelo] = useState("");
   const [modeloAberto, setModeloAberto] = useState(false);
   const aplicouModelo = useRef(false);
@@ -469,33 +470,54 @@ function AbaVaga({ empresaInicial, modeloInicial }: { empresaInicial: string; mo
     setForm((atual) => atual.carga_horaria === calculada ? atual : { ...atual, carga_horaria: calculada });
   }, [assinaturaHorario]);
   const save = useMutation({
-    mutationFn: () => {
-      const { cargo: _cargo, cargo_id, descricao: _descricao, requisitos: _requisitos, ...resto } = semFolga(form, modos);
+    mutationFn: (escolha: { cargoId: string; novo: typeof novoCargoVazio | null }) => {
+      const { cargo: _cargo, cargo_id: _cargoId, descricao: _descricao, requisitos: _requisitos, ...resto } = semFolga(form, modos);
       const escala = DIAS_ESCALA.filter((dia) => modos[dia] === "escala");
       const folga = DIAS_ESCALA.filter((dia) => modos[dia] === "folga");
-      const body = { ...limpar(resto), escala, folga, ...(cargoNovo ? { novo_cargo: cargoNovo } : cargo_id ? { cargo_id } : {}) };
+      const body = { ...limpar(resto), escala, folga, ...(escolha.novo ? { novo_cargo: escolha.novo } : { cargo_id: escolha.cargoId }) };
       return api<{ codigo: string; quantidade: number; cargo: { nome: string; reaproveitado: boolean } }>("/api/v1/grupos-empresas/vagas", { method: "POST", body: JSON.stringify(body) });
     },
-    onSuccess: () => {
-      if (cargoNovo) void queryClient.invalidateQueries({ queryKey: ["cargos"] });
+    onSuccess: (_resposta, escolha) => {
+      if (escolha.novo) void queryClient.invalidateQueries({ queryKey: ["cargos"] });
     },
   });
   /** Cargo do modelo aplicado: da lista, ou "Novo cargo" já com o nome do modelo. */
   function cargoDoFormulario(modelo: Modelo) {
     const cargo = cargoDoModelo(modelo.formulario, listaCargos);
     setCargoNovo(cargo ? null : { ...novoCargoVazio, nome: modelo.formulario.cargo });
+    cargoNovoRef.current = cargo ? null : { ...novoCargoVazio, nome: modelo.formulario.cargo };
     return { cargo_id: cargo?.id ?? "", cargo: cargo?.nome ?? modelo.formulario.cargo };
+  }
+  function definirCargoNovo(proximo: typeof novoCargoVazio | null) {
+    cargoNovoRef.current = proximo;
+    setCargoNovo(proximo);
+  }
+  function nomeDigitado() {
+    const nome = textoCargoRef.current.trim();
+    return nome && nome !== "+ Novo cargo" ? nome : "";
+  }
+  /** Lista, nome já aberto como novo, ou o texto digitado quando não está na lista. */
+  function resolverCargo() {
+    if (form.cargo_id) return { cargoId: form.cargo_id, novo: null as typeof novoCargoVazio | null };
+    if (cargoNovoRef.current) return { cargoId: "", novo: cargoNovoRef.current };
+    const nome = nomeDigitado();
+    const existente = listaCargos.find((cargo) => normalizarBusca(cargo.nome) === normalizarBusca(nome));
+    if (existente) return { cargoId: existente.id, novo: null };
+    if (!nome) return { cargoId: "", novo: null };
+    const novo = { ...novoCargoVazio, nome };
+    definirCargoNovo(novo);
+    return { cargoId: "", novo };
   }
   function escolherCargo(id: string) {
     if (id === NOVO_CARGO) {
-      const nome = textoCargo.trim() && textoCargo !== "+ Novo cargo" ? textoCargo.trim() : "";
-      setCargoNovo((atual) => atual ?? { ...novoCargoVazio, nome });
+      const proximo = { ...(cargoNovoRef.current ?? novoCargoVazio), nome: nomeDigitado() || cargoNovoRef.current?.nome || "" };
+      definirCargoNovo(proximo);
       setForm((atual) => ({ ...atual, cargo_id: "" }));
       return;
     }
     // Digitar no campo limpa a escolha; no modo "Novo cargo" os textos já digitados ficam.
-    if (!id && cargoNovo) return;
-    setCargoNovo(null);
+    if (!id && cargoNovoRef.current) return;
+    definirCargoNovo(null);
     setForm((atual) => ({ ...atual, cargo_id: id, cargo: listaCargos.find((cargo) => cargo.id === id)?.nome ?? "" }));
   }
   const cargas = form.tipo === "estagio" ? ["20", "30"] : ["40", "44"];
@@ -513,7 +535,20 @@ function AbaVaga({ empresaInicial, modeloInicial }: { empresaInicial: string; mo
     setForm((atual) => ({ ...atual, ...modelo.formulario, ...doCargo, empresa_id: atual.empresa_id, quantidade: atual.quantidade }));
   }
   return (
-    <form className="grid w-full gap-3" onSubmit={(event) => { event.preventDefault(); const falta = !form.empresa_id ? "Escolha a empresa da vaga." : !form.cargo_id && !cargoNovo ? "Escolha um cargo da lista ou \"+ Novo cargo\"." : ""; setAviso(falta); if (!falta) save.mutate(); }}>
+    <form className="grid w-full gap-3" onSubmit={(event) => {
+      event.preventDefault();
+      const escolha = resolverCargo();
+      const novoIncompleto = escolha.novo && (escolha.novo.nome.trim().length < 2 || escolha.novo.descricao.trim().length < 3 || escolha.novo.requisitos.trim().length < 3);
+      const falta = !form.empresa_id
+        ? "Escolha a empresa da vaga."
+        : !escolha.cargoId && !escolha.novo
+          ? "Escolha um cargo da lista ou \"+ Novo cargo\"."
+          : novoIncompleto
+            ? "Preencha o nome, a descrição e os requisitos do novo cargo."
+            : "";
+      setAviso(falta);
+      if (!falta) save.mutate(escolha);
+    }}>
       <Erro error={save.error} />
       <Aviso texto={aviso} />
       <Erro error={detalhe.error} />
@@ -577,10 +612,19 @@ function AbaVaga({ empresaInicial, modeloInicial }: { empresaInicial: string; mo
             onChange={escolherCargo}
             opcoes={listaCargos.map((cargo) => ({ id: cargo.id, label: cargo.nome }))}
             fixas={[{ id: NOVO_CARGO, label: "+ Novo cargo" }]}
-            onTexto={setTextoCargo}
+            preservarTexto={[NOVO_CARGO]}
+            onTexto={(texto) => { textoCargoRef.current = texto; }}
             placeholder={cargos.isLoading ? "Carregando cargos…" : "Pesquisar cargo"}
           />
         </Field>
+        {cargoNovo ? (
+          <div className="grid gap-3 rounded-xl border border-dashed border-slate-300 p-3 sm:col-span-2 lg:col-span-4">
+            <p className="text-sm font-medium text-slate-700">Novo cargo: a descrição e os requisitos valem para todas as vagas deste cargo.</p>
+            <Field label="Nome do cargo"><Input required minLength={2} value={cargoNovo.nome} onChange={(event) => definirCargoNovo({ ...cargoNovo, nome: event.target.value })} /></Field>
+            <Field label="Descrição"><Textarea required minLength={3} className="min-h-20" value={cargoNovo.descricao} onChange={(event) => definirCargoNovo({ ...cargoNovo, descricao: event.target.value })} /></Field>
+            <Field label="Requisitos"><Textarea required minLength={3} className="min-h-20" value={cargoNovo.requisitos} onChange={(event) => definirCargoNovo({ ...cargoNovo, requisitos: event.target.value })} /></Field>
+          </div>
+        ) : null}
         <Field label="Salário"><Input required placeholder="1800,00" value={form.salario} onChange={(event) => setForm({ ...form, salario: event.target.value })} /></Field>
         <Field label="Entrada"><Input type="time" required value={form.horario_entrada} onChange={(event) => { const horario_entrada = event.target.value; setForm((atual) => preencherDias(atual, { ...atual, horario_entrada }, modos)); }} /></Field>
         <Field label="Saída"><Input type="time" required value={form.horario_saida} onChange={(event) => { const horario_saida = event.target.value; setForm((atual) => preencherDias(atual, { ...atual, horario_saida }, modos)); }} /></Field>
@@ -617,14 +661,6 @@ function AbaVaga({ empresaInicial, modeloInicial }: { empresaInicial: string; mo
           </div>
           {textoPrevisto(form, modos) ? <p className="text-sm text-slate-600">Texto do horário: <span className="font-medium text-navy-900">{textoPrevisto(form, modos)}</span></p> : null}
         </div>
-        {cargoNovo ? (
-          <div className="grid gap-3 rounded-xl border border-dashed border-slate-300 p-3 sm:col-span-2 lg:col-span-4">
-            <p className="text-sm font-medium text-slate-700">Novo cargo: a descrição e os requisitos valem para todas as vagas deste cargo.</p>
-            <Field label="Nome do cargo"><Input required minLength={2} value={cargoNovo.nome} onChange={(event) => setCargoNovo({ ...cargoNovo, nome: event.target.value })} /></Field>
-            <Field label="Descrição"><Textarea required minLength={3} className="min-h-20" value={cargoNovo.descricao} onChange={(event) => setCargoNovo({ ...cargoNovo, descricao: event.target.value })} /></Field>
-            <Field label="Requisitos"><Textarea required minLength={3} className="min-h-20" value={cargoNovo.requisitos} onChange={(event) => setCargoNovo({ ...cargoNovo, requisitos: event.target.value })} /></Field>
-          </div>
-        ) : null}
         <div className="sm:col-span-2 lg:col-span-4"><Field label="Atividades"><Textarea required minLength={3} className="min-h-20" value={form.atividades} onChange={(event) => setForm({ ...form, atividades: event.target.value })} /></Field></div>
       </Card>
       <div><Button disabled={save.isPending}>{save.isPending ? "Salvando…" : "Salvar vaga"}</Button></div>

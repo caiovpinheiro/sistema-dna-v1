@@ -11,7 +11,9 @@ export function combinaBusca(texto: string, busca: string) {
   return normalizarBusca(busca).split(/[\s\-–/,]+/).filter(Boolean).every((palavra) => alvo.includes(palavra));
 }
 
-export function BuscaOpcao({ value, onChange, opcoes, placeholder, fixas = [], onTexto, ariaLabel }: {
+const listaFixaVazia: string[] = [];
+
+export function BuscaOpcao({ value, onChange, opcoes, placeholder, fixas = [], onTexto, ariaLabel, preservarTexto = listaFixaVazia }: {
   value: string;
   onChange: (id: string) => void;
   /** detalhe entra na busca, mas não no texto mostrado (por exemplo o grupo ou o bairro). */
@@ -21,13 +23,16 @@ export function BuscaOpcao({ value, onChange, opcoes, placeholder, fixas = [], o
   fixas?: Array<{ id: string; label: string }>;
   onTexto?: (texto: string) => void;
   ariaLabel?: string;
+  /** Estes ids mantêm o que a pessoa digitou, em vez de trocar o campo pelo rótulo da opção. */
+  preservarTexto?: string[];
 }) {
   const selecionada = [...opcoes, ...fixas].find((item) => item.id === value);
   const [texto, setTexto] = useState(selecionada?.label ?? "");
   const [aberto, setAberto] = useState(false);
+  const manterTexto = Boolean(selecionada && preservarTexto.includes(selecionada.id));
   useEffect(() => {
-    if (selecionada) setTexto(selecionada.label);
-  }, [selecionada?.id, selecionada?.label]);
+    if (selecionada && !manterTexto) setTexto(selecionada.label);
+  }, [selecionada?.id, selecionada?.label, manterTexto]);
   const busca = selecionada && texto === selecionada.label ? "" : texto.trim();
   const lista: Array<{ id: string; label: string; detalhe?: string }> = [...opcoes.filter((item) => !busca || combinaBusca(`${item.label} ${item.detalhe ?? ""}`, busca)).slice(0, 20), ...fixas];
   return (
@@ -54,7 +59,7 @@ export function BuscaOpcao({ value, onChange, opcoes, placeholder, fixas = [], o
               <button type="button" className="w-full px-3 py-2 text-left text-sm hover:bg-slate-50" onMouseDown={(event) => {
                 event.preventDefault();
                 onChange(item.id);
-                setTexto(item.label);
+                if (!preservarTexto.includes(item.id)) setTexto(item.label);
                 setAberto(false);
               }}>
                 {item.label}
