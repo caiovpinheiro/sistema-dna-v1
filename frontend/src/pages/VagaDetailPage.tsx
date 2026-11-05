@@ -1,7 +1,8 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
+import { useState } from "react";
 import { Badge, Button, Card, Skeleton } from "@/components/ui";
-import { api } from "@/lib/api";
+import { ApiError, api } from "@/lib/api";
 import { dateBr, formatCpf, formatPhone, money, regimeLabel, situacaoLabel, statusVagaLabel, textoPlano } from "@/lib/format";
 import { ProcessosRelacionados } from "@/pages/ProcessosPage";
 
@@ -34,6 +35,15 @@ function idade(data: string | null) {
 export function VagaDetailPage() {
   const { id } = useParams();
   const job = useQuery({ queryKey: ["vaga", id], queryFn: () => api<Job>(`/api/v1/vagas/${id}`) });
+  const [aviso, setAviso] = useState("");
+  const desativar = useMutation({
+    mutationFn: () => api(`/api/v1/vagas/${id}`, { method: "PATCH", body: JSON.stringify({ status: 5 }) }),
+    onSuccess: async () => {
+      setAviso("");
+      await job.refetch();
+    },
+    onError: (error) => setAviso(error instanceof ApiError ? error.message : "Não foi possível desativar a vaga."),
+  });
   const contracts = useQuery({ queryKey: ["vaga-contratos", id], queryFn: () => api<Contract[]>(`/api/v1/vagas/${id}/contratacoes`) });
   const sugestoes = useQuery({ queryKey: ["vaga-sugeridos", id], queryFn: () => api<Sugestoes>(`/api/v1/vagas/${id}/sugeridos`) });
   if (job.isLoading) return <Skeleton className="h-64" />;
@@ -56,8 +66,14 @@ export function VagaDetailPage() {
           <h1 className="text-2xl font-extrabold">{data.cargo}</h1>
           <p className="text-sm text-slate-500"><Link className="text-cyan-800" to={`/empresas/${data.id_empresa}`}>{data.nome_fantasia || data.razao_social}</Link> · {data.modalidade || regimeLabel[data.regime]} · {money(data.salario)}</p>
         </div>
-        <div className="flex gap-2"><Link to={`/processos/novo?vaga=${id}&empresa=${data.id_empresa}`}><Button variant="secondary">Novo processo</Button></Link><Link to={`/contratacoes/nova?vaga=${id}&empresa=${data.id_empresa}`}><Button>Contratar</Button></Link><Link to={`/vagas/${id}/editar`}><Button variant="secondary">Editar vaga</Button></Link></div>
+        <div className="flex gap-2">
+          {data.status !== 5 ? <Button type="button" variant="danger" disabled={desativar.isPending} onClick={() => {
+            if (window.confirm("Desativar esta vaga? Ela deixa de aparecer como aberta.")) desativar.mutate();
+          }}>{desativar.isPending ? "Desativando..." : "Desativar vaga"}</Button> : null}
+          <Link to={`/processos/novo?vaga=${id}&empresa=${data.id_empresa}`}><Button variant="secondary">Novo processo</Button></Link><Link to={`/contratacoes/nova?vaga=${id}&empresa=${data.id_empresa}`}><Button>Contratar</Button></Link><Link to={`/vagas/${id}/editar`}><Button variant="secondary">Editar vaga</Button></Link>
+        </div>
       </div>
+      {aviso ? <p className="text-sm text-rose-600">{aviso}</p> : null}
       <Card className="grid gap-3 md:grid-cols-4">
         <div>
           <p className="text-xs font-bold uppercase tracking-wide text-cyan-800">Abertura da vaga</p>
