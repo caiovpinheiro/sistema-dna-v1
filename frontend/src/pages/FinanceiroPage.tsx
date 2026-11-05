@@ -245,16 +245,22 @@ export function GerarFaturamentoPage() {
       <Consulta carregando={result.isLoading} erro={result.error} />
       <div className="grid gap-3">
         <div className="flex flex-wrap items-center gap-3">
-          <Button type="button" variant="secondary" disabled={Boolean(progresso) || !total} onClick={async () => {
-            const params = new URLSearchParams({ ...busca, page: "1", pageSize: "100" });
-            const primeira = await api<{ id_empresa: string }[]>(`/api/v1/faturamento?${params}`);
-            let ids = primeira.data.map((item) => item.id_empresa);
-            if (Number(primeira.meta?.total ?? 0) > 100) {
-              params.set("page", "2");
-              const segunda = await api<{ id_empresa: string }[]>(`/api/v1/faturamento?${params}`);
-              ids = [...ids, ...segunda.data.map((item) => item.id_empresa)];
+          <Button type="button" disabled={Boolean(progresso) || !total} onClick={async () => {
+            try {
+              const params = new URLSearchParams({ ...busca, page: "1", pageSize: "100" });
+              const primeira = await api<{ itens: Array<{ id_empresa: string }> }>(`/api/v1/faturamento?${params}`);
+              let ids = primeira.data.itens.map((item) => item.id_empresa);
+              const totalBusca = Number(primeira.meta?.total ?? ids.length);
+              if (totalBusca > 100) {
+                params.set("page", "2");
+                const segunda = await api<{ itens: Array<{ id_empresa: string }> }>(`/api/v1/faturamento?${params}`);
+                ids = [...ids, ...segunda.data.itens.map((item) => item.id_empresa)];
+              }
+              setMarcadas(ids);
+              setAviso(ids.length ? `${ids.length} empresas selecionadas.` : "Nenhuma empresa para selecionar.");
+            } catch (error) {
+              setAviso(error instanceof Error ? error.message : "Não foi possível selecionar as empresas.");
             }
-            setMarcadas(ids);
           }}>Selecionar todas ({total})</Button>
           {marcadas.length > 0 ? (
             <Button type="button" disabled={Boolean(progresso)} onClick={() => enviarLote(marcadas)}>Enviar relatório e boleto</Button>
