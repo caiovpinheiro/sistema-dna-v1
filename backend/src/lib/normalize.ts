@@ -41,6 +41,15 @@ export function isValidCep(value: string): boolean {
   return /^\d{8}$/.test(value);
 }
 
+export function primeiroEmail(...valores: Array<string | null | undefined>): string {
+  for (const valor of valores) {
+    const texto = (valor ?? "").trim().toLowerCase();
+    const achado = texto.match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/);
+    if (achado) return achado[0];
+  }
+  return "";
+}
+
 export type Regime = "clt" | "estagio" | "outro";
 
 export function classifyRegime(descricao: string | null | undefined): Regime {

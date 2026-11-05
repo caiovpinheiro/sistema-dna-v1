@@ -4,6 +4,7 @@ import type { AppConfig } from "../config.js";
 import { textoHtml } from "../lib/email-modelo.js";
 import { enviarEmailMailjet } from "../lib/mailjet.js";
 import { AppError } from "../lib/errors.js";
+import { primeiroEmail } from "../lib/normalize.js";
 
 type Pagina = { page: number; pageSize: number };
 
@@ -256,7 +257,7 @@ export class LegadoService {
     return {
       empresa: empresa.nome,
       cnpj: empresa.cnpj,
-      email: empresa.email_financeiro || empresa.email,
+      email: primeiroEmail(empresa.email_financeiro, empresa.email),
       fechamento: empresa.fechamento,
       itens,
       total: itens.reduce((soma, item) => soma + item.valor, 0),
@@ -271,7 +272,9 @@ export class LegadoService {
     boleto: (input: { idEmpresa: string; valor: number; vencimento: string; descricao: string }) => Promise<{ url: string | null; vencimento: string }>,
   ) {
     const enviados: string[] = [];
+    const boletos: string[] = [];
     const falhas: Array<{ empresa: string | null; motivo: string }> = [];
+    const mailjetPronto = Boolean(config.MAILJET_API_KEY && config.MAILJET_SECRET_KEY);
     const hoje = new Date();
     const data = `${hoje.getFullYear()}/${String(hoje.getMonth() + 1).padStart(2, "0")}/${String(hoje.getDate()).padStart(2, "0")}`;
     const descricao = `Faturamento ${mes}/${ano}`;
@@ -281,8 +284,8 @@ export class LegadoService {
         return null;
       });
       if (!relatorio) continue;
-      const email = (relatorio.email || "").trim().toLowerCase();
-      if (!email.includes("@")) {
+      const email = primeiroEmail(relatorio.email);
+      if (!email) {
         falhas.push({ empresa: relatorio.empresa, motivo: "Sem e-mail financeiro." });
         continue;
       }
@@ -295,6 +298,11 @@ export class LegadoService {
         const cobranca = await boleto({ idEmpresa: id, valor: relatorio.total, vencimento, descricao });
         if (!cobranca.url) {
           falhas.push({ empresa: relatorio.empresa, motivo: "O Asaas não devolveu o link do boleto." });
+          continue;
+        }
+        boletos.push(relatorio.empresa || id);
+        if (!mailjetPronto) {
+          falhas.push({ empresa: relatorio.empresa, motivo: "Boleto gerado. Falta MAILJET_API_KEY e MAILJET_SECRET_KEY no servidor para enviar o e-mail." });
           continue;
         }
         const corpo = relatorio.itens.map((linha) => `
@@ -341,7 +349,7 @@ export class LegadoService {
         falhas.push({ empresa: relatorio.empresa, motivo: error instanceof AppError ? error.message : "Não foi possível enviar." });
       }
     }
-    return { enviados: enviados.length, empresas: enviados, falhas };
+    return { enviados: enviados.length, boletos: boletos.length, empresas: enviados, falhas };
   }
 
   async procfy(query: { de?: string; ate?: string; status?: string; tipoData?: string; sistema?: string; page?: number; pageSize?: number }) {

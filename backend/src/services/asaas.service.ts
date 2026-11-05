@@ -4,7 +4,7 @@ import type { AppConfig } from "../config.js";
 import { AsaasClient } from "../lib/asaas.js";
 import { enviarModelo, textoHtml } from "../lib/email-modelo.js";
 import { AppError } from "../lib/errors.js";
-import { onlyDigits } from "../lib/normalize.js";
+import { onlyDigits, primeiroEmail } from "../lib/normalize.js";
 
 type EmpresaAsaas = {
   id_empresa: string;
@@ -12,6 +12,7 @@ type EmpresaAsaas = {
   nome_fantasia: string | null;
   cnpj: string | null;
   email: string | null;
+  email_financeiro: string | null;
   telefone: string | null;
   celular: string | null;
   cep: string | null;
@@ -310,7 +311,7 @@ export class AsaasService {
   private async empresa(id: string) {
     try {
       const result = await this.db.query<EmpresaAsaas>(`
-        SELECT id_empresa, razao_social, nome_fantasia, cnpj, email, telefone, celular, cep,
+        SELECT id_empresa, razao_social, nome_fantasia, cnpj, email, email_financeiro, telefone, celular, cep,
                logradouro, numero, complemento, bairro, id_asaas
         FROM dna_work.empresa WHERE id_empresa = $1
       `, [id]);
@@ -329,7 +330,7 @@ export class AsaasService {
     const body = {
       name: empresa.razao_social || empresa.nome_fantasia,
       cpfCnpj: onlyDigits(empresa.cnpj ?? ""),
-      email: empresa.email ?? undefined,
+      email: primeiroEmail(empresa.email_financeiro, empresa.email) || undefined,
       phone: onlyDigits(empresa.telefone ?? ""),
       mobilePhone: onlyDigits(empresa.celular ?? ""),
       postalCode: onlyDigits(empresa.cep ?? ""),

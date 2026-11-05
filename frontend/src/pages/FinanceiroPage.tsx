@@ -182,15 +182,17 @@ export function GerarFaturamentoPage() {
     setProgresso({ feito: 0, total: ids.length });
     setAviso("");
     let enviados = 0;
+    let boletos = 0;
     let falhas = 0;
     const motivos = new Set<string>();
     for (const id of ids) {
       try {
-        const resposta = await api<{ enviados: number; falhas: Array<{ empresa: string | null; motivo: string }> }>("/api/v1/faturamento/relatorios", {
+        const resposta = await api<{ enviados: number; boletos?: number; falhas: Array<{ empresa: string | null; motivo: string }> }>("/api/v1/faturamento/relatorios", {
           method: "POST",
           body: JSON.stringify({ empresas: [id], mes: busca.mes, ano: busca.ano }),
         });
         enviados += resposta.data.enviados;
+        boletos += resposta.data.boletos ?? 0;
         falhas += resposta.data.falhas.length;
         for (const falha of resposta.data.falhas) motivos.add(falha.motivo);
       } catch (error) {
@@ -204,7 +206,9 @@ export function GerarFaturamentoPage() {
     const porque = [...motivos].slice(0, 3).join(" ");
     setAviso(enviados > 0
       ? `${enviados} relatório(s) e boleto(s) enviado(s).${falhas ? ` ${falhas} não saíram. ${porque}` : " As cobranças estão em Contas a receber."}`
-      : `Nenhuma cobrança foi gerada. ${porque || "O envio falhou antes de criar o boleto."}`);
+      : boletos > 0
+        ? `${boletos} boleto(s) gerado(s) e estão em Contas a receber. O e-mail não saiu. ${porque}`
+        : `Nenhuma cobrança foi gerada. ${porque || "O envio falhou antes de criar o boleto."}`);
     await client.invalidateQueries({ queryKey: ["faturamento"] });
   }
   const dados = result.data?.data;
