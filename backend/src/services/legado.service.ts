@@ -63,14 +63,9 @@ function periodo(mes: string, ano: string) {
   };
 }
 
-function vencimentoDoFechamento(ano: string, mes: string, fechamento: string | null) {
-  const anoNum = Number(ano);
+function vencimentoDia10(ano: string, mes: string) {
   const mesNum = Number(mes);
-  const ultimo = new Date(anoNum, mesNum, 0).getDate();
-  const dia = Math.min(Math.max(Number(fechamento) || 10, 1), ultimo);
-  const alvo = `${ano}-${String(mesNum).padStart(2, "0")}-${String(dia).padStart(2, "0")}`;
-  const hoje = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
-  return alvo < hoje ? hoje : alvo;
+  return `${ano}-${String(mesNum).padStart(2, "0")}-10`;
 }
 
 export class LegadoService {
@@ -280,7 +275,7 @@ export class LegadoService {
         continue;
       }
       try {
-        const vencimento = vencimentoDoFechamento(ano, mes, relatorio.fechamento);
+        const vencimento = vencimentoDia10(ano, mes);
         const cobranca = await boleto({ idEmpresa: id, valor: relatorio.total, vencimento, descricao });
         if (!cobranca.url) {
           falhas.push({ empresa: relatorio.empresa, motivo: "O Asaas não devolveu o link do boleto." });
