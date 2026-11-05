@@ -183,6 +183,7 @@ export function GerarFaturamentoPage() {
     setAviso("");
     let enviados = 0;
     let falhas = 0;
+    const motivos = new Set<string>();
     for (const id of ids) {
       try {
         const resposta = await api<{ enviados: number; falhas: Array<{ empresa: string | null; motivo: string }> }>("/api/v1/faturamento/relatorios", {
@@ -191,14 +192,19 @@ export function GerarFaturamentoPage() {
         });
         enviados += resposta.data.enviados;
         falhas += resposta.data.falhas.length;
-      } catch {
+        for (const falha of resposta.data.falhas) motivos.add(falha.motivo);
+      } catch (error) {
         falhas += 1;
+        motivos.add(error instanceof Error ? error.message : "Falha ao enviar.");
       }
       setProgresso((atual) => atual ? { feito: atual.feito + 1, total: atual.total } : null);
     }
     setProgresso(null);
-    setMarcadas([]);
-    setAviso(`${enviados} relatório(s) e boleto(s) enviado(s)${falhas ? `. ${falhas} não saíram.` : "."}`);
+    if (enviados > 0) setMarcadas([]);
+    const porque = [...motivos].slice(0, 3).join(" ");
+    setAviso(enviados > 0
+      ? `${enviados} relatório(s) e boleto(s) enviado(s).${falhas ? ` ${falhas} não saíram. ${porque}` : " As cobranças estão em Contas a receber."}`
+      : `Nenhuma cobrança foi gerada. ${porque || "O envio falhou antes de criar o boleto."}`);
     await client.invalidateQueries({ queryKey: ["faturamento"] });
   }
   const dados = result.data?.data;
@@ -274,6 +280,7 @@ export function GerarFaturamentoPage() {
             <p className="text-sm text-slate-500">{progresso.feito} de {progresso.total}</p>
           </div>
         ) : null}
+        {aviso ? <p className={`text-sm font-semibold ${aviso.startsWith("Nenhuma") ? "text-rose-600" : "text-slate-200"}`}>{aviso}</p> : null}
       </div>
       <Card className="overflow-x-auto p-0">
         <table className="w-full min-w-[960px] text-left text-sm">
