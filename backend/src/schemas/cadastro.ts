@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { DIAS_ESCALA } from "../lib/horario-escala.js";
 import { cnpjSchema, moneySchema, optionalCep, optionalEmail, optionalPhone } from "./common.js";
 
 const contato = { email: optionalEmail, telefone: optionalPhone };
@@ -58,6 +59,9 @@ export const vagaCadastroSchema = z.object({
   sab_saida: hora.optional(),
   domingo_entrada: hora.optional(),
   domingo_saida: hora.optional(),
+  /** Dias por escala e dias de folga; os outros são fixos. */
+  escala: z.array(z.enum(DIAS_ESCALA)).max(7).optional(),
+  folga: z.array(z.enum(DIAS_ESCALA)).max(7).optional(),
   sexo: z.enum(["M", "F", "I"]),
   idade: z.coerce.number().int().min(14).max(80),
   idade_ate: z.preprocess(

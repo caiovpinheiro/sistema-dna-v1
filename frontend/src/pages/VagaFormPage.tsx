@@ -1,12 +1,13 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { z } from "zod";
 import { Button, Card, Field, Input, Select, Textarea } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 import { STATUS_VAGA, textoPlano } from "@/lib/format";
+import { diasPorEscala, textoDoHorario, type ModoDia } from "@/lib/horario-escala";
 
 const schema = z.object({
   id_empresa: z.string().min(1, "Selecione a empresa."),
@@ -67,6 +68,8 @@ const dias = [
   ["Domingo", "domindo_entrada", "domindo_saida"],
 ] as const;
 
+const SEM_HORA = new Set(["", "0", "00:00"]);
+
 export function VagaFormPage() {
   const { id } = useParams();
   const [params] = useSearchParams();
@@ -79,6 +82,25 @@ export function VagaFormPage() {
   const modelo = useQuery({ queryKey: ["modelo", modeloId], enabled: Boolean(modeloId) && !id, queryFn: () => api<Modelo>(`/api/v1/modelos/${modeloId}`) });
   const current = useQuery({ queryKey: ["vaga", id], enabled: Boolean(id), queryFn: () => api<Form & { salario: number | null; razao_social?: string | null; nome_fantasia?: string | null }>(`/api/v1/vagas/${id}`) });
   const form = useForm<Form>({ resolver: zodResolver(schema), defaultValues: { id_empresa: params.get("empresa") ?? "", quantidade_posicoes: 1, tipo_vaga: 2, sexo: "I", situacao: "aberta" } });
+  // Fixo, Escala ou Folga por dia, na ordem de "dias". Escala vem do texto do horário; dia sem hora é folga.
+  const [modos, setModos] = useState<ModoDia[]>(() => dias.map(() => "fixo"));
+  function textoPelosDias(atuais: ModoDia[]) {
+    const valores = form.getValues();
+    return textoDoHorario(dias.map(([, entrada, saida], indice) => ({ modo: atuais[indice], entrada: valores[entrada] ?? "", saida: valores[saida] ?? "" })));
+  }
+  function trocarModo(indice: number, modo: ModoDia) {
+    const [, entrada, saida] = dias[indice];
+    if (modo === "folga") {
+      form.setValue(entrada, "0");
+      form.setValue(saida, "0");
+    } else if (SEM_HORA.has(form.getValues(entrada) ?? "")) {
+      form.setValue(entrada, form.getValues("horabase") ?? "");
+      form.setValue(saida, form.getValues("hora_saida_base") ?? "");
+    }
+    const atuais = modos.map((item, posicao) => (posicao === indice ? modo : item));
+    setModos(atuais);
+    form.setValue("texto_carga", textoPelosDias(atuais), { shouldDirty: true });
+  }
   useEffect(() => {
     if (!current.data) return;
     const data = current.data.data;
@@ -110,6 +132,8 @@ export function VagaFormPage() {
       texto_carga: hora(data.texto_carga),
       sexo: data.sexo === "M" || data.sexo === "F" ? data.sexo : "I",
     });
+    const escala = diasPorEscala(data.texto_carga);
+    setModos(dias.map(([, entrada], indice) => (SEM_HORA.has(hora(data[entrada])) ? "folga" : escala.has(indice) ? "escala" : "fixo")));
   }, [current.data, form]);
   useEffect(() => {
     const item = modelo.data?.data;
@@ -189,16 +213,26 @@ export function VagaFormPage() {
         <div className="md:col-span-2 grid gap-3">
           <p className="text-sm font-semibold">Horários</p>
           <div className="grid gap-3 sm:grid-cols-2">
-            {dias.map(([nome, entrada, saida]) => (
-              <div key={nome} className="grid grid-cols-[5.5rem_1fr_1fr] items-end gap-2">
-                <p className="pb-2 text-sm text-slate-400">{nome}</p>
-                <Field label="Entrada"><Input placeholder="08:00" {...form.register(entrada)} /></Field>
-                <Field label="Saída"><Input placeholder="17:00" {...form.register(saida)} /></Field>
+            {dias.map(([nome, entrada, saida], indice) => (
+              <div key={nome} className="grid grid-cols-[5.5rem_6.5rem_1fr_1fr] items-end gap-2">
+                <p className="pb-2 text-sm text-slate-500">{nome}</p>
+                <Field label="Tipo">
+                  <Select value={modos[indice]} onChange={(event) => trocarModo(indice, event.target.value as ModoDia)}>
+                    <option value="fixo">Fixo</option>
+                    <option value="escala">Escala</option>
+                    <option value="folga">Folga</option>
+                  </Select>
+                </Field>
+                <Field label="Entrada"><Input placeholder="08:00" readOnly={modos[indice] === "folga"} {...form.register(entrada)} /></Field>
+                <Field label="Saída"><Input placeholder="17:00" readOnly={modos[indice] === "folga"} {...form.register(saida)} /></Field>
               </div>
             ))}
           </div>
         </div>
-        <div className="md:col-span-2"><Field label="Texto do horário"><Textarea {...form.register("texto_carga")} /></Field></div>
+        <div className="md:col-span-2 grid gap-1">
+          <Field label="Texto do horário"><Textarea {...form.register("texto_carga")} /></Field>
+          <div><Button type="button" variant="secondary" onClick={() => form.setValue("texto_carga", textoPelosDias(modos), { shouldDirty: true })}>Gerar texto pelos dias</Button></div>
+        </div>
         <div className="md:col-span-2"><Field label="Atividades da vaga"><Textarea {...form.register("atribuicaoes")} /></Field></div>
         <div className="md:col-span-2"><Field label="Atividades no contrato"><Textarea {...form.register("atribu_contrato")} /></Field></div>
         <div className="md:col-span-2"><Field label="Requisitos desejáveis"><Textarea {...form.register("requisitos_desejaveis")} /></Field></div>

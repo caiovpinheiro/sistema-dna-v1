@@ -6,6 +6,7 @@ import { Button, Card, Empty, Field, Input, Select, Textarea } from "@/component
 import { ApiError, api } from "@/lib/api";
 import { formatCnpj } from "@/lib/format";
 import { cargoDoModelo, type CargoOpcao } from "@/lib/cargo";
+import { DIAS_ESCALA, textoDoHorario, type DiaEscala, type ModoDia } from "@/lib/horario-escala";
 
 type Aba = "grupo" | "empresa" | "vaga";
 type Grupo = { id: string; nome: string; email: string | null; telefone: string | null };
@@ -309,23 +310,64 @@ function diasPelaCarga(carga: string, entrada: string, saida: string): number | 
 }
 
 /**
- * Preenche os dias a partir de segunda com a entrada e a saída, até cobrir a carga.
- * Um dia editado à mão (diferente do horário base anterior) fica como está.
+ * Preenche os dias fixos a partir de segunda com a entrada e a saída, até cobrir a carga.
+ * Um dia editado à mão (diferente do horário base anterior) fica como está, e dias de escala ou folga nunca mudam.
  */
-function preencherDias<T extends FormularioVaga>(atual: T, proximo: T): T {
+function preencherDias<T extends FormularioVaga>(atual: T, proximo: T, modos?: Record<string, string>): T {
   const dias = diasPelaCarga(proximo.carga_horaria, proximo.horario_entrada, proximo.horario_saida);
   if (dias == null) return proximo;
   const resultado: Record<string, string> = { ...proximo };
-  DIAS_SEMANA.forEach((dia, indice) => {
+  let fixos = 0;
+  DIAS_SEMANA.forEach((dia) => {
+    if (modos && modos[dia] !== "fixo") return;
+    const posicao = fixos;
+    fixos += 1;
     const entrada = `${dia}_entrada` as keyof FormularioVaga;
     const saida = `${dia}_saida` as keyof FormularioVaga;
     const vazio = !atual[entrada] && !atual[saida];
     const automatico = atual[entrada] === atual.horario_entrada && atual[saida] === atual.horario_saida;
     if (!vazio && !automatico) return;
-    resultado[entrada] = indice < dias ? proximo.horario_entrada : "";
-    resultado[saida] = indice < dias ? proximo.horario_saida : "";
+    resultado[entrada] = posicao < dias ? proximo.horario_entrada : "";
+    resultado[saida] = posicao < dias ? proximo.horario_saida : "";
   });
   return resultado as T;
+}
+
+const modosFixos = Object.fromEntries(DIAS_ESCALA.map((dia) => [dia, "fixo"])) as Record<DiaEscala, ModoDia>;
+
+/** Dia de folga não conta horas nem vai com horário: o servidor grava "0". */
+function semFolga<T extends FormularioVaga>(form: T, modos: Record<DiaEscala, ModoDia>): T {
+  const resultado: Record<string, string> = { ...form };
+  for (const dia of DIAS_ESCALA) {
+    if (modos[dia] !== "folga") continue;
+    resultado[`${dia}_entrada`] = "";
+    resultado[`${dia}_saida`] = "";
+  }
+  return resultado as T;
+}
+
+/** Só os dias fixos contam para a carga: escala não é toda semana e folga não trabalha. */
+function soDiasFixos<T extends FormularioVaga>(form: T, modos: Record<DiaEscala, ModoDia>): T {
+  const resultado: Record<string, string> = { ...form };
+  for (const dia of DIAS_ESCALA) {
+    if (modos[dia] === "fixo") continue;
+    resultado[`${dia}_entrada`] = "";
+    resultado[`${dia}_saida`] = "";
+  }
+  return resultado as T;
+}
+
+/** O mesmo texto que o servidor grava: com escala ou folga em dia útil, o texto por dia; senão "08:00 às 17:00". */
+function textoPrevisto(form: FormularioVaga, modos: Record<DiaEscala, ModoDia>) {
+  const especial = DIAS_ESCALA.some((dia) => modos[dia] === "escala") || DIAS_ESCALA.slice(0, 5).some((dia) => modos[dia] === "folga");
+  if (!especial) return form.horario_entrada && form.horario_saida ? `${form.horario_entrada} às ${form.horario_saida}` : "";
+  return textoDoHorario(DIAS_ESCALA.map((dia, indice) => {
+    const entrada = form[`${dia}_entrada` as keyof FormularioVaga] as string;
+    const saida = form[`${dia}_saida` as keyof FormularioVaga] as string;
+    // Dia útil vazio usa a entrada e a saída da vaga, como no servidor.
+    const base = indice < 5 && !entrada && !saida;
+    return { modo: modos[dia], entrada: base ? form.horario_entrada : entrada, saida: base ? form.horario_saida : saida };
+  }));
 }
 
 function cargaDoHorario(form: FormularioVaga) {
@@ -384,6 +426,7 @@ function rotulosDistintos(lista: Modelo[]) {
 function AbaVaga({ empresaInicial, modeloInicial }: { empresaInicial: string; modeloInicial: string }) {
   const empresas = useQuery({ queryKey: ["empresas-tela"], queryFn: () => api<Empresa[]>("/api/v1/grupos-empresas/empresas") });
   const [form, setForm] = useState({ ...vagaVazia, empresa_id: empresaInicial });
+  const [modos, setModos] = useState(modosFixos);
   const [aviso, setAviso] = useState("");
   const queryClient = useQueryClient();
   const cargos = useQuery({ queryKey: ["cargos"], queryFn: () => api<CargoOpcao[]>("/api/v1/cargos") });
@@ -411,23 +454,26 @@ function AbaVaga({ empresaInicial, modeloInicial }: { empresaInicial: string; mo
     setBuscaModelo(rotuloModelo(modelo));
     const doCargo = cargoDoFormulario(modelo);
     setForm((atual) => ({ ...atual, ...modelo.formulario, ...doCargo, empresa_id: atual.empresa_id || empresaInicial, quantidade: atual.quantidade }));
+    setModos(modosFixos);
   }, [detalhe.data, cargos.isFetched, empresaInicial]);
   const assinaturaHorario = [
     form.tipo, form.horario_entrada, form.horario_saida,
     form.segunda_entrada, form.segunda_saida, form.terca_entrada, form.terca_saida,
     form.quarta_entrada, form.quarta_saida, form.quinta_entrada, form.quinta_saida,
     form.sexta_entrada, form.sexta_saida, form.sab_entrada, form.sab_saida,
-    form.domingo_entrada, form.domingo_saida,
+    form.domingo_entrada, form.domingo_saida, ...DIAS_ESCALA.map((dia) => modos[dia]),
   ].join("|");
   useEffect(() => {
-    const calculada = cargaDoHorario(form);
+    const calculada = cargaDoHorario(soDiasFixos(form, modos));
     if (!calculada) return;
     setForm((atual) => atual.carga_horaria === calculada ? atual : { ...atual, carga_horaria: calculada });
   }, [assinaturaHorario]);
   const save = useMutation({
     mutationFn: () => {
-      const { cargo: _cargo, cargo_id, descricao: _descricao, requisitos: _requisitos, ...resto } = form;
-      const body = { ...limpar(resto), ...(cargoNovo ? { novo_cargo: cargoNovo } : cargo_id ? { cargo_id } : {}) };
+      const { cargo: _cargo, cargo_id, descricao: _descricao, requisitos: _requisitos, ...resto } = semFolga(form, modos);
+      const escala = DIAS_ESCALA.filter((dia) => modos[dia] === "escala");
+      const folga = DIAS_ESCALA.filter((dia) => modos[dia] === "folga");
+      const body = { ...limpar(resto), escala, folga, ...(cargoNovo ? { novo_cargo: cargoNovo } : cargo_id ? { cargo_id } : {}) };
       return api<{ codigo: string; quantidade: number; cargo: { nome: string; reaproveitado: boolean } }>("/api/v1/grupos-empresas/vagas", { method: "POST", body: JSON.stringify(body) });
     },
     onSuccess: () => {
@@ -514,14 +560,14 @@ function AbaVaga({ empresaInicial, modeloInicial }: { empresaInicial: string; mo
         <Field label="Tipo">
           <Select value={form.tipo} onChange={(event) => {
             const tipo = event.target.value;
-            setForm((atual) => preencherDias(atual, { ...atual, tipo, carga_horaria: tipo === "estagio" ? "30" : "40" }));
+            setForm((atual) => preencherDias(atual, { ...atual, tipo, carga_horaria: tipo === "estagio" ? "30" : "40" }, modos));
           }}>
             <option value="estagio">Estágio</option>
             <option value="clt">CLT</option>
           </Select>
         </Field>
         <Field label="Carga horária">
-          <Select value={form.carga_horaria} onChange={(event) => { const carga_horaria = event.target.value; setForm((atual) => preencherDias(atual, { ...atual, carga_horaria })); }}>
+          <Select value={form.carga_horaria} onChange={(event) => { const carga_horaria = event.target.value; setForm((atual) => preencherDias(atual, { ...atual, carga_horaria }, modos)); }}>
             {cargas.map((carga) => <option key={carga} value={carga}>{carga} horas</option>)}
           </Select>
         </Field>
@@ -536,8 +582,8 @@ function AbaVaga({ empresaInicial, modeloInicial }: { empresaInicial: string; mo
           />
         </Field>
         <Field label="Salário"><Input required placeholder="1800,00" value={form.salario} onChange={(event) => setForm({ ...form, salario: event.target.value })} /></Field>
-        <Field label="Entrada"><Input type="time" required value={form.horario_entrada} onChange={(event) => { const horario_entrada = event.target.value; setForm((atual) => preencherDias(atual, { ...atual, horario_entrada })); }} /></Field>
-        <Field label="Saída"><Input type="time" required value={form.horario_saida} onChange={(event) => { const horario_saida = event.target.value; setForm((atual) => preencherDias(atual, { ...atual, horario_saida })); }} /></Field>
+        <Field label="Entrada"><Input type="time" required value={form.horario_entrada} onChange={(event) => { const horario_entrada = event.target.value; setForm((atual) => preencherDias(atual, { ...atual, horario_entrada }, modos)); }} /></Field>
+        <Field label="Saída"><Input type="time" required value={form.horario_saida} onChange={(event) => { const horario_saida = event.target.value; setForm((atual) => preencherDias(atual, { ...atual, horario_saida }, modos)); }} /></Field>
         <Field label="Sexo">
           <Select value={form.sexo} onChange={(event) => setForm({ ...form, sexo: event.target.value })}>
             <option value="I">Aceita os dois</option>
@@ -550,15 +596,26 @@ function AbaVaga({ empresaInicial, modeloInicial }: { empresaInicial: string; mo
         <Field label="Quantidade"><Input type="number" required min={1} max={20} value={form.quantidade} onChange={(event) => setForm({ ...form, quantidade: event.target.value })} /></Field>
         <div className="grid gap-2 sm:col-span-2 lg:col-span-4">
           <p className="text-sm font-medium text-slate-700">Dias do horário</p>
-          <div className="grid gap-x-6 gap-y-2 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-            {diasHorario.map((dia) => (
-              <div key={dia.nome} className="grid min-w-0 grid-cols-[4.5rem_minmax(0,1fr)_minmax(0,1fr)] items-center gap-1.5">
-                <span className="text-sm text-slate-600">{dia.nome}</span>
-                <Input type="time" className="min-w-0" aria-label={`${dia.nome} entrada`} value={form[dia.entrada]} onChange={(event) => setForm({ ...form, [dia.entrada]: event.target.value })} />
-                <Input type="time" className="min-w-0" aria-label={`${dia.nome} saída`} value={form[dia.saida]} onChange={(event) => setForm({ ...form, [dia.saida]: event.target.value })} />
-              </div>
-            ))}
+          <p className="text-xs text-slate-500">Escala: a pessoa trabalha nesse dia conforme a escala da empresa, não toda semana. Folga: não trabalha.</p>
+          <div className="grid gap-x-6 gap-y-2 md:grid-cols-2 xl:grid-cols-3">
+            {diasHorario.map((dia, indice) => {
+              const chave = DIAS_ESCALA[indice];
+              const folga = modos[chave] === "folga";
+              return (
+                <div key={dia.nome} className="grid min-w-0 grid-cols-[4.5rem_6rem_minmax(0,1fr)_minmax(0,1fr)] items-center gap-1.5">
+                  <span className="text-sm text-slate-600">{dia.nome}</span>
+                  <Select aria-label={`${dia.nome} tipo`} className="min-w-0 px-2" value={modos[chave]} onChange={(event) => setModos({ ...modos, [chave]: event.target.value as ModoDia })}>
+                    <option value="fixo">Fixo</option>
+                    <option value="escala">Escala</option>
+                    <option value="folga">Folga</option>
+                  </Select>
+                  <Input type="time" className="min-w-0" aria-label={`${dia.nome} entrada`} disabled={folga} required={modos[chave] === "escala"} value={folga ? "" : form[dia.entrada]} onChange={(event) => setForm({ ...form, [dia.entrada]: event.target.value })} />
+                  <Input type="time" className="min-w-0" aria-label={`${dia.nome} saída`} disabled={folga} required={modos[chave] === "escala"} value={folga ? "" : form[dia.saida]} onChange={(event) => setForm({ ...form, [dia.saida]: event.target.value })} />
+                </div>
+              );
+            })}
           </div>
+          {textoPrevisto(form, modos) ? <p className="text-sm text-slate-600">Texto do horário: <span className="font-medium text-navy-900">{textoPrevisto(form, modos)}</span></p> : null}
         </div>
         {cargoNovo ? (
           <div className="grid gap-3 rounded-xl border border-dashed border-slate-300 p-3 sm:col-span-2 lg:col-span-4">

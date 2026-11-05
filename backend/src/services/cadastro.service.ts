@@ -1,3 +1,4 @@
+import { DIAS_ESCALA, textoDoHorario, type DiaEscala } from "../lib/horario-escala.js";
 import { randomUUID, randomInt } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
 import type { RowDataPacket } from "mysql2";
@@ -143,7 +144,7 @@ function horaInformada(input: VagaCadastro, nome: string, fallback: string | nul
 function horasDaVaga(input: VagaCadastro) {
   const entrada = input.horario_entrada;
   const saida = input.horario_saida;
-  return {
+  const horas = {
     entrada,
     saida,
     segunda_entrada: horaInformada(input, "segunda_entrada", entrada),
@@ -161,6 +162,26 @@ function horasDaVaga(input: VagaCadastro) {
     domingo_entrada: horaInformada(input, "domingo_entrada", null),
     domingo_saida: horaInformada(input, "domingo_saida", null),
   };
+  // Folga grava "0", como o Lightsail já marca dia sem trabalho.
+  const folga = new Set(input.folga ?? []);
+  for (const dia of folga) {
+    horas[`${dia}_entrada`] = "0";
+    horas[`${dia}_saida`] = "0";
+  }
+  return horas;
+}
+
+/** Texto do horário com os dias de escala. Sem escala nem folga em dia útil, fica o formato de sempre ("08:00 às 17:00"). */
+function textoDaVaga(input: VagaCadastro, horas: ReturnType<typeof horasDaVaga>) {
+  const escala = new Set(input.escala ?? []);
+  const folga = new Set(input.folga ?? []);
+  const especial = escala.size > 0 || ["segunda", "terca", "quarta", "quinta", "sexta"].some((dia) => folga.has(dia as DiaEscala));
+  if (!especial) return `${horas.entrada} às ${horas.saida}`;
+  return textoDoHorario(DIAS_ESCALA.map((dia) => ({
+    modo: folga.has(dia) ? "folga" : escala.has(dia) ? "escala" : "fixo",
+    entrada: horas[`${dia}_entrada`] ?? "",
+    saida: horas[`${dia}_saida`] ?? "",
+  })));
 }
 
 function modeloAusente(error: unknown) {
@@ -224,6 +245,8 @@ function agendaDoHorario(horario: string | null) {
 
 function horarioEquivalente(armazenado: string | null, alvo: string) {
   if ((armazenado ?? "") === alvo) return true;
+  // Com escala o texto inteiro precisa bater: a primeira faixa sozinha não diferencia os dias de escala.
+  if (/por escala/i.test(alvo) || /por escala/i.test(armazenado ?? "")) return false;
   const partes = horarioPartes(alvo);
   if (!partes.entrada) return false;
   const { base } = agendaDoHorario(armazenado);
@@ -581,7 +604,7 @@ export class CadastroService {
     const salarioNumero = parseMoney(input.salario);
     const salario = formatMoneyLegacy(salarioNumero);
     const horas = horasDaVaga(input);
-    const horario = `${horas.entrada} às ${horas.saida}`;
+    const horario = textoDaVaga(input, horas);
     const igual = empresa.grupo_id
       ? await this.buscarModeloIgual(empresa.grupo_id, {
         tipo, cargo: cargo.nome, carga: input.carga_horaria, salario: salarioNumero, sexo: input.sexo,
