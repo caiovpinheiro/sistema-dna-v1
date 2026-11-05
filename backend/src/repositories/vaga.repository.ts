@@ -128,9 +128,29 @@ export class VagaRepository {
       atribu_contrato: string | null;
       requisitos_desejaveis: string | null;
       destaque: string | null;
+      horabase: string | null;
+      hora_saida_base: string | null;
+      segunda_entrada: string | null;
+      segunda_saida: string | null;
+      terca_entrada: string | null;
+      terca_saida: string | null;
+      quarta_entrada: string | null;
+      quarta_saida: string | null;
+      quinta_entrada: string | null;
+      quinta_saida: string | null;
+      sexta_entrada: string | null;
+      sexta_saida: string | null;
+      sab_entrada: string | null;
+      sab_saida: string | null;
+      domindo_entrada: string | null;
+      domindo_saida: string | null;
+      texto_carga: string | null;
       quantidade: number;
     }>(db, `
       SELECT v.codigo, v.km::text AS km, v.atribuicaoes, v.atribu_contrato, v.requisitos_desejaveis, v.destaque,
+             v.horabase, v.hora_saida_base, v.segunda_entrada, v.segunda_saida, v.terca_entrada, v.terca_saida,
+             v.quarta_entrada, v.quarta_saida, v.quinta_entrada, v.quinta_saida, v.sexta_entrada, v.sexta_saida,
+             v.sab_entrada, v.sab_saida, v.domindo_entrada, v.domindo_saida, v.texto_carga,
              CASE WHEN coalesce(v.comparador, '') = '' THEN 0
                   ELSE (SELECT count(*)::int FROM dna_work.vaga x WHERE x.comparador = v.comparador)
              END AS quantidade
@@ -155,6 +175,23 @@ export class VagaRepository {
       atribu_contrato: texto?.atribu_contrato ?? null,
       requisitos_desejaveis: texto?.requisitos_desejaveis ?? null,
       destaque: texto?.destaque ?? null,
+      horabase: texto?.horabase ?? null,
+      hora_saida_base: texto?.hora_saida_base ?? null,
+      segunda_entrada: texto?.segunda_entrada ?? null,
+      segunda_saida: texto?.segunda_saida ?? null,
+      terca_entrada: texto?.terca_entrada ?? null,
+      terca_saida: texto?.terca_saida ?? null,
+      quarta_entrada: texto?.quarta_entrada ?? null,
+      quarta_saida: texto?.quarta_saida ?? null,
+      quinta_entrada: texto?.quinta_entrada ?? null,
+      quinta_saida: texto?.quinta_saida ?? null,
+      sexta_entrada: texto?.sexta_entrada ?? null,
+      sexta_saida: texto?.sexta_saida ?? null,
+      sab_entrada: texto?.sab_entrada ?? null,
+      sab_saida: texto?.sab_saida ?? null,
+      domindo_entrada: texto?.domindo_entrada ?? null,
+      domindo_saida: texto?.domindo_saida ?? null,
+      texto_carga: texto?.texto_carga ?? null,
       quantidade: texto?.quantidade ?? 0,
       inscritos,
       entrevistas_agente: agente,
@@ -244,6 +281,23 @@ export class VagaRepository {
       carga_horaria: input.carga_horaria,
       obs: input.obs,
       salario,
+      horabase: input.horabase,
+      hora_saida_base: input.hora_saida_base,
+      segunda_entrada: input.segunda_entrada,
+      segunda_saida: input.segunda_saida,
+      terca_entrada: input.terca_entrada,
+      terca_saida: input.terca_saida,
+      quarta_entrada: input.quarta_entrada,
+      quarta_saida: input.quarta_saida,
+      quinta_entrada: input.quinta_entrada,
+      quinta_saida: input.quinta_saida,
+      sexta_entrada: input.sexta_entrada,
+      sexta_saida: input.sexta_saida,
+      sab_entrada: input.sab_entrada,
+      sab_saida: input.sab_saida,
+      domindo_entrada: input.domindo_entrada,
+      domindo_saida: input.domindo_saida,
+      texto_carga: input.texto_carga,
     };
     const entries = Object.entries(map).filter(([, value]) => value !== undefined);
     if (entries.length === 0) return;

@@ -21,6 +21,23 @@ const schema = z.object({
   requisitos_desejaveis: z.string().optional(),
   destaque: z.string().optional(),
   obs: z.string().optional(),
+  horabase: z.string().optional(),
+  hora_saida_base: z.string().optional(),
+  segunda_entrada: z.string().optional(),
+  segunda_saida: z.string().optional(),
+  terca_entrada: z.string().optional(),
+  terca_saida: z.string().optional(),
+  quarta_entrada: z.string().optional(),
+  quarta_saida: z.string().optional(),
+  quinta_entrada: z.string().optional(),
+  quinta_saida: z.string().optional(),
+  sexta_entrada: z.string().optional(),
+  sexta_saida: z.string().optional(),
+  sab_entrada: z.string().optional(),
+  sab_saida: z.string().optional(),
+  domindo_entrada: z.string().optional(),
+  domindo_saida: z.string().optional(),
+  texto_carga: z.string().optional(),
 });
 type Form = z.infer<typeof schema>;
 type Company = { id_empresa: string; razao_social: string; nome_fantasia: string | null };
@@ -38,6 +55,16 @@ type Modelo = {
   destaque: string | null;
 };
 
+const dias = [
+  ["Segunda", "segunda_entrada", "segunda_saida"],
+  ["Terça", "terca_entrada", "terca_saida"],
+  ["Quarta", "quarta_entrada", "quarta_saida"],
+  ["Quinta", "quinta_entrada", "quinta_saida"],
+  ["Sexta", "sexta_entrada", "sexta_saida"],
+  ["Sábado", "sab_entrada", "sab_saida"],
+  ["Domingo", "domindo_entrada", "domindo_saida"],
+] as const;
+
 export function VagaFormPage() {
   const { id } = useParams();
   const [params] = useSearchParams();
@@ -53,7 +80,33 @@ export function VagaFormPage() {
   useEffect(() => {
     if (!current.data) return;
     const data = current.data.data;
-    form.reset({ ...data, salario: data.salario == null ? "" : String(data.salario).replace(".", ","), km: data.km ?? "", atribuicaoes: textoPlano(data.atribuicaoes), atribu_contrato: textoPlano(data.atribu_contrato), requisitos_desejaveis: textoPlano(data.requisitos_desejaveis), destaque: textoPlano(data.destaque) });
+    const hora = (valor: string | null | undefined) => valor ?? "";
+    form.reset({
+      ...data,
+      salario: data.salario == null ? "" : String(data.salario).replace(".", ","),
+      km: data.km ?? "",
+      atribuicaoes: textoPlano(data.atribuicaoes),
+      atribu_contrato: textoPlano(data.atribu_contrato),
+      requisitos_desejaveis: textoPlano(data.requisitos_desejaveis),
+      destaque: textoPlano(data.destaque),
+      horabase: hora(data.horabase),
+      hora_saida_base: hora(data.hora_saida_base),
+      segunda_entrada: hora(data.segunda_entrada),
+      segunda_saida: hora(data.segunda_saida),
+      terca_entrada: hora(data.terca_entrada),
+      terca_saida: hora(data.terca_saida),
+      quarta_entrada: hora(data.quarta_entrada),
+      quarta_saida: hora(data.quarta_saida),
+      quinta_entrada: hora(data.quinta_entrada),
+      quinta_saida: hora(data.quinta_saida),
+      sexta_entrada: hora(data.sexta_entrada),
+      sexta_saida: hora(data.sexta_saida),
+      sab_entrada: hora(data.sab_entrada),
+      sab_saida: hora(data.sab_saida),
+      domindo_entrada: hora(data.domindo_entrada),
+      domindo_saida: hora(data.domindo_saida),
+      texto_carga: hora(data.texto_carga),
+    });
   }, [current.data, form]);
   useEffect(() => {
     const item = modelo.data?.data;
@@ -75,7 +128,8 @@ export function VagaFormPage() {
   }, [modelo.data, id, form, empresaId]);
   const save = useMutation({
     mutationFn: (values: Form) => {
-      const payload = Object.fromEntries(Object.entries(values).filter(([, value]) => value !== undefined && value !== null && value !== ""));
+      const horas = new Set(["horabase", "hora_saida_base", "segunda_entrada", "segunda_saida", "terca_entrada", "terca_saida", "quarta_entrada", "quarta_saida", "quinta_entrada", "quinta_saida", "sexta_entrada", "sexta_saida", "sab_entrada", "sab_saida", "domindo_entrada", "domindo_saida", "texto_carga"]);
+      const payload = Object.fromEntries(Object.entries(values).filter(([chave, value]) => horas.has(chave) || (value !== undefined && value !== null && value !== "")));
       return id
         ? api(`/api/v1/vagas/${id}`, { method: "PATCH", body: JSON.stringify(payload) })
         : api<{ id_vaga: string }>("/api/v1/vagas", { method: "POST", body: JSON.stringify(payload) });
@@ -115,6 +169,21 @@ export function VagaFormPage() {
         <Field label="Quantidade de vagas" error={form.formState.errors.quantidade_posicoes?.message}><Input type="number" min={1} {...form.register("quantidade_posicoes")} /></Field>
         <Field label="Distância (km)"><Input {...form.register("km")} /></Field>
         <Field label="Carga horária"><Input {...form.register("carga_horaria")} /></Field>
+        <Field label="Entrada"><Input placeholder="08:00" {...form.register("horabase")} /></Field>
+        <Field label="Saída"><Input placeholder="17:00" {...form.register("hora_saida_base")} /></Field>
+        <div className="md:col-span-2 grid gap-3">
+          <p className="text-sm font-semibold">Horários</p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {dias.map(([nome, entrada, saida]) => (
+              <div key={nome} className="grid grid-cols-[5.5rem_1fr_1fr] items-end gap-2">
+                <p className="pb-2 text-sm text-slate-400">{nome}</p>
+                <Field label="Entrada"><Input placeholder="08:00" {...form.register(entrada)} /></Field>
+                <Field label="Saída"><Input placeholder="17:00" {...form.register(saida)} /></Field>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="md:col-span-2"><Field label="Texto do horário"><Textarea {...form.register("texto_carga")} /></Field></div>
         <div className="md:col-span-2"><Field label="Atividades da vaga"><Textarea {...form.register("atribuicaoes")} /></Field></div>
         <div className="md:col-span-2"><Field label="Atividades no contrato"><Textarea {...form.register("atribu_contrato")} /></Field></div>
         <div className="md:col-span-2"><Field label="Requisitos desejáveis"><Textarea {...form.register("requisitos_desejaveis")} /></Field></div>
