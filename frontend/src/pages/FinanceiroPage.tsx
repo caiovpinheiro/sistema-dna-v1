@@ -142,6 +142,7 @@ export function GerarFaturamentoPage() {
   const [aviso, setAviso] = useState("");
   const [marcadas, setMarcadas] = useState<string[]>([]);
   const [aberta, setAberta] = useState<string | null>(null);
+  const [progresso, setProgresso] = useState<{ feito: number; total: number } | null>(null);
   const result = useQuery({
     queryKey: ["faturamento", busca, pagina],
     queryFn: () => api<{ matriz: Array<{ razao_social: string | null; nome_fantasia: string | null; cnpj: string | null; datafechamento: string | null; status: string }>; itens: Array<{ id_empresa: string; razao_social: string | null; nome_fantasia: string | null; cnpj: string | null; tipo: string | null; datafechamento: string | null; itens: number; valor: number | null; status: string; envio: string | null }> }>(`/api/v1/faturamento?${new URLSearchParams({ ...busca, page: String(pagina), pageSize: String(TAMANHO) })}`),
@@ -177,6 +178,29 @@ export function GerarFaturamentoPage() {
     },
     onError: (error: Error) => setAviso(error.message),
   });
+  async function enviarLote(ids: string[]) {
+    setProgresso({ feito: 0, total: ids.length });
+    setAviso("");
+    let enviados = 0;
+    let falhas = 0;
+    for (const id of ids) {
+      try {
+        const resposta = await api<{ enviados: number; falhas: Array<{ empresa: string | null; motivo: string }> }>("/api/v1/faturamento/relatorios", {
+          method: "POST",
+          body: JSON.stringify({ empresas: [id], mes: busca.mes, ano: busca.ano }),
+        });
+        enviados += resposta.data.enviados;
+        falhas += resposta.data.falhas.length;
+      } catch {
+        falhas += 1;
+      }
+      setProgresso((atual) => atual ? { feito: atual.feito + 1, total: atual.total } : null);
+    }
+    setProgresso(null);
+    setMarcadas([]);
+    setAviso(`${enviados} relatório(s) e boleto(s) enviado(s)${falhas ? `. ${falhas} não saíram.` : "."}`);
+    await client.invalidateQueries({ queryKey: ["faturamento"] });
+  }
   const dados = result.data?.data;
   const total = Number(result.data?.meta?.total ?? 0);
   const meta = result.data?.meta as { asaas?: { valor: number; quantidade: number } | null; conferencia?: { valor: number; quantidade: number }; totalReceber?: number } | undefined;
@@ -219,21 +243,31 @@ export function GerarFaturamentoPage() {
         />
       </div>
       <Consulta carregando={result.isLoading} erro={result.error} />
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <Button type="button" variant="secondary" disabled={enviar.isPending || !total} onClick={async () => {
-          const params = new URLSearchParams({ ...busca, page: "1", pageSize: "100" });
-          const primeira = await api<{ id_empresa: string }[]>(`/api/v1/faturamento?${params}`);
-          let ids = primeira.data.map((item) => item.id_empresa);
-          if (Number(primeira.meta?.total ?? 0) > 100) {
-            params.set("page", "2");
-            const segunda = await api<{ id_empresa: string }[]>(`/api/v1/faturamento?${params}`);
-            ids = [...ids, ...segunda.data.map((item) => item.id_empresa)];
-          }
-          setMarcadas(ids);
-        }}>Selecionar todas ({total})</Button>
-        <Button type="button" variant="secondary" disabled={!marcadas.length || enviar.isPending} onClick={() => enviar.mutate(marcadas)}>
-          {enviar.isPending ? "Enviando..." : `Enviar relatórios selecionados (${marcadas.length})`}
-        </Button>
+      <div className="grid gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <Button type="button" variant="secondary" disabled={Boolean(progresso) || !total} onClick={async () => {
+            const params = new URLSearchParams({ ...busca, page: "1", pageSize: "100" });
+            const primeira = await api<{ id_empresa: string }[]>(`/api/v1/faturamento?${params}`);
+            let ids = primeira.data.map((item) => item.id_empresa);
+            if (Number(primeira.meta?.total ?? 0) > 100) {
+              params.set("page", "2");
+              const segunda = await api<{ id_empresa: string }[]>(`/api/v1/faturamento?${params}`);
+              ids = [...ids, ...segunda.data.map((item) => item.id_empresa)];
+            }
+            setMarcadas(ids);
+          }}>Selecionar todas ({total})</Button>
+          {marcadas.length > 0 ? (
+            <Button type="button" disabled={Boolean(progresso)} onClick={() => enviarLote(marcadas)}>Enviar relatório e boleto</Button>
+          ) : null}
+        </div>
+        {progresso ? (
+          <div className="grid gap-1">
+            <div className="h-2 overflow-hidden rounded-full bg-slate-200">
+              <div className="h-full bg-cyan-700 transition-[width]" style={{ width: `${Math.round((progresso.feito / progresso.total) * 100)}%` }} />
+            </div>
+            <p className="text-sm text-slate-500">{progresso.feito} de {progresso.total}</p>
+          </div>
+        ) : null}
       </div>
       <Card className="overflow-x-auto p-0">
         <table className="w-full min-w-[960px] text-left text-sm">

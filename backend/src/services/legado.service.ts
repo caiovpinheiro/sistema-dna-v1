@@ -65,7 +65,9 @@ function periodo(mes: string, ano: string) {
 
 function vencimentoDia10(ano: string, mes: string) {
   const mesNum = Number(mes);
-  return `${ano}-${String(mesNum).padStart(2, "0")}-10`;
+  const anoNum = Number(ano);
+  const seguinte = mesNum === 12 ? { mes: 1, ano: anoNum + 1 } : { mes: mesNum + 1, ano: anoNum };
+  return `${seguinte.ano}-${String(seguinte.mes).padStart(2, "0")}-10`;
 }
 
 export class LegadoService {
