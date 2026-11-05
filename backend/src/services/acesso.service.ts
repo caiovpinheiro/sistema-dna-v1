@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { Pool } from "pg";
 import { hash } from "@node-rs/argon2";
 import type { AppConfig } from "../config.js";
@@ -53,6 +54,62 @@ export class AcessoService {
       paginas: PAGINAS,
       usuarios: marcados,
     };
+  }
+
+  /** Cria o usuário com senha e páginas. O e-mail é único sem diferenciar maiúsculas. */
+  async criar(input: { nome: string; email: string; senha: string; paginas: string[] }) {
+    const email = input.email.trim().toLowerCase();
+    if (email === this.config.ADMIN_EMAIL.toLowerCase()) throw new AppError(409, "EMAIL_EM_USO", "Esse e-mail já é do administrador.");
+    const existente = await one<{ id: string }>(this.db, "SELECT id FROM dna_work.app_usuario WHERE lower(email) = $1", [email]);
+    if (existente) throw new AppError(409, "EMAIL_EM_USO", "Já existe um usuário com esse e-mail.");
+    const id = randomUUID();
+    const paginas = [...new Set(input.paginas.filter((pagina) => IDS_PAGINA.has(pagina)))];
+    const senhaHash = await hash(input.senha.trim());
+    const client = await this.db.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(
+        "INSERT INTO dna_work.app_usuario (id, nome, email, senha_hash, ativo, admin) VALUES ($1, $2, $3, $4, true, false)",
+        [id, input.nome.trim(), email, senhaHash],
+      );
+      for (const pagina of paginas) {
+        await client.query("INSERT INTO dna_work.app_usuario_pagina (id_usuario, pagina) VALUES ($1, $2)", [id, pagina]);
+      }
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+    return { ...(await this.listar()), criado: id };
+  }
+
+  /** Apaga o usuário e as páginas dele. O administrador e quem está logado não podem ser apagados. */
+  async apagar(id: string, quemPede: { sub: string; email: string }) {
+    const usuario = await one<{ id: string; email: string; admin: boolean }>(this.db, `
+      SELECT id, email, admin FROM dna_work.app_usuario WHERE id = $1
+    `, [id]);
+    if (!usuario) throw new AppError(404, "USUARIO_NAO_ENCONTRADO", "Usuário não encontrado.");
+    if (usuario.admin || usuario.email.toLowerCase() === this.config.ADMIN_EMAIL.toLowerCase()) {
+      throw new AppError(409, "ADMIN_PROTEGIDO", "O administrador não pode ser apagado.");
+    }
+    if (usuario.id === quemPede.sub || usuario.email.toLowerCase() === quemPede.email.toLowerCase()) {
+      throw new AppError(409, "PROPRIO_USUARIO", "Você não pode apagar o seu próprio usuário.");
+    }
+    const client = await this.db.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("DELETE FROM dna_work.app_usuario_pagina WHERE id_usuario = $1", [id]);
+      await client.query("DELETE FROM dna_work.app_usuario WHERE id = $1", [id]);
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+    return this.listar();
   }
 
   async salvar(id: string, input: { ativo: boolean; paginas: string[]; senha?: string }) {

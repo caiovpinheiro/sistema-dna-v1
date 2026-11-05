@@ -465,6 +465,20 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
       body: z.object({ ativo: z.boolean(), paginas: z.array(z.string()), senha: z.string().trim().min(8).max(80).optional() }),
     },
   }, async (request) => ok(await services.acesso.salvar(request.params.id, request.body)));
+  api.post("/api/v1/configuracoes/usuarios", {
+    schema: {
+      tags: ["configuracoes"],
+      body: z.object({
+        nome: z.string({ required_error: "Informe o nome." }).trim().min(2, "Informe o nome.").max(120),
+        email: z.string({ required_error: "Informe o e-mail." }).trim().email("Informe um e-mail válido.").max(180),
+        senha: z.string({ required_error: "Informe a senha." }).trim().min(8, "A senha precisa ter pelo menos 8 caracteres.").max(80),
+        paginas: z.array(z.string()).default([]),
+      }),
+    },
+  }, async (request, reply) => reply.code(201).send(ok(await services.acesso.criar(request.body))));
+  api.delete("/api/v1/configuracoes/usuarios/:id", {
+    schema: { tags: ["configuracoes"], params: z.object({ id: z.string().uuid() }) },
+  }, async (request) => ok(await services.acesso.apagar(request.params.id, request.user)));
 
   const legado = new LegadoService(db);
   const pagina = { page: z.coerce.number().int().min(1).default(1), pageSize: z.coerce.number().int().min(1).max(100).default(50) };
