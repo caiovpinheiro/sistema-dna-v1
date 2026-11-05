@@ -220,6 +220,17 @@ export function GerarFaturamentoPage() {
       </div>
       <Consulta carregando={result.isLoading} erro={result.error} />
       <div className="flex flex-wrap items-center justify-between gap-3">
+        <Button type="button" variant="secondary" disabled={enviar.isPending || !total} onClick={async () => {
+          const params = new URLSearchParams({ ...busca, page: "1", pageSize: "100" });
+          const primeira = await api<{ id_empresa: string }[]>(`/api/v1/faturamento?${params}`);
+          let ids = primeira.data.map((item) => item.id_empresa);
+          if (Number(primeira.meta?.total ?? 0) > 100) {
+            params.set("page", "2");
+            const segunda = await api<{ id_empresa: string }[]>(`/api/v1/faturamento?${params}`);
+            ids = [...ids, ...segunda.data.map((item) => item.id_empresa)];
+          }
+          setMarcadas(ids);
+        }}>Selecionar todas ({total})</Button>
         <Button type="button" variant="secondary" disabled={!marcadas.length || enviar.isPending} onClick={() => enviar.mutate(marcadas)}>
           {enviar.isPending ? "Enviando..." : `Enviar relatórios selecionados (${marcadas.length})`}
         </Button>

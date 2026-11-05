@@ -147,7 +147,7 @@ export class AsaasService {
     return { gerados: gerados.length, falhas, itens: gerados };
   }
 
-  async criar(input: { idEmpresa: string; valor: number; vencimento: string; descricao: string; forma: string }) {
+  async criar(input: { idEmpresa: string; valor: number; vencimento: string; descricao: string; forma: string; avisar?: boolean }) {
     const empresa = await this.empresa(input.idEmpresa);
     const asaas = this.client();
     const customerId = await this.garantirCliente(asaas, empresa);
@@ -172,12 +172,27 @@ export class AsaasService {
     ]);
     const cobranca = (await this.listar({ idEmpresa: input.idEmpresa })).find((item) => item.id === id);
     if (!cobranca) throw new AppError(404, "NAO_ENCONTRADO", "Cobrança não encontrada.");
+    if (input.avisar === false) return { ...cobranca, emailEnviado: false };
     try {
       await this.enviarFatura(id);
       return { ...cobranca, emailEnviado: true };
     } catch {
       return { ...cobranca, emailEnviado: false };
     }
+  }
+
+  async boletoDoFaturamento(input: { idEmpresa: string; valor: number; vencimento: string; descricao: string }) {
+    const existente = await this.db.query<{ id: string; url_pagamento: string | null; vencimento: string }>(`
+      SELECT id, url_pagamento, vencimento::text AS vencimento
+      FROM dna_work.cobranca_asaas
+      WHERE id_empresa = $1 AND descricao = $2 AND situacao = 'aberta'
+      ORDER BY vencimento DESC
+      LIMIT 1
+    `, [input.idEmpresa, input.descricao]);
+    const atual = existente.rows[0];
+    if (atual?.url_pagamento) return { id: atual.id, url: atual.url_pagamento, vencimento: atual.vencimento.slice(0, 10) };
+    const cobranca = await this.criar({ ...input, forma: "BOLETO", avisar: false });
+    return { id: cobranca.id, url: cobranca.url_pagamento, vencimento: input.vencimento };
   }
 
   async enviarFatura(id: string) {

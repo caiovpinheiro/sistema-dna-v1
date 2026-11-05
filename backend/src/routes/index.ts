@@ -500,8 +500,20 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
     schema: { tags: ["faturamento"], querystring: z.object({ empresa: z.string().min(1), mes: z.string(), ano: z.string() }) },
   }, async (request) => ok(await legado.relatorioEmpresa(request.query.empresa, request.query.mes, request.query.ano)));
   api.post("/api/v1/faturamento/relatorios", {
-    schema: { tags: ["faturamento"], body: z.object({ empresas: z.array(z.string().min(1)).min(1).max(200), mes: z.string(), ano: z.string() }) },
-  }, async (request) => ok(await legado.enviarRelatorios(config, request.body.empresas, request.body.mes, request.body.ano)));
+    schema: { tags: ["faturamento"], body: z.object({ empresas: z.array(z.string().min(1)).max(200).optional(), todas: z.boolean().optional(), mes: z.string(), ano: z.string(), status: z.string().optional(), empresa: z.string().optional() }) },
+  }, async (request) => {
+    let ids = request.body.empresas ?? [];
+    if (request.body.todas) {
+      const primeira = await legado.faturamento({ mes: request.body.mes, ano: request.body.ano, status: request.body.status, empresa: request.body.empresa, page: 1, pageSize: 100 });
+      ids = primeira.data.itens.map((item) => item.id_empresa);
+      if (primeira.meta.total > 100) {
+        const segunda = await legado.faturamento({ mes: request.body.mes, ano: request.body.ano, status: request.body.status, empresa: request.body.empresa, page: 2, pageSize: 100 });
+        ids = [...ids, ...segunda.data.itens.map((item) => item.id_empresa)];
+      }
+    }
+    if (!ids.length) throw new AppError(422, "SEM_EMPRESAS", "Nenhuma empresa selecionada.");
+    return ok(await legado.enviarRelatorios(config, ids, request.body.mes, request.body.ano, (input) => services.asaas.boletoDoFaturamento(input)));
+  });
   api.get("/api/v1/procfy", { schema: { tags: ["procfy"], querystring: z.object({ ...pagina, de: z.string().optional(), ate: z.string().optional(), status: z.string().optional(), tipoData: z.string().optional(), sistema: z.string().optional() }) } }, async (request) => {
     const result = await legado.procfy(request.query);
     return ok(result.data, result.meta);

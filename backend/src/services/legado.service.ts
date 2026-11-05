@@ -1,7 +1,8 @@
 import type { Db } from "../repositories/sql.js";
 import { many, one } from "../repositories/sql.js";
 import type { AppConfig } from "../config.js";
-import { enviarModelo, textoHtml } from "../lib/email-modelo.js";
+import { textoHtml } from "../lib/email-modelo.js";
+import { enviarEmailMailjet } from "../lib/mailjet.js";
 import { AppError } from "../lib/errors.js";
 
 type Pagina = { page: number; pageSize: number };
@@ -60,6 +61,16 @@ function periodo(mes: string, ano: string) {
     dataInicio10e20: `${anterior.ano}/${pad(anterior.mes)}/`,
     dataInicio30: `${anterior.ano}/${pad(anterior.mes)}/30`,
   };
+}
+
+function vencimentoDoFechamento(ano: string, mes: string, fechamento: string | null) {
+  const anoNum = Number(ano);
+  const mesNum = Number(mes);
+  const ultimo = new Date(anoNum, mesNum, 0).getDate();
+  const dia = Math.min(Math.max(Number(fechamento) || 10, 1), ultimo);
+  const alvo = `${ano}-${String(mesNum).padStart(2, "0")}-${String(dia).padStart(2, "0")}`;
+  const hoje = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  return alvo < hoje ? hoje : alvo;
 }
 
 export class LegadoService {
@@ -187,8 +198,8 @@ export class LegadoService {
 
   async relatorioEmpresa(idEmpresa: string, mes: string, ano: string) {
     const datas = periodo(mes, ano);
-    const empresa = await one<{ nome: string | null; cnpj: string | null; email: string | null; email_financeiro: string | null }>(this.db, `
-      SELECT coalesce(nome_fantasia, razao_social) AS nome, cnpj, email, email_financeiro
+    const empresa = await one<{ nome: string | null; cnpj: string | null; email: string | null; email_financeiro: string | null; fechamento: string | null }>(this.db, `
+      SELECT coalesce(nome_fantasia, razao_social) AS nome, cnpj, email, email_financeiro, datafechamento::text AS fechamento
       FROM dna_work.empresa WHERE id_empresa = $1
     `, [idEmpresa]);
     if (!empresa) throw new AppError(404, "EMPRESA_NAO_ENCONTRADA", "Empresa não encontrada.");
@@ -235,16 +246,24 @@ export class LegadoService {
       empresa: empresa.nome,
       cnpj: empresa.cnpj,
       email: empresa.email_financeiro || empresa.email,
+      fechamento: empresa.fechamento,
       itens,
       total: itens.reduce((soma, item) => soma + item.valor, 0),
     };
   }
 
-  async enviarRelatorios(config: AppConfig, ids: string[], mes: string, ano: string) {
+  async enviarRelatorios(
+    config: AppConfig,
+    ids: string[],
+    mes: string,
+    ano: string,
+    boleto: (input: { idEmpresa: string; valor: number; vencimento: string; descricao: string }) => Promise<{ url: string | null; vencimento: string }>,
+  ) {
     const enviados: string[] = [];
     const falhas: Array<{ empresa: string | null; motivo: string }> = [];
     const hoje = new Date();
     const data = `${hoje.getFullYear()}/${String(hoje.getMonth() + 1).padStart(2, "0")}/${String(hoje.getDate()).padStart(2, "0")}`;
+    const descricao = `Faturamento ${mes}/${ano}`;
     for (const id of ids) {
       const relatorio = await this.relatorioEmpresa(id, mes, ano).catch(() => null);
       if (!relatorio) {
@@ -256,32 +275,56 @@ export class LegadoService {
         falhas.push({ empresa: relatorio.empresa, motivo: "Sem e-mail financeiro." });
         continue;
       }
-      const corpo = relatorio.itens.map((linha) => `
-        <tr>
-          <td>Mensalidade</td>
-          <td>${textoHtml(linha.nome ?? "")}</td>
-          <td>${textoHtml(linha.cargo ?? "")}</td>
-          <td>${textoHtml(linha.modalidade ?? "")}</td>
-          <td>${textoHtml(linha.situacao)}</td>
-        </tr>
-      `).join("");
-      const valor = relatorio.total.toFixed(2).replace(".", ",");
-      const tabela = `<table style="width:1000px"><tr><td>Cobrança</td><td>Candidato</td><td>Cargo</td><td>Modalidade</td><td>Situação</td></tr>${corpo}<tr><td></td><td></td><td></td><td>Total</td><td>R$ ${valor}</td></tr></table>`;
+      if (relatorio.total <= 0) {
+        falhas.push({ empresa: relatorio.empresa, motivo: "Não há valor a cobrar neste mês." });
+        continue;
+      }
       try {
-        if (this.db && "query" in this.db) {
-          await enviarModelo(this.db as import("pg").Pool, config, "Relatorio cobrança", {
-            email,
-            nome: relatorio.empresa || "Empresa",
-          }, {
-            "@Nome-Fantasia-Empresa": textoHtml(relatorio.empresa ?? ""),
-            "@CNPJ-Empresa": textoHtml(relatorio.cnpj ?? ""),
-            "@tabela-cobranca": tabela,
-          });
+        const vencimento = vencimentoDoFechamento(ano, mes, relatorio.fechamento);
+        const cobranca = await boleto({ idEmpresa: id, valor: relatorio.total, vencimento, descricao });
+        if (!cobranca.url) {
+          falhas.push({ empresa: relatorio.empresa, motivo: "O Asaas não devolveu o link do boleto." });
+          continue;
         }
+        const corpo = relatorio.itens.map((linha) => `
+          <tr>
+            <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb">${textoHtml(linha.nome ?? "")}</td>
+            <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb">${textoHtml(linha.cargo ?? "")}</td>
+            <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb">${textoHtml(linha.modalidade ?? "")}</td>
+            <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb">${textoHtml(linha.situacao)}</td>
+            <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb">R$ ${linha.valor.toFixed(2).replace(".", ",")}</td>
+          </tr>
+        `).join("");
+        const html = `
+          <p>Prezado(a) ${textoHtml(relatorio.empresa ?? "Empresa")},</p>
+          <p>Segue o relatório de faturamento de ${textoHtml(mes)}/${textoHtml(ano)} e o boleto para pagamento.</p>
+          <table style="border-collapse:collapse;width:100%;max-width:720px">
+            <tr>
+              <td style="padding:6px 8px;font-weight:bold">Candidato</td>
+              <td style="padding:6px 8px;font-weight:bold">Cargo</td>
+              <td style="padding:6px 8px;font-weight:bold">Modalidade</td>
+              <td style="padding:6px 8px;font-weight:bold">Situação</td>
+              <td style="padding:6px 8px;font-weight:bold">Valor</td>
+            </tr>
+            ${corpo}
+          </table>
+          <p><strong>Total: R$ ${relatorio.total.toFixed(2).replace(".", ",")}</strong><br>Vencimento: ${cobranca.vencimento.split("-").reverse().join("/")}</p>
+          <p><a href="${textoHtml(cobranca.url ?? "")}">Abrir boleto</a></p>
+          <p>Atenciosamente,<br>Financeiro<br>DNA Work</p>
+        `;
+        await enviarEmailMailjet({
+          apiKey: config.MAILJET_API_KEY,
+          secret: config.MAILJET_SECRET_KEY,
+          fromEmail: config.MAILJET_FROM,
+          fromName: config.MAILJET_FROM_NAME,
+          to: [{ email, nome: relatorio.empresa || "Empresa" }],
+          subject: `Relatório e boleto DNA Work ${mes}/${ano}`,
+          html,
+        });
         await this.db.query(`
           INSERT INTO dna_work.cobranca_email (id_empresa, ano, mes, data, texto)
           VALUES ($1, $2, $3, $4, $5)
-        `, [id, ano, mes, data, `Relatório ${mes}/${ano}`]);
+        `, [id, ano, mes, data, `Relatório e boleto ${mes}/${ano}`]);
         enviados.push(relatorio.empresa || id);
       } catch (error) {
         falhas.push({ empresa: relatorio.empresa, motivo: error instanceof AppError ? error.message : "Não foi possível enviar." });
