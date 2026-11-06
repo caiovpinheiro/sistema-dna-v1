@@ -65,6 +65,10 @@ export type ResultadoAbertas = {
   pendentes: EmpresaPendenteSync[];
   inseridas: string[];
   apagadas: string[];
+  /** Vagas abertas que já estavam no espelho e foram alinhadas ao Lightsail (grade, turno, idade, salário, benefícios). */
+  atualizadas: Array<{ id_vaga: string; codigo: string; lado: "supabase" | "postgres"; campos: string[] }>;
+  /** Vagas abertas que estavam só de um lado do espelho e foram copiadas para o outro. */
+  completadas: Array<{ id_vaga: string; codigo: string; para: "supabase" | "postgres" }>;
 };
 
 const COLUNAS_INSERT = [
@@ -87,8 +91,20 @@ function inteiro(valor: unknown): number | null {
 }
 
 /**
- * Grade no formato do sistema novo: turno;início-fim;00:00;1=..;…;7=..;texto=…
- * Cada dia usa as próprias colunas; dia dentro da faixa sem hora própria usa horabase/hora_saida_base.
+ * Faixa de dias da semana (1 domingo … 7 sábado), como as vagas antigas gravam: começa no primeiro dia com horário
+ * a partir de segunda e termina no último ("2-6" segunda a sexta, "2-1" segunda a domingo). Sem dia com horário, null.
+ */
+export function faixaDaSemana(vaga: Record<string, unknown>): { inicio: number; fim: number } | null {
+  const ordem = [2, 3, 4, 5, 6, 7, 1];
+  const comHora = ordem.filter((numero) => hora(vaga[`${COLUNAS_DIA[numero]}_entrada`]) && hora(vaga[`${COLUNAS_DIA[numero]}_saida`]));
+  if (!comHora.length) return null;
+  return { inicio: comHora[0], fim: comHora[comHora.length - 1] };
+}
+
+/**
+ * Grade no formato do cadastro: turno;início-fim;intervalo;1=..;…;7=..;texto=…
+ * Cada dia usa as próprias colunas; dia sem hora (vazio ou "0") dentro da faixa usa horabase/hora_saida_base, como no Lightsail.
+ * O intervalo é o tempo_refeicao da vaga (00:00 quando vazio).
  */
 export function horarioDe(vaga: Record<string, unknown>): string {
   const inicio = inteiro(vaga.semanas_inicio) ?? 0;
@@ -103,7 +119,7 @@ export function horarioDe(vaga: Record<string, unknown>): string {
     if (naFaixa(numero) && base.entrada && base.saida) return `${numero}=${base.entrada}-${base.saida}`;
     return `${numero}=`;
   });
-  const partes = [texto(vaga.periodo), `${inicio}-${fim}`, "00:00", ...dias];
+  const partes = [texto(vaga.periodo), `${inicio}-${fim}`, hora(vaga.tempo_refeicao) ?? "00:00", ...dias];
   const carga = texto(vaga.texto_carga);
   if (carga) partes.push(`texto=${carga}`);
   return partes.join(";");
@@ -116,6 +132,40 @@ export function beneficiosDe(lista: Array<{ nome: string; valor: string; tipo: s
     .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"))
     .map((item) => [item.nome.trim(), item.valor.trim() ? `R$ ${item.valor.trim()}` : "", TIPO_BENEFICIO[item.tipo] ?? ""].filter(Boolean).join(" — "));
   return linhas.length ? linhas.join("\n") : null;
+}
+
+type CamposEspelho = { id: string; vaga_id: string | null; horario: string | null; turno: string | null; idade: number | null; idade_ate: number | null; salario: number | string | null; beneficios: string | null };
+
+/** Texto do espelho com cada caractere fora do Latin-1 (emoji) trocado por "?", como o Lightsail grava. */
+function comoLightsail(valor: string) {
+  return Array.from(valor, (caractere) => ((caractere.codePointAt(0) ?? 0) > 0xff ? "?" : caractere)).join("");
+}
+
+/**
+ * Grade do Lightsail com o texto do espelho quando é o mesmo texto: o Lightsail troca emoji por "?" e corta em 255 caracteres.
+ * Devolve o novo valor, ou null quando o espelho já está igual.
+ */
+export function horarioAlinhado(espelho: string | null, doLightsail: string): string | null {
+  const [gradeNova, ...restoNovo] = doLightsail.split(";texto=");
+  const textoNovo = restoNovo.join(";texto=");
+  const textoAtual = (espelho ?? "").split(";texto=").slice(1).join(";texto=");
+  const manterTexto = Boolean(textoAtual && textoNovo && comoLightsail(textoAtual).startsWith(textoNovo.trimEnd()));
+  const texto = manterTexto ? textoAtual : textoNovo;
+  const novo = texto ? `${gradeNova};texto=${texto}` : gradeNova;
+  return novo === (espelho ?? "") ? null : novo;
+}
+
+/** Campos do espelho que diferem do Lightsail. Benefícios, idade e salário só mudam quando o Lightsail tem valor. */
+export function diferencasEspelho(atual: CamposEspelho, linha: LinhaVaga): Record<string, unknown> {
+  const mudar: Record<string, unknown> = {};
+  const horario = horarioAlinhado(atual.horario, linha.horario);
+  if (horario !== null) mudar.horario = horario;
+  if ((atual.turno ?? null) !== (linha.turno ?? null)) mudar.turno = linha.turno;
+  if (linha.idade != null && Number(atual.idade) !== linha.idade) mudar.idade = linha.idade;
+  if (linha.idade_ate != null && Number(atual.idade_ate) !== linha.idade_ate) mudar.idade_ate = linha.idade_ate;
+  if (linha.salario != null && linha.salario > 0 && Math.abs(Number(atual.salario ?? 0) - linha.salario) >= 0.01) mudar.salario = linha.salario;
+  if (linha.beneficios && linha.beneficios !== (atual.beneficios ?? "")) mudar.beneficios = linha.beneficios;
+  return mudar;
 }
 
 export class VagasAbertasSyncService {
@@ -140,7 +190,7 @@ export class VagasAbertasSyncService {
   }
 
   async executar(dry: boolean, slot: string): Promise<ResultadoAbertas> {
-    const resultado: ResultadoAbertas = { dry, lidas: 0, novas: 0, jaExistiam: 0, fora: 0, erros: 0, pendentes: [], inseridas: [], apagadas: [] };
+    const resultado: ResultadoAbertas = { dry, lidas: 0, novas: 0, jaExistiam: 0, fora: 0, erros: 0, pendentes: [], inseridas: [], apagadas: [], atualizadas: [], completadas: [] };
     if (!this.mysql || !this.config.SUPABASE_URL || !this.config.SUPABASE_SERVICE_ROLE_KEY) {
       this.log.error({ slot }, "sync vagas: MySQL ou Supabase não configurado");
       return resultado;
@@ -213,6 +263,14 @@ export class VagasAbertasSyncService {
       }
     }
 
+    // 1b) Alinhar o espelho das abertas que já estavam no sistema (o cadastro ou a grade podem ter mudado no Lightsail).
+    try {
+      await this.alinharEspelho(abertas, empresaPorId, dry, slot, resultado);
+    } catch (error) {
+      resultado.erros += 1;
+      this.log.error({ slot, erro: error instanceof Error ? error.message : String(error) }, "sync vagas: falha ao alinhar o espelho");
+    }
+
     // 2) Apagar as fechadas (só a linha de vaga no Supabase e no Postgres).
     const ids = [...noSistema.keys()];
     if (ids.length) {
@@ -240,10 +298,74 @@ export class VagasAbertasSyncService {
 
     const { lidas, novas: inseridas, jaExistiam, fora, erros } = resultado;
     this.log.info({
-      dry, slot, lidas, novas: inseridas, jaExistiam, fora, erros,
+      dry, slot, lidas, novas: inseridas, jaExistiam, fora, erros, atualizadas: resultado.atualizadas.length, completadas: resultado.completadas.length,
       pendentes: resultado.pendentes.map((item) => `${item.nome} | ${item.cnpj} | ${item.vagas}`),
     }, "sync vagas: fim");
     return resultado;
+  }
+
+  /** Abertas que já estão no espelho: atualiza o que mudou no Lightsail e copia para o lado que não tem a vaga. */
+  private async alinharEspelho(abertas: VagaLightsail[], empresaPorId: Map<string, EmpresaNova>, dry: boolean, slot: string, resultado: ResultadoAbertas) {
+    const campos = "id,vaga_id,horario,turno,idade,idade_ate,salario,beneficios";
+    const lista = abertas.filter((vaga) => empresaPorId.has(vaga.id_empresa));
+    if (!lista.length) return;
+    const ids = lista.map((vaga) => vaga.id_vaga);
+    const doSupabase: CamposEspelho[] = [];
+    for (let indice = 0; indice < ids.length; indice += 100) {
+      doSupabase.push(...await this.rest().get<CamposEspelho[]>(`vaga?select=${campos}&id=in.(${ids.slice(indice, indice + 100).join(",")})`));
+    }
+    const doPostgres = (await this.db.query<CamposEspelho>(
+      "SELECT id::text AS id, vaga_id::text AS vaga_id, horario, turno, idade, idade_ate, salario, beneficios FROM public.vaga WHERE id::text = ANY($1)",
+      [ids],
+    )).rows;
+    const supabasePorId = new Map(doSupabase.map((row) => [row.id, row]));
+    const postgresPorId = new Map(doPostgres.map((row) => [row.id, row]));
+    const presentes = lista.filter((vaga) => supabasePorId.has(vaga.id_vaga) || postgresPorId.has(vaga.id_vaga));
+    if (!presentes.length) return;
+    const beneficios = await this.beneficios(presentes.map((vaga) => vaga.id_vaga));
+
+    for (const vaga of presentes) {
+      const linha = this.linhaDe(vaga, empresaPorId.get(vaga.id_empresa)!, beneficios.get(vaga.id_vaga) ?? []);
+      const sb = supabasePorId.get(vaga.id_vaga);
+      const pgRow = postgresPorId.get(vaga.id_vaga);
+      linha.vaga_id = sb?.vaga_id || pgRow?.vaga_id || linha.vaga_id;
+      const codigo = texto(vaga.codigo);
+      try {
+        for (const [lado, atual] of [["supabase", sb], ["postgres", pgRow]] as const) {
+          if (!atual) {
+            // Está só do outro lado: copia a vaga com a grade do Lightsail e o texto do espelho que já existe.
+            const outro = lado === "supabase" ? pgRow : sb;
+            const copia: LinhaVaga = { ...linha };
+            if (outro?.horario) copia.horario = horarioAlinhado(outro.horario, linha.horario) ?? outro.horario;
+            if (!linha.beneficios && outro?.beneficios) copia.beneficios = outro.beneficios;
+            resultado.completadas.push({ id_vaga: vaga.id_vaga, codigo, para: lado });
+            this.log.info({ dry, slot, id_vaga: vaga.id_vaga, codigo, para: lado }, "sync vagas: copiada para o lado que faltava");
+            if (dry) continue;
+            if (lado === "supabase") await this.rest().insert("vaga", copia);
+            else {
+              const colunas = COLUNAS_INSERT.join(", ");
+              const marcadores = COLUNAS_INSERT.map((_, indice) => `$${indice + 1}`).join(", ");
+              await this.db.query(`INSERT INTO public.vaga (${colunas}) VALUES (${marcadores})`, COLUNAS_INSERT.map((coluna) => copia[coluna]));
+            }
+            continue;
+          }
+          const mudar = diferencasEspelho(atual, linha);
+          const nomes = Object.keys(mudar);
+          if (!nomes.length) continue;
+          resultado.atualizadas.push({ id_vaga: vaga.id_vaga, codigo, lado, campos: nomes });
+          this.log.info({ dry, slot, id_vaga: vaga.id_vaga, codigo, lado, campos: nomes }, "sync vagas: espelho alinhado ao Lightsail");
+          if (dry) continue;
+          if (lado === "supabase") await this.rest().update(`vaga?id=eq.${vaga.id_vaga}`, mudar);
+          else {
+            const sets = nomes.map((nome, indice) => `${nome} = $${indice + 2}`).join(", ");
+            await this.db.query(`UPDATE public.vaga SET ${sets} WHERE id::text = $1`, [vaga.id_vaga, ...nomes.map((nome) => mudar[nome])]);
+          }
+        }
+      } catch (error) {
+        resultado.erros += 1;
+        this.log.error({ slot, id_vaga: vaga.id_vaga, codigo, erro: error instanceof Error ? error.message : String(error) }, "sync vagas: falha ao alinhar o espelho da vaga");
+      }
+    }
   }
 
   private async beneficios(ids: string[]) {

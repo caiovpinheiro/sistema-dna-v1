@@ -5,7 +5,7 @@ import { formatarHorario } from "../src/lib/triagem-horario.js";
 import { fraseHorario, gradeDe, localDe, turnosDe, vagaDaLinha } from "../src/lib/triagem-notion.js";
 import { horarioEspelho } from "../src/services/notion-sync.service.js";
 import { msAteProximoSlot, slotDe } from "../src/lib/agenda-sync.js";
-import { beneficiosDe, horarioDe } from "../src/services/vagas-abertas-sync.service.js";
+import { beneficiosDe, faixaDaSemana, horarioAlinhado, horarioDe } from "../src/services/vagas-abertas-sync.service.js";
 import { moneyToNumber } from "../src/lib/money.js";
 
 test("agrupa dias com o mesmo horário", () => {
@@ -149,6 +149,30 @@ test("cópia: grade usa as colunas do dia e a base dentro da faixa", () => {
     horarioDe({ periodo: "Manha", semanas_inicio: 2, semanas_fim: 7, horabase: "12:00", hora_saida_base: "18:00", domindo_entrada: "0", domindo_saida: "0", segunda_entrada: "12:00", segunda_saida: "18:00", texto_carga: "Seg a sáb" }),
     "Manha;2-7;00:00;1=;2=12:00-18:00;3=12:00-18:00;4=12:00-18:00;5=12:00-18:00;6=12:00-18:00;7=12:00-18:00;texto=Seg a sáb",
   );
+});
+
+test("cópia: intervalo vem do tempo_refeicao; dia \"0\" dentro da faixa usa o horário base, como no Lightsail", () => {
+  assert.equal(
+    horarioDe({ periodo: "", semanas_inicio: 2, semanas_fim: 6, horabase: "08:00", hora_saida_base: "17:00", tempo_refeicao: "01:00", segunda_entrada: "0", segunda_saida: "0", sab_entrada: "0", sab_saida: "0", texto_carga: "x" }),
+    ";2-6;01:00;1=;2=08:00-17:00;3=08:00-17:00;4=08:00-17:00;5=08:00-17:00;6=08:00-17:00;7=;texto=x",
+  );
+});
+
+test("faixa da semana: do primeiro ao último dia com horário, a partir de segunda", () => {
+  const dia = (entrada: string) => ({ entrada, saida: entrada === "0" ? "0" : "17:00" });
+  const vaga = (dias: Record<string, string>) => Object.fromEntries(Object.entries(dias).flatMap(([nome, entrada]) => [[`${nome}_entrada`, dia(entrada).entrada], [`${nome}_saida`, dia(entrada).saida]]));
+  assert.deepEqual(faixaDaSemana(vaga({ segunda: "08:00", terca: "08:00", quarta: "08:00", quinta: "08:00", sexta: "08:00", sab: "0", domindo: "0" })), { inicio: 2, fim: 6 });
+  assert.deepEqual(faixaDaSemana(vaga({ segunda: "08:00", sab: "08:00", domindo: "08:00" })), { inicio: 2, fim: 1 });
+  assert.deepEqual(faixaDaSemana(vaga({ quinta: "16:00", sexta: "16:00" })), { inicio: 5, fim: 6 });
+  assert.equal(faixaDaSemana(vaga({ segunda: "0" })), null);
+});
+
+test("espelho: grade segue o Lightsail e o texto com emoji fica quando é o mesmo texto", () => {
+  const lightsail = "Manha;2-1;01:00;1=09:00-15:00;texto=Operador ?Bairro: Helena ?Bolsa";
+  assert.equal(horarioAlinhado("Manha;2-1;00:00;1=09:00-15:00;texto=Operador 📍Bairro: Helena 💰Bolsa: R$ 1100", lightsail), "Manha;2-1;01:00;1=09:00-15:00;texto=Operador 📍Bairro: Helena 💰Bolsa: R$ 1100");
+  assert.equal(horarioAlinhado("Manha;2-1;01:00;1=09:00-15:00;texto=Operador 📍Bairro: Helena 💰Bolsa", lightsail), null);
+  assert.equal(horarioAlinhado("Segunda a sexta, 09:00 às 18:00", ";2-6;00:00;2=09:00-18:00;texto=Segunda a sexta, 09:00 às 18:00"), ";2-6;00:00;2=09:00-18:00;texto=Segunda a sexta, 09:00 às 18:00");
+  assert.equal(horarioAlinhado(";4-7;00:00;4=16:00-01:30;texto=Outro texto", ";4-5;00:00;4=16:00-01:30;texto=Novo"), ";4-5;00:00;4=16:00-01:30;texto=Novo");
 });
 
 test("cópia: benefícios em ordem alfabética com valor e periodicidade", () => {

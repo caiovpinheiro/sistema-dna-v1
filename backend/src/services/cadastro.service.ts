@@ -6,6 +6,7 @@ import type { AppConfig } from "../config.js";
 import type { MysqlPool } from "../db/mysql.js";
 import { legacyToday } from "../lib/dates.js";
 import { AppError } from "../lib/errors.js";
+import { faixaDaSemana, horarioDe } from "./vagas-abertas-sync.service.js";
 import { formatMoneyLegacy, moneyToNumber, parseMoney } from "../lib/money.js";
 import { supabaseRest } from "../lib/supabase-rest.js";
 import type { CargoService } from "./cargo.service.js";
@@ -610,7 +611,25 @@ export class CadastroService {
     const salarioNumero = parseMoney(input.salario);
     const salario = formatMoneyLegacy(salarioNumero);
     const horas = horasDaVaga(input);
-    const horario = textoDaVaga(input, horas);
+    const textoCarga = textoDaVaga(input, horas);
+    // Dia sem horário é folga ("0"), como nas vagas antigas e no sync do Notion; vazio faria a grade usar o horário base.
+    for (const dia of DIAS_ESCALA) {
+      if (!horas[`${dia}_entrada`] || !horas[`${dia}_saida`]) {
+        horas[`${dia}_entrada`] = "0";
+        horas[`${dia}_saida`] = "0";
+      }
+    }
+    // Mesmas colunas da grade que as vagas antigas têm no Lightsail; turno fica vazio e o intervalo é 00:00 (o formulário não tem esses campos).
+    const colunasGrade = {
+      horabase: horas.entrada, hora_saida_base: horas.saida, texto_carga: textoCarga, periodo: "", tempo_refeicao: "00:00",
+      segunda_entrada: horas.segunda_entrada, segunda_saida: horas.segunda_saida, terca_entrada: horas.terca_entrada, terca_saida: horas.terca_saida,
+      quarta_entrada: horas.quarta_entrada, quarta_saida: horas.quarta_saida, quinta_entrada: horas.quinta_entrada, quinta_saida: horas.quinta_saida,
+      sexta_entrada: horas.sexta_entrada, sexta_saida: horas.sexta_saida, sab_entrada: horas.sab_entrada, sab_saida: horas.sab_saida,
+      domindo_entrada: horas.domingo_entrada, domindo_saida: horas.domingo_saida,
+    };
+    const faixa = faixaDaSemana(colunasGrade);
+    // O espelho (Supabase e public.vaga) recebe a grade "turno;início-fim;intervalo;1=..;…;texto=…", igual ao sync de vagas abertas.
+    const horario = horarioDe({ ...colunasGrade, semanas_inicio: faixa?.inicio ?? null, semanas_fim: faixa?.fim ?? null });
     // Abrir vaga não cria modelo: ela só aponta para o modelo global do mesmo cargo e modalidade, quando existe.
     const modeloId = (await this.modeloDoCargo(cargo.nome, String(tipo)))?.vaga_id ?? randomUUID();
     const comparador = await this.novoComparador();
@@ -659,15 +678,17 @@ export class CadastroService {
             id_vaga, comparador, id_empresa, cargo, salario, idade, idadeate, horabase, hora_saida_base,
             segunda_entrada, segunda_saida, terca_entrada, terca_saida, quarta_entrada, quarta_saida,
             quinta_entrada, quinta_saida, sexta_entrada, sexta_saida, sab_entrada, sab_saida, domindo_entrada, domindo_saida, atribuicaoes, atribu_contrato,
-            sede, dataabertura, tipo_vaga, sexo, status, carga_horaria, publicar, codigo, km, faturar, texto_carga
-          ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,10,?,?,?,0,?,1,?,?, 'S', ?)`,
+            sede, dataabertura, tipo_vaga, sexo, status, carga_horaria, publicar, codigo, km, faturar, texto_carga,
+            periodo, semanas_inicio, semanas_fim, tempo_refeicao
+          ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,10,?,?,?,0,?,1,?,?, 'S', ?,?,?,?,?)`,
           [
             id, comparador, empresa.id, cargo.nome, salario, String(input.idade), input.idade_ate ? String(input.idade_ate) : null,
             horas.entrada, horas.saida,
             horas.segunda_entrada, horas.segunda_saida, horas.terca_entrada, horas.terca_saida,
             horas.quarta_entrada, horas.quarta_saida, horas.quinta_entrada, horas.quinta_saida,
             horas.sexta_entrada, horas.sexta_saida, horas.sab_entrada, horas.sab_saida, horas.domingo_entrada, horas.domingo_saida,
-            input.atividades, input.atividades, hoje, tipo, input.sexo, input.carga_horaria, codigo, "30", horario,
+            input.atividades, input.atividades, hoje, tipo, input.sexo, input.carga_horaria, codigo, "30", textoCarga,
+            colunasGrade.periodo, faixa?.inicio ?? null, faixa?.fim ?? null, colunasGrade.tempo_refeicao,
           ],
         );
         await conn.query(
@@ -732,16 +753,19 @@ export class CadastroService {
               id_vaga, comparador, id_empresa, cargo, salario, idade, idadeate, horabase, hora_saida_base,
               segunda_entrada, segunda_saida, terca_entrada, terca_saida, quarta_entrada, quarta_saida,
               quinta_entrada, quinta_saida, sexta_entrada, sexta_saida, sab_entrada, sab_saida, domindo_entrada, domindo_saida, atribuicaoes, atribu_contrato,
-              sede, dataabertura, tipo_vaga, sexo, status, carga_horaria, publicar, codigo, km, faturar, texto_carga, quantidade_posicoes, beneficios_texto
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,10,$26,$27,$28,0,$29,1,$30,'30','S',$31,1,$32)`,
+              sede, dataabertura, tipo_vaga, sexo, status, carga_horaria, publicar, codigo, km, faturar, texto_carga, quantidade_posicoes, beneficios_texto,
+              periodo, semanas_inicio, semanas_fim, tempo_refeicao, remoto, data_adicao
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,10,$26,$27,$28,0,$29,1,$30,'30','S',$31,1,$32,
+              $33,$34,$35,$36,0,(now() AT TIME ZONE 'UTC'))`,
             [
               id, comparador, empresa.id, cargo.nome, salario, String(input.idade), input.idade_ate ? String(input.idade_ate) : null,
               horas.entrada, horas.saida,
               horas.segunda_entrada, horas.segunda_saida, horas.terca_entrada, horas.terca_saida,
               horas.quarta_entrada, horas.quarta_saida, horas.quinta_entrada, horas.quinta_saida,
               horas.sexta_entrada, horas.sexta_saida, horas.sab_entrada, horas.sab_saida, horas.domingo_entrada, horas.domingo_saida,
-              input.atividades, input.atividades, hoje, tipo, input.sexo, input.carga_horaria, codigo, horario,
+              input.atividades, input.atividades, hoje, tipo, input.sexo, input.carga_horaria, codigo, textoCarga,
               input.beneficios?.trim() || null,
+              colunasGrade.periodo, faixa?.inicio ?? null, faixa?.fim ?? null, colunasGrade.tempo_refeicao,
             ],
           );
           await pg.query(
