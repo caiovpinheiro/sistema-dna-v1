@@ -10,6 +10,8 @@ import { getEscola, mensagemEscola, searchEscolas } from "../lib/escolas.js";
 import { getEmpresaCadastro, listEmpresasCadastro } from "../lib/supabase-empresas.js";
 import { fillTceTemplate } from "../lib/tce-pdf.js";
 import { APOLICE_SEGURO, CAMPOS_DATA, dataParaPdf, emptyManual, ESCOLA_KEYS, type Concedente, type ManualData } from "../lib/tce-fields.js";
+import { preenchimentoDoCandidato, type CandidatoTce } from "../lib/tce-candidato.js";
+import { one } from "../repositories/sql.js";
 import { enviarModelo, textoHtml } from "../lib/email-modelo.js";
 import { criarDocumentoZapSign } from "../lib/zapsign.js";
 import { enviarEmailMailjet } from "../lib/mailjet.js";
@@ -39,6 +41,61 @@ export class TceService {
     } catch (error) {
       return { opcoes: [], erro: mensagemEscola(error) };
     }
+  }
+
+  async buscarCandidatos(termo: string): Promise<CandidatoTce[]> {
+    const consulta = termo.trim();
+    if (consulta.length < 2) return [];
+    const like = `%${consulta.replace(/[%_]/g, "")}%`;
+    const rows = await this.db.query<CandidatoTce>(`
+      SELECT c.id_candidato AS id, c.nome, coalesce(c.cpf, '') AS cpf,
+             coalesce(e.nome_fantasia, e.razao_social, '') AS empresa
+      FROM dna_work.candidato c
+      LEFT JOIN dna_work.empresa e ON e.id_empresa = c.id_empresa
+      WHERE c.nome ILIKE $1 OR coalesce(c.cpf, '') ILIKE $1 OR coalesce(e.nome_fantasia, '') ILIKE $1 OR coalesce(e.razao_social, '') ILIKE $1
+      ORDER BY c.nome
+      LIMIT 20
+    `, [like]);
+    return rows.rows.map((row) => ({ id: row.id, nome: (row.nome ?? "").trim(), cpf: (row.cpf ?? "").trim(), empresa: (row.empresa ?? "").trim() }));
+  }
+
+  async candidatoParaTce(id: string) {
+    const colunas = await this.colunas("candidato");
+    const extra = ["ano_escolar", "nome_responsavel", "nomepai", "nomemae", "cpf_responsavel", "email_responsavel", "celular_responsavel"]
+      .filter((coluna) => colunas.has(coluna))
+      .map((coluna) => `c.${coluna}`)
+      .join(", ");
+    const candidato = await one<Record<string, string | null>>(this.db, `
+      SELECT c.id_candidato, c.nome, c.cpf, c.rg, c.datanascimento, c.email, c.celular, c.telefonefixo,
+             c.logradouro, c.numero, c.complemento, c.bairro, c.cep, c.cidade, c.estado,
+             c.curso, c.periodo, c.semestre, c.escola::text AS escola, c.nome_escola, c.id_empresa
+             ${extra ? `, ${extra}` : ""}
+      FROM dna_work.candidato c
+      WHERE c.id_candidato = $1
+    `, [id]);
+    if (!candidato) throw new AppError(404, "NAO_ENCONTRADO", "Candidato não encontrado.");
+    const escola = candidato.escola ? await getEscola(this.db, candidato.escola).catch(() => null) : null;
+    const contrato = await one<Record<string, string | null>>(this.db, `
+      SELECT e.id_empresa, e.razao_social, e.nome_fantasia, e.cnpj, e.email AS emp_email, e.responsavel,
+             e.logradouro AS emp_logradouro, e.numero AS emp_numero, e.complemento AS emp_complemento,
+             e.bairro AS emp_bairro, e.cidade AS emp_cidade, e.uf AS emp_uf, e.cep AS emp_cep,
+             v.salario, v.carga_horaria, v.texto_carga, v.atribuicaoes, cv.datainicio, cv.datafim
+      FROM dna_work.conratacaovaga cv
+      JOIN dna_work.empresa e ON e.id_empresa = cv.id_empresa
+      LEFT JOIN dna_work.vaga v ON v.id_vaga = cv.id_vaga
+      WHERE cv.id_candidato = $1
+      ORDER BY CASE WHEN cv.status = $2 THEN 0 ELSE 1 END, cv.id_contratacao DESC
+      LIMIT 1
+    `, [id, this.config.CONTRATACAO_STATUS_ATIVO]).catch(() => null);
+    return preenchimentoDoCandidato(candidato, escola?.campos ?? null, contrato);
+  }
+
+  private async colunas(tabela: string) {
+    const rows = await this.db.query<{ column_name: string }>(`
+      SELECT column_name FROM information_schema.columns
+      WHERE table_schema = 'dna_work' AND table_name = $1
+    `, [tabela]);
+    return new Set(rows.rows.map((row) => row.column_name));
   }
 
   async gerar(input: GerarTceInput) {

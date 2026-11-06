@@ -18,6 +18,13 @@ type Empresa = {
 };
 
 type Escola = { id: string; rotulo: string; campos: Record<string, string> };
+type CandidatoBusca = { id: string; nome: string; cpf: string; empresa: string };
+type Preenchimento = {
+  campos: Record<string, string>;
+  concedente: { razao_social: string; nome_fantasia?: string; cnpj: string; endereco: string; cep: string; cidade: string; estado: string; email: string; representante: string } | null;
+  empresaId: string;
+  escolaId: string;
+};
 
 const APOLICE = "Apólice Coletiva nº 09820055561928 da Porto Seguro";
 
@@ -88,6 +95,8 @@ export function GeradorTce() {
   const [empresaId, setEmpresaId] = useState("");
   const [concedente, setConcedente] = useState({ razao_social: "", cnpj: "", endereco: "", cep: "", cidade: "", estado: "", email: "", representante: "" });
   const [campos, setCampos] = useState<Record<string, string>>({ seguro_apolice: APOLICE });
+  const [candidatoBusca, setCandidatoBusca] = useState("");
+  const [candidatos, setCandidatos] = useState<CandidatoBusca[]>([]);
   const [escolaBusca, setEscolaBusca] = useState("");
   const [escolas, setEscolas] = useState<Escola[]>([]);
   const [escolaErro, setEscolaErro] = useState("");
@@ -100,6 +109,50 @@ export function GeradorTce() {
     const texto = normalizar(`${empresa.razao_social} ${empresa.nome_fantasia} ${empresa.cnpj}`);
     return texto.includes(normalizar(termo));
   }).slice(0, 15);
+
+  async function procurarCandidato(valor: string) {
+    setCandidatoBusca(valor);
+    if (valor.trim().length < 2) {
+      setCandidatos([]);
+      return;
+    }
+    try {
+      const result = await api<CandidatoBusca[]>(`/api/v1/tce/candidatos?q=${encodeURIComponent(valor.trim())}`);
+      setCandidatos(result.data);
+    } catch {
+      setCandidatos([]);
+    }
+  }
+
+  async function escolherCandidato(pessoa: CandidatoBusca) {
+    setCandidatoBusca(`${pessoa.nome}${pessoa.cpf ? ` · ${pessoa.cpf}` : ""}`);
+    setCandidatos([]);
+    setErro("");
+    try {
+      const result = await api<Preenchimento>(`/api/v1/tce/candidatos/${pessoa.id}`);
+      const dados = result.data;
+      setCampos((atual) => ({ ...atual, ...dados.campos, seguro_apolice: APOLICE }));
+      if (dados.campos.nome_responsavel) setResponsavel(true);
+      if (dados.escolaId) setEscolaBusca(dados.campos.nome_escola || "");
+      if (dados.concedente) {
+        setConcedente({
+          razao_social: dados.concedente.razao_social,
+          cnpj: dados.concedente.cnpj,
+          endereco: dados.concedente.endereco,
+          cep: dados.concedente.cep,
+          cidade: dados.concedente.cidade,
+          estado: dados.concedente.estado,
+          email: dados.concedente.email,
+          representante: dados.concedente.representante,
+        });
+        setEmpresaId(dados.empresaId);
+        setBusca(`${dados.concedente.razao_social} · ${dados.concedente.cnpj}`);
+        setAberta(false);
+      }
+    } catch (error) {
+      setErro(error instanceof ApiError ? error.message : "Não foi possível carregar o candidato.");
+    }
+  }
 
   async function procurarEscola(valor: string) {
     setEscolaBusca(valor);
@@ -168,6 +221,23 @@ export function GeradorTce() {
       {SECOES.map((secao) => (
         <section key={secao.id} className="grid gap-3 md:grid-cols-2">
           <h2 className="font-bold md:col-span-2">{secao.title}</h2>
+          {secao.id === "candidato" ? (
+            <div className="relative md:col-span-2">
+              <Field label="Pesquisar candidato já cadastrado">
+                <Input value={candidatoBusca} autoComplete="off" placeholder="Nome, CPF ou empresa" onChange={(event) => void procurarCandidato(event.target.value)} />
+              </Field>
+              {candidatos.length ? (
+                <div className="absolute z-10 mt-1 max-h-56 w-full overflow-auto rounded-xl border border-slate-200 bg-white shadow-lg">
+                  {candidatos.map((pessoa) => (
+                    <button key={pessoa.id} type="button" className="block w-full px-3 py-2 text-left text-sm hover:bg-slate-50" onMouseDown={(event) => event.preventDefault()} onClick={() => void escolherCandidato(pessoa)}>
+                      <span className="font-semibold">{pessoa.nome}</span>
+                      <span className="ml-2 text-slate-500">{[pessoa.cpf, pessoa.empresa].filter(Boolean).join(" · ")}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           {secao.id === "responsavel" ? (
             <label className="flex items-center gap-2 text-sm font-semibold md:col-span-2">
               <input type="checkbox" checked={responsavel} onChange={(event) => setResponsavel(event.target.checked)} />
