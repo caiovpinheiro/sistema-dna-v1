@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { RelatorioEmpresaPainel } from "@/components/relatorio-empresa";
 import { Badge, Button, Card, Field, Input, Select } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 import { money } from "@/lib/format";
@@ -64,6 +65,7 @@ export function ContasReceberPage() {
   const [progresso, setProgresso] = useState<{ feito: number; total: number } | null>(null);
   const [pagamento, setPagamento] = useState<{ id: string; data: string } | null>(null);
   const [nota, setNota] = useState<{ id: string; valor: string; codigo: string; iss: string; descricao: string } | null>(null);
+  const [relatorio, setRelatorio] = useState<{ empresaId: string; mes: string; ano: string } | null>(null);
 
   const query = useQuery({
     queryKey: ["cobrancas", de, ate, situacao],
@@ -263,6 +265,7 @@ export function ContasReceberPage() {
                 <td className="px-4 py-3">{row.envio ? `Enviado em ${dataEnvio(row.envio)}` : "Não enviado"}</td>
                 <td className="px-4 py-3">
                   <div className="flex flex-wrap gap-2">
+                    <button type="button" className="acao acao-cyan" onClick={() => { const ref = competencia(row.descricao); setRelatorio({ empresaId: row.id_empresa, mes: ref?.mes ?? "", ano: ref?.ano ?? "" }); }}>Relatório</button>
                     {row.url_pagamento ? <a className="acao acao-cyan" href={row.url_pagamento} target="_blank" rel="noreferrer">Link</a> : null}
                     {podeEnviar ? <button type="button" className="acao acao-cyan" disabled={Boolean(progresso)} onClick={() => enviarPendentes([row.id])}>Enviar relatório</button> : null}
                     <button type="button" className="acao acao-cyan" onClick={() => sincronizar.mutate(row.id)}>Verificar</button>
@@ -279,6 +282,7 @@ export function ContasReceberPage() {
         </table>
       </Card>
       <p className="text-sm text-slate-500">{rows.length === 0 ? "Nenhuma cobrança neste período." : `${rows.length} cobranças`} · em aberto {money(total)}</p>
+      {relatorio ? <RelatorioEmpresaPainel empresaId={relatorio.empresaId} mes={relatorio.mes} ano={relatorio.ano} onClose={() => setRelatorio(null)} /> : null}
       {pagamento ? (
         <div className="fixed inset-0 z-50 grid place-items-center bg-navy-950/40 p-4">
           <Card className="motion-pop w-full max-w-md">

@@ -500,7 +500,21 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
     schema: { tags: ["faturamento"], querystring: z.object({ empresa: z.string().min(1), mes: z.string(), ano: z.string() }) },
   }, async (request) => ok(await legado.relatorioEmpresa(request.query.empresa, request.query.mes, request.query.ano)));
   api.post("/api/v1/faturamento/relatorios", {
-    schema: { tags: ["faturamento"], body: z.object({ empresas: z.array(z.string().min(1)).max(200).optional(), todas: z.boolean().optional(), mes: z.string(), ano: z.string(), status: z.string().optional(), empresa: z.string().optional() }) },
+    schema: { tags: ["faturamento"], body: z.object({
+      empresas: z.array(z.string().min(1)).max(200).optional(),
+      todas: z.boolean().optional(),
+      mes: z.string(),
+      ano: z.string(),
+      status: z.string().optional(),
+      empresa: z.string().optional(),
+      itens: z.array(z.object({
+        nome: z.string().max(200).nullable().optional(),
+        cargo: z.string().max(200).nullable().optional(),
+        modalidade: z.string().max(80).nullable().optional(),
+        situacao: z.string().trim().min(1).max(40),
+        valor: z.number().finite().nonnegative().max(1_000_000),
+      })).max(400).optional(),
+    }) },
   }, async (request) => {
     let ids = request.body.empresas ?? [];
     if (request.body.todas) {
@@ -512,7 +526,19 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
       }
     }
     if (!ids.length) throw new AppError(422, "SEM_EMPRESAS", "Nenhuma empresa selecionada.");
-    return ok(await legado.enviarRelatorios(config, ids, request.body.mes, request.body.ano, (input) => services.asaas.boletoDoFaturamento(input)));
+    const ajuste = request.body.itens && ids.length === 1 && ids[0]
+      ? {
+          idEmpresa: ids[0],
+          itens: request.body.itens.map((item) => ({
+            nome: item.nome ?? null,
+            cargo: item.cargo ?? null,
+            modalidade: item.modalidade ?? null,
+            situacao: item.situacao,
+            valor: item.valor,
+          })),
+        }
+      : null;
+    return ok(await legado.enviarRelatorios(config, ids, request.body.mes, request.body.ano, (input) => services.asaas.boletoDoFaturamento(input), ajuste));
   });
   api.get("/api/v1/procfy", { schema: { tags: ["procfy"], querystring: z.object({ ...pagina, de: z.string().optional(), ate: z.string().optional(), status: z.string().optional(), tipoData: z.string().optional(), sistema: z.string().optional() }) } }, async (request) => {
     const result = await legado.procfy(request.query);

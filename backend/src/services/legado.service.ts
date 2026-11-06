@@ -270,6 +270,7 @@ export class LegadoService {
     mes: string,
     ano: string,
     boleto: (input: { idEmpresa: string; valor: number; vencimento: string; descricao: string }) => Promise<{ url: string | null; vencimento: string }>,
+    ajuste?: { idEmpresa: string; itens: Array<{ nome: string | null; cargo: string | null; modalidade: string | null; situacao: string; valor: number }> } | null,
   ) {
     const enviados: string[] = [];
     const boletos: string[] = [];
@@ -285,6 +286,17 @@ export class LegadoService {
         return null;
       });
       if (!relatorio) continue;
+      if (ajuste && ajuste.idEmpresa === id) {
+        relatorio.itens = ajuste.itens.map((item) => ({
+          nome: item.nome,
+          cargo: item.cargo,
+          modalidade: item.modalidade,
+          inicio: null,
+          situacao: item.situacao,
+          valor: item.valor,
+        }));
+        relatorio.total = Math.round(ajuste.itens.reduce((soma, item) => soma + item.valor, 0) * 100) / 100;
+      }
       const email = primeiroEmail(relatorio.email);
       if (!email) {
         falhas.push({ empresa: relatorio.empresa, motivo: "Sem e-mail financeiro." });

@@ -43,6 +43,7 @@ const REGRAS_API: Array<[string, string[]]> = [
   ["/api/v1/emails", ["emails"]],
   ["/api/v1/asaas/regua", ["regua"]],
   ["/api/v1/asaas", ["contas", "faturamento"]],
+  ["/api/v1/faturamento/relatorio", ["faturamento", "contas"]],
   ["/api/v1/faturamento", ["faturamento"]],
   ["/api/v1/procfy", ["procfy"]],
   ["/api/v1/comissao/empresas", ["comissao-empresas"]],
