@@ -111,7 +111,7 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
   api.get("/api/v1/dashboard/origem", {
     schema: { tags: ["dashboard"], querystring: z.object({ from: z.string().optional(), to: z.string().optional() }) },
   }, async (request, reply) => {
-    const resultado = await origemComCache(request.query.from ?? null, request.query.to ?? null);
+    const resultado = await origemComCache(db, request.query.from ?? null, request.query.to ?? null);
     return reply.code(resultado.status).send(resultado.body);
   });
   // Webhooks do CRM DNA e do n8n (públicos, como no app candidaturas).

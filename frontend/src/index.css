@@ -259,6 +259,14 @@ button, a {
 .app-canvas.claro :is(.bg-navy-900, .bg-cyan-700, .bg-cyan-800, .bg-rose-600, .bg-rose-700).text-white { color: #ffffff; }
 .app-canvas.claro .text-slate-300,
 .app-canvas.claro .text-slate-400 { color: #475569; }
+/* Textos claros feitos para o fundo escuro: no claro ficariam brancos sobre branco. */
+.app-canvas.claro .text-slate-100,
+.app-canvas.claro .text-slate-200 { color: #1e293b; }
+.app-canvas.claro .text-cyan-300 { color: #0e7490; }
+.app-canvas.claro .text-rose-300 { color: #be123c; }
+/* Linhas e grades dos gráficos do Painel desenhadas em branco. */
+.app-canvas.claro .recharts-line-curve[stroke="#f4f6f8"] { stroke: #475569; }
+.app-canvas.claro .recharts-cartesian-grid line { stroke: #e2e8f0; }
 .app-canvas.claro .text-cyan-100 { color: #0e7490; }
 .app-canvas.claro .border-white\/10 { border-color: #e2e8f0; }
 .app-canvas.claro .ring-white\/10 { --tw-ring-color: #e2e8f0; }

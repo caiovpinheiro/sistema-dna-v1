@@ -483,11 +483,12 @@ function GraficoColunas({
 }) {
   const [ativa, setAtiva] = useState<number | null>(null);
   const largura = 640;
-  const altura = 280;
-  const esquerda = 44;
+  const altura = 300;
+  // Margens para caber "425,0%" no eixo e os nomes inclinados (até 16 letras) embaixo.
+  const esquerda = 64;
   const direita = 12;
   const topo = 28;
-  const base = 72;
+  const base = 104;
   const areaLargura = largura - esquerda - direita;
   const areaAltura = altura - topo - base;
   const teto = tetoDaEscala(linhas.map((linha) => linha.taxa || 0));
@@ -531,11 +532,12 @@ function GraficoColunas({
               </text>
               <text
                 x={centro}
-                y={altura - 36}
+                y={topo + areaAltura + 16}
                 textAnchor="end"
-                transform={`rotate(-32 ${centro} ${altura - 36})`}
+                transform={`rotate(-35 ${centro} ${topo + areaAltura + 16})`}
               >
-                {linha.nome}
+                <title>{linha.nome}</title>
+                {linha.nome.length > 16 ? `${linha.nome.slice(0, 15).trimEnd()}…` : linha.nome}
               </text>
             </g>
           );

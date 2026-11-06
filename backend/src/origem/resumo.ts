@@ -1,3 +1,5 @@
+import type { Pool } from 'pg';
+import { contasDasContratacoes } from './ganhos-contratacoes.js';
 import { resposta, type Resposta } from './resposta.js';
 import {
   listPassagensAtendimento,
@@ -151,7 +153,11 @@ function contasDePassagens(
   return contas;
 }
 
-export async function resumoOrigem(fromRaw: string | null, toRaw: string | null): Promise<Resposta> {
+/**
+ * Com o Postgres, Ganhos são as contratações realizadas no período (origem pelo telefone do candidato);
+ * sem ele, a passagem pela fase Ganho gravada em tracker_ganhos, como no app candidaturas.
+ */
+export async function resumoOrigem(fromRaw: string | null, toRaw: string | null, db: Pool | null = null): Promise<Resposta> {
   try {
     const { from, to } = clampOrigemRange(
       readDate(fromRaw),
@@ -160,7 +166,7 @@ export async function resumoOrigem(fromRaw: string | null, toRaw: string | null)
     const [entradas, rows, ganhosPassagens, enviadas, atendimentos] = await Promise.all([
       listEntradasCrm({ from, to }),
       listTrackerLeads({ from, to }),
-      listPassagensGanhos({ from, to }),
+      db ? Promise.resolve([] as PassagemEnviadaRow[]) : listPassagensGanhos({ from, to }),
       listPassagensEnviadas({ from, to }),
       listPassagensAtendimento({ from, to }),
     ]);
@@ -175,7 +181,7 @@ export async function resumoOrigem(fromRaw: string | null, toRaw: string | null)
     return resposta({
       success: true,
       ...leads,
-      ganhos: resumirContas(contasDePassagens(ganhosPassagens, porTelefone)),
+      ganhos: resumirContas(db ? await contasDasContratacoes(db, { from, to }) : contasDePassagens(ganhosPassagens, porTelefone)),
       enviadas: resumirContas(contasDePassagens(enviadas, porTelefone)),
       atendimentos: resumirContas(contasDePassagens(atendimentos, porTelefone)),
     });
