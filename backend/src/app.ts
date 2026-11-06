@@ -139,7 +139,7 @@ export async function buildApp(context: AppContext): Promise<FastifyInstance> {
   app.addHook("onRequest", async (request) => {
     const path = request.url.split("?")[0];
     if (request.method === "OPTIONS") return;
-    if (path === "/health" || path === "/api/v1/auth/login" || path === "/api/v1/zapsign/webhook" || path === "/api/v1/asaas/webhook" || path === "/api/v1/servico/ping" || path === "/api/v1/servico/empresas" || path === "/api/v1/servico/processos" || path === "/api/v1/servico/candidatos" || path.startsWith("/docs")) return;
+    if (path === "/health" || path === "/api/v1/auth/login" || path === "/api/v1/zapsign/webhook" || path === "/api/v1/asaas/webhook" || path === "/api/v1/webhooks/lead-criado" || path === "/api/v1/webhooks/ganho" || path === "/api/v1/servico/ping" || path === "/api/v1/servico/empresas" || path === "/api/v1/servico/processos" || path === "/api/v1/servico/candidatos" || path.startsWith("/docs")) return;
     if (path.startsWith("/api/")) await app.authenticate(request);
     if (!path.startsWith("/api/v1/") || path.startsWith("/api/v1/auth/")) return;
     const sessao = await services.acesso.daSessao(request.user.sub, request.user.email);

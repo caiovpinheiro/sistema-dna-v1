@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { BuscaOpcao, normalizarBusca } from "@/components/busca-opcao";
+import { CobrancaEmpresa, type ValorEmpresa } from "@/components/cobranca-empresa";
 import { Button, Card, Empty, Field, Input, Select, Textarea } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 import { formatCnpj } from "@/lib/format";
@@ -90,6 +91,11 @@ function AbaGrupo({ selecionado, onSelect }: { selecionado: string; onSelect: (i
     enabled: Boolean(selecionado),
     queryFn: () => api<GrupoDetalhe>(`/api/v1/grupos/${selecionado}`),
   });
+  const cobranca = useQuery({
+    queryKey: ["grupo-cobranca", selecionado],
+    enabled: Boolean(selecionado),
+    queryFn: () => api<Array<{ id_empresa: string; nome: string; cnpj: string | null; cobranca: ValorEmpresa | null }>>(`/api/v1/grupos/${selecionado}/cobranca`),
+  });
   const [form, setForm] = useState({ nome: "", email: "", telefone: "" });
   const save = useMutation({
     mutationFn: () => api("/api/v1/grupos", { method: "POST", body: JSON.stringify(limpar(form)) }),
@@ -134,6 +140,24 @@ function AbaGrupo({ selecionado, onSelect }: { selecionado: string; onSelect: (i
                 </table>
               </div>
             ) : <p className="text-sm text-slate-500">Nenhuma empresa neste grupo.</p>}
+          </Card>
+        ) : null}
+        {grupo && grupo.empresas.length ? (
+          <Card className="grid gap-3">
+            <div>
+              <h3 className="font-bold text-navy-900">Cobrança das empresas</h3>
+              <p className="text-sm text-slate-500">Condições do contrato de cada empresa. Clique para ver os detalhes.</p>
+            </div>
+            {cobranca.isLoading ? <p className="text-sm text-slate-500">Carregando cobrança…</p> : null}
+            <Erro error={cobranca.error} />
+            {(cobranca.data?.data ?? []).map((item) => item.cobranca
+              ? <CobrancaEmpresa key={item.id_empresa} valor={item.cobranca} />
+              : (
+                <div key={item.id_empresa} className="rounded-2xl border border-dashed border-slate-200 p-4 text-sm">
+                  <span className="font-semibold">{item.nome}</span>
+                  <span className="text-slate-500"> · sem condições de cobrança cadastradas</span>
+                </div>
+              ))}
           </Card>
         ) : null}
       </div>

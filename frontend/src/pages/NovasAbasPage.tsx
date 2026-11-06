@@ -224,7 +224,7 @@ export function ConsultarModelosPage() {
               <option value="estagio">Estágio</option>
             </Select>
           </Field>
-          <Button type="submit" variant="secondary" className="self-end">Pesquisar</Button>
+          <Button type="submit" className="self-end">Pesquisar</Button>
         </Card>
       </form>
       {apagar.isError ? <p className="text-sm text-rose-600">Não foi possível apagar o modelo.</p> : null}

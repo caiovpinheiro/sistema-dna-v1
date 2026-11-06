@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
+import { CobrancaEmpresa, type ValorEmpresa } from "@/components/cobranca-empresa";
 import { Badge, Button, Card, Skeleton } from "@/components/ui";
 import { api } from "@/lib/api";
 import { formatCnpj, formatPhone, regimeLabel, situacaoLabel } from "@/lib/format";
@@ -18,6 +19,7 @@ export function EmpresaDetailPage() {
   const company = useQuery({ queryKey: ["empresa", id], queryFn: () => api<Company>(`/api/v1/empresas/${id}`) });
   const jobs = useQuery({ queryKey: ["empresa-vagas", id], queryFn: () => api<Job[]>(`/api/v1/empresas/${id}/vagas`) });
   const contracts = useQuery({ queryKey: ["empresa-contratos", id], queryFn: () => api<Contract[]>(`/api/v1/empresas/${id}/contratacoes`) });
+  const cobranca = useQuery({ queryKey: ["empresa-cobranca", id], queryFn: () => api<ValorEmpresa | null>(`/api/v1/empresas/${id}/cobranca`) });
   if (company.isLoading) return <Skeleton className="h-64" />;
   if (!company.data) return <p className="text-rose-600">Empresa não encontrada.</p>;
   const data = company.data.data;
@@ -32,6 +34,7 @@ export function EmpresaDetailPage() {
         <Card><p className="text-xs text-slate-500">Contato</p><p className="font-semibold">{data.responsavel || "—"}</p><p className="text-sm text-slate-500">{[formatPhone(data.telefone), formatPhone(data.celular), data.email].filter((item) => item && item !== "—").join(" · ") || "Sem telefone ou e-mail"}</p></Card>
         <Card><p className="text-xs text-slate-500">Cadastro</p><p className="font-semibold">{data.matriz || "Sem matriz"}</p><p className="text-sm text-slate-500">{[data.ie ? `IE ${data.ie}` : "", data.site || ""].filter(Boolean).join(" · ") || "IE e site não informados"}</p></Card>
       </div>
+      {cobranca.data?.data ? <CobrancaEmpresa valor={cobranca.data.data} aberto titulo={false} /> : null}
       {data.obs ? <Card><h2 className="mb-2 font-bold">Observações</h2><p className="whitespace-pre-line text-sm text-slate-600">{data.obs}</p></Card> : null}
       <Card>
         <h2 className="mb-3 font-bold">Vagas</h2>

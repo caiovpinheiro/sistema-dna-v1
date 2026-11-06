@@ -24,6 +24,8 @@ COPY --from=build /app/backend/dist ./backend/dist
 COPY --from=build /app/frontend/dist ./frontend/dist
 COPY prisma ./prisma
 COPY templates ./templates
+# Arquivos de idioma do OCR (rótulo da campanha pela foto do anúncio).
+COPY backend/tessdata ./backend/tessdata
 COPY scripts/migrate-production.mjs ./scripts/migrate-production.mjs
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
 RUN chmod +x docker-entrypoint.sh && mkdir -p /app/data/tces && chmod 777 /app/data/tces

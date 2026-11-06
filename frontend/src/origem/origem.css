@@ -1,0 +1,409 @@
+/* Painel "Origem dos candidatos", trazido do app candidaturas. As cores seguem o tema do sistema (claro/escuro). */
+.origem-dashboard {
+  --card-border: rgba(13, 17, 33, 0.12);
+  --dropdown-bg: rgba(255, 255, 255, 0.98);
+  --dropdown-hover: rgba(13, 17, 33, 0.05);
+  --input-bg: #ffffff;
+  --input-border: rgba(13, 17, 33, 0.16);
+  --shadow: 0 24px 64px rgba(13, 17, 33, 0.12);
+  --text: #1d1e4c;
+  --text-muted: #64748b;
+  --calendar-bg: #ffffff;
+  color: var(--text);
+}
+.app-canvas.escuro .origem-dashboard {
+  --card-border: rgba(255, 255, 255, 0.08);
+  --dropdown-bg: rgba(13, 17, 33, 0.97);
+  --dropdown-hover: rgba(255, 255, 255, 0.06);
+  --input-bg: rgba(255, 255, 255, 0.04);
+  --input-border: rgba(255, 255, 255, 0.1);
+  --shadow: 0 24px 64px rgba(0, 0, 0, 0.4);
+  --text: #e6ecff;
+  --text-muted: #8b96b8;
+  --calendar-bg: #05070f;
+}
+.origem-dashboard ul {
+  margin: 0;
+  padding: 0;
+}
+.origem-dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+.origem-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) repeat(3, minmax(180px, 0.85fr));
+  gap: 32px;
+  align-items: start;
+}
+.origem-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  min-width: 0;
+}
+.origem-panel .origem-pie-chart {
+  width: min(220px, 100%);
+  height: auto;
+  aspect-ratio: 1;
+}
+.origem-panel .origem-pie {
+  width: 100%;
+  height: 100%;
+}
+.origem-conversao h2 {
+  margin: 0 0 12px;
+}
+.origem-conversao-graficos {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 28px;
+}
+.origem-coluna {
+  margin: 0;
+  min-width: 0;
+}
+.origem-coluna figcaption {
+  margin-bottom: 8px;
+  font-weight: 700;
+}
+.origem-coluna-chart {
+  width: 100%;
+  height: auto;
+  color: var(--text);
+}
+.origem-coluna-chart text {
+  fill: currentColor;
+  font-size: 12px;
+}
+.origem-coluna-chart .origem-coluna-valor {
+  font-size: 11px;
+  font-weight: 700;
+}
+.origem-coluna-eixo {
+  stroke: var(--card-border);
+  stroke-width: 1;
+}
+.origem-dashboard h2 {
+  font-size: 0.95rem;
+  font-weight: 800;
+  margin-bottom: 12px;
+}
+.origem-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  overflow: visible;
+}
+.origem-filters label,
+.origem-period {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+.origem-filters input,
+.origem-period-trigger {
+  min-height: 44px;
+  width: 168px;
+  padding: 8px 12px;
+  border: 1px solid var(--input-border);
+  border-radius: 12px;
+  background: var(--input-bg);
+  color: var(--text);
+  font-weight: 700;
+}
+.origem-period {
+  position: relative;
+}
+.origem-period-trigger {
+  width: 132px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  text-align: left;
+}
+.origem-period-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 6;
+  min-width: 100%;
+  padding: 6px;
+  border: 1px solid var(--input-border);
+  border-radius: 12px;
+  background: var(--dropdown-bg);
+  box-shadow: var(--shadow);
+  list-style: none;
+}
+.origem-period-menu button {
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+.origem-period-menu button:hover,
+.origem-period-menu button[aria-selected='true'] {
+  background: var(--dropdown-hover);
+}
+.origem-date-label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.origem-date-field {
+  position: relative;
+  width: 176px;
+}
+.origem-date-field input[type='text'] {
+  width: 100%;
+  padding-right: 42px;
+  cursor: pointer;
+}
+.origem-date-calendar {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  z-index: 1;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-muted);
+  transform: translateY(-50%);
+  cursor: pointer;
+}
+.origem-calendar {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  z-index: 20;
+  width: 280px;
+  padding: 12px;
+  border: 1px solid var(--input-border);
+  border-radius: 14px;
+  background: var(--calendar-bg);
+  box-shadow: var(--shadow);
+  transform: translateX(-50%);
+}
+.origem-calendar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.origem-calendar-head strong {
+  font-size: 0.8125rem;
+  text-transform: lowercase;
+}
+.origem-calendar-head button,
+.origem-calendar-foot button {
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.origem-calendar-week,
+.origem-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  text-align: center;
+}
+.origem-calendar-week span {
+  padding: 4px 0;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+.origem-calendar-grid button {
+  min-height: 32px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.origem-calendar-grid button.outside {
+  color: var(--text-muted);
+  opacity: 0.45;
+}
+.origem-calendar-grid button.selected {
+  background: #3b82f6;
+  color: #fff;
+}
+.origem-calendar-grid button:disabled {
+  opacity: 0.28;
+  cursor: default;
+}
+.origem-calendar-foot {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+.origem-kpi {
+  max-width: 220px;
+  padding: 14px 16px;
+  border: 1px solid var(--card-border);
+  border-radius: 16px;
+  background: var(--input-bg);
+}
+.origem-kpi span {
+  display: block;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+.origem-kpi strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 1.4rem;
+}
+.origem-tipo {
+  margin: 8px 0 0;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+.origem-pie-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+.origem-pie-chart {
+  position: relative;
+  width: 260px;
+  height: 260px;
+}
+.origem-pie {
+  width: 260px;
+  height: 260px;
+}
+.origem-pie path,
+.origem-pie circle {
+  cursor: pointer;
+}
+.origem-pie-tooltip {
+  position: absolute;
+  z-index: 2;
+  min-width: 160px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #111827;
+  color: #fff;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+  transform: translate(-50%, calc(-100% - 12px));
+}
+.origem-pie-tooltip strong {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.8125rem;
+}
+.origem-pie-tooltip span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.82);
+}
+.origem-pie-tooltip i {
+  width: 8px;
+  height: 8px;
+  border-radius: 99px;
+}
+.origem-pie-legend {
+  list-style: none;
+  width: min(360px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.origem-pie-legend li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+.origem-pie-legend i {
+  width: 10px;
+  height: 10px;
+  border-radius: 99px;
+  flex-shrink: 0;
+}
+.origem-pie-legend em {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-style: normal;
+}
+.origem-campaigns {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.origem-campaigns li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--input-bg);
+}
+.origem-campaigns strong {
+  display: block;
+  font-size: 0.875rem;
+}
+.origem-campaigns span,
+.origem-campaigns em {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-style: normal;
+  font-weight: 700;
+}
+
+@media (max-width: 1280px) {
+  .origem-columns {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 768px) {
+  .origem-columns,
+  .origem-conversao-graficos {
+    grid-template-columns: 1fr;
+  }
+}
+.origem-dashboard .subtitle {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+.origem-dashboard .message.error {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(225, 29, 72, 0.1);
+  color: #e11d48;
+  font-size: 0.875rem;
+  font-weight: 600;
+}

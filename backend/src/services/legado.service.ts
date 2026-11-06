@@ -37,7 +37,8 @@ function numero(expr: string) {
   return `CASE WHEN replace(coalesce(${expr}, ''), ',', '.') ~ '^[0-9]+(\\.[0-9]+)?$' THEN replace(${expr}, ',', '.')::numeric ELSE 0 END`;
 }
 
-const VALOR_CONTRATO = `
+/** Valor de cada contratação pelo cadastro antigo: valor da vaga (vaga_valores) e, sem ele, o da empresa (faturamento_empresa). */
+const VALOR_LEGADO = `
   COALESCE(
     CASE WHEN vv.cobra_recorrente::text = '1' THEN ${numero("vv.valor_recorrente")} END,
     CASE WHEN fe.cobra_recorrente::text = '1' THEN ${numero("fe.valor")} END,
@@ -49,6 +50,25 @@ const VALOR_CONTRATO = `
            ELSE ${numero("coalesce(nullif(vv.valor_selecao, ''), fe.valor_selecao)")}
       END
     ELSE 0 END
+`;
+
+/**
+ * Preço do contrato (public.valor_empresas, alias ve) na frente do cadastro antigo, quando a modalidade está conferida:
+ * estágio = taxa mensal por estagiário + taxa de R&S no mês da contratação;
+ * CLT = no mês da contratação, % do salário ou valor fixo. Sem preço conferido, vale o cálculo antigo.
+ */
+const VALOR_CONTRATO = `
+  COALESCE(
+    CASE WHEN v.tipo_vaga::text = '1' AND ve.est_status = 'ok' AND ve.est_mensal IS NOT NULL THEN
+      ve.est_mensal + CASE WHEN cv.data_contratacao LIKE $4 || '%' THEN coalesce(ve.est_rs, 0) ELSE 0 END
+    END,
+    CASE WHEN v.tipo_vaga::text = '2' AND ve.clt_status = 'ok' AND ve.clt_valor IS NOT NULL THEN
+      CASE WHEN cv.data_contratacao LIKE $4 || '%' THEN
+        CASE WHEN ve.clt_modelo = 'Percentual' THEN ${numero("v.salario")} * ve.clt_valor / 100 ELSE ve.clt_valor END
+      ELSE 0 END
+    END,
+    (${VALOR_LEGADO})
+  )
 `;
 
 function periodo(mes: string, ano: string) {
@@ -105,6 +125,7 @@ export class LegadoService {
       JOIN dna_work.empresa e ON v.id_empresa = e.id_empresa
       JOIN dna_work.faturamento_empresa fe ON fe.id_empresa = e.id_empresa AND fe.modalidade_vaga::text = v.tipo_vaga::text
       LEFT JOIN dna_work.vaga_valores vv ON vv.comparador::text = v.comparador::text
+      LEFT JOIN public.valor_empresas ve ON ve.id_empresa = e.id_empresa::text
       WHERE (
         cv.data_demicao IS NULL OR btrim(cv.data_demicao) = ''
         OR (
@@ -219,6 +240,7 @@ export class LegadoService {
       JOIN dna_work.empresa e ON v.id_empresa = e.id_empresa
       JOIN dna_work.faturamento_empresa fe ON fe.id_empresa = e.id_empresa AND fe.modalidade_vaga::text = v.tipo_vaga::text
       LEFT JOIN dna_work.vaga_valores vv ON vv.comparador::text = v.comparador::text
+      LEFT JOIN public.valor_empresas ve ON ve.id_empresa = e.id_empresa::text
       LEFT JOIN dna_work.candidato c ON c.id_candidato = cv.id_candidato
       LEFT JOIN dna_work.modalidade_vaga m ON m.id = v.tipo_vaga
       WHERE e.id_empresa = $5

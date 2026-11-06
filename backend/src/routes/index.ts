@@ -24,6 +24,10 @@ import type { EmpresaService } from "../services/empresa.service.js";
 import { camposFromBody, type TceService } from "../services/tce.service.js";
 import type { TermoService } from "../services/termo.service.js";
 import { MANUAL_FIELDS } from "../lib/tce-fields.js";
+import { valorDaEmpresa, valoresDoGrupo } from "../repositories/valor-empresa.repository.js";
+import { origemComCache } from "../origem/cache.js";
+import { webhookGanho } from "../origem/webhook-ganho.js";
+import { webhookLeadCriado } from "../origem/webhook-lead-criado.js";
 import { listarModelosEmail, salvarModeloEmail, excluirModeloEmail } from "../lib/email-modelo.js";
 import type { ProcessoService } from "../services/processo.service.js";
 import type { AcessoService } from "../services/acesso.service.js";
@@ -102,6 +106,22 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
     return ok({ encerrada: true });
   });
 
+  // Origem dos candidatos: só lê tracker_leads/tracker_ganhos (Supabase) e o CRM; quem grava são os webhooks abaixo.
+  api.get("/api/v1/dashboard/origem", {
+    schema: { tags: ["dashboard"], querystring: z.object({ from: z.string().optional(), to: z.string().optional() }) },
+  }, async (request, reply) => {
+    const resultado = await origemComCache(request.query.from ?? null, request.query.to ?? null);
+    return reply.code(resultado.status).send(resultado.body);
+  });
+  // Webhooks do CRM DNA e do n8n (públicos, como no app candidaturas).
+  api.post("/api/v1/webhooks/lead-criado", async (request, reply) => {
+    const resultado = await webhookLeadCriado(request.body ?? {});
+    return reply.code(resultado.status).send(resultado.body);
+  });
+  api.post("/api/v1/webhooks/ganho", async (request, reply) => {
+    const resultado = await webhookGanho(request.body ?? {});
+    return reply.code(resultado.status).send(resultado.body);
+  });
   api.get("/api/v1/dashboard", {
     schema: {
       tags: ["dashboard"],
@@ -150,6 +170,9 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
   });
   api.get("/api/v1/empresas/:id", { schema: { tags: ["empresas"], params: z.object({ id: z.string().min(1) }) } }, async (request) => {
     return ok(await services.empresas.get(request.params.id));
+  });
+  api.get("/api/v1/empresas/:id/cobranca", { schema: { tags: ["empresas"], params: z.object({ id: z.string().min(1) }) } }, async (request) => {
+    return ok(await valorDaEmpresa(db, request.params.id));
   });
   api.patch("/api/v1/empresas/:id", {
     schema: { tags: ["empresas"], params: z.object({ id: z.string().min(1) }), body: empresaPatchSchema },
@@ -595,6 +618,9 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
   api.get("/api/v1/grupos/:id", {
     schema: { tags: ["grupos"], params: z.object({ id: z.string().uuid() }) },
   }, async (request) => ok(await services.cadastro.obterGrupo(request.params.id)));
+  api.get("/api/v1/grupos/:id/cobranca", {
+    schema: { tags: ["grupos"], params: z.object({ id: z.string().uuid() }) },
+  }, async (request) => ok(await valoresDoGrupo(db, request.params.id)));
   api.post("/api/v1/grupos", { schema: { tags: ["grupos"], body: grupoCreateSchema } }, async (request, reply) => {
     return reply.code(201).send(ok(await services.cadastro.criarGrupo(request.body)));
   });

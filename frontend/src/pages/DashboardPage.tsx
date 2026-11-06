@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Badge, Skeleton, cn } from "@/components/ui";
 import { PreviewFlutuante } from "@/components/preview";
+import { OrigemDashboard } from "@/origem/OrigemDashboard";
 import { api } from "@/lib/api";
 import { dateBr, regimeLabel } from "@/lib/format";
 
@@ -275,6 +276,13 @@ export function DashboardPage() {
           </section>
         </>
       ) : null}
+      <section className="rounded-xl bg-[#12141a] p-5 ring-1 ring-white/10">
+        <h2 className="text-xl font-extrabold text-white">Origem dos candidatos</h2>
+        <p className="mb-5 mt-1 text-sm text-slate-400">
+          Quem entrou em Lead de entrada, quem passou por Atendimento candidatura, por Processo seletivo realizado e quem entrou em Ganho. CLT ou estágio entra quando a pessoa chega em Atendimento IA.
+        </p>
+        <OrigemDashboard />
+      </section>
     </div>
   );
 }
