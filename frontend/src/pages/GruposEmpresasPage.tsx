@@ -270,6 +270,7 @@ type FormularioVaga = {
   sab_saida: string;
   domingo_entrada: string;
   domingo_saida: string;
+  beneficios: string;
 };
 type Modelo = { vagaId: string; empresaNome?: string; formulario: Omit<FormularioVaga, "cargo_id"> & { cargo_id: string | null } };
 const NOVO_CARGO = "novo";
@@ -279,7 +280,7 @@ const vagaVazia: FormularioVaga & { empresa_id: string; quantidade: string } = {
   sexo: "I", idade: "", idade_ate: "", atividades: "", quantidade: "1",
   segunda_entrada: "", segunda_saida: "", terca_entrada: "", terca_saida: "", quarta_entrada: "", quarta_saida: "",
   quinta_entrada: "", quinta_saida: "", sexta_entrada: "", sexta_saida: "", sab_entrada: "", sab_saida: "",
-  domingo_entrada: "", domingo_saida: "",
+  domingo_entrada: "", domingo_saida: "", beneficios: "",
 };
 const diasHorario: Array<{ nome: string; entrada: keyof FormularioVaga; saida: keyof FormularioVaga }> = [
   { nome: "Segunda", entrada: "segunda_entrada", saida: "segunda_saida" },
@@ -662,6 +663,7 @@ function AbaVaga({ empresaInicial, modeloInicial }: { empresaInicial: string; mo
           {textoPrevisto(form, modos) ? <p className="text-sm text-slate-600">Texto do horário: <span className="font-medium text-navy-900">{textoPrevisto(form, modos)}</span></p> : null}
         </div>
         <div className="sm:col-span-2 lg:col-span-4"><Field label="Atividades"><Textarea required minLength={3} className="min-h-20" value={form.atividades} onChange={(event) => setForm({ ...form, atividades: event.target.value })} /></Field></div>
+        <div className="sm:col-span-2 lg:col-span-4"><Field label="Benefícios"><Textarea className="min-h-24" placeholder={"Um por linha. Ex.: Auxílio Transporte — Mensal"} value={form.beneficios} onChange={(event) => setForm({ ...form, beneficios: event.target.value })} /></Field></div>
       </Card>
       <div><Button disabled={save.isPending}>{save.isPending ? "Salvando…" : "Salvar vaga"}</Button></div>
     </form>

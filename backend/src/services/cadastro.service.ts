@@ -663,6 +663,7 @@ export class CadastroService {
       km: 30,
       atividades: input.atividades,
       horario,
+      beneficios: input.beneficios?.trim() || null,
       cep: empresa.cep,
       latitude: empresa.latitude,
       longitude: empresa.longitude,
@@ -760,12 +761,12 @@ export class CadastroService {
           await pg.query(
             `INSERT INTO public.vaga (
               id, vaga_id, grupo_id, empresa_id, tipo_vaga, cargo, salario, carga_horaria, sexo, idade, idade_ate, km, atividades, horario, cep, latitude, longitude,
-              cargo_id, descricao, requisitos
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
+              cargo_id, descricao, requisitos, beneficios
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
             [
               linha.id, linha.vaga_id, linha.grupo_id, linha.empresa_id, linha.tipo_vaga, linha.cargo, linha.salario,
               linha.carga_horaria, linha.sexo, linha.idade, linha.idade_ate, linha.km, linha.atividades, linha.horario,
-              linha.cep, linha.latitude, linha.longitude, cargoPostgres, linha.descricao, linha.requisitos,
+              linha.cep, linha.latitude, linha.longitude, cargoPostgres, linha.descricao, linha.requisitos, linha.beneficios,
             ],
           );
         }
@@ -776,8 +777,8 @@ export class CadastroService {
               id_vaga, comparador, id_empresa, cargo, salario, idade, idadeate, horabase, hora_saida_base,
               segunda_entrada, segunda_saida, terca_entrada, terca_saida, quarta_entrada, quarta_saida,
               quinta_entrada, quinta_saida, sexta_entrada, sexta_saida, sab_entrada, sab_saida, domindo_entrada, domindo_saida, atribuicaoes, atribu_contrato,
-              sede, dataabertura, tipo_vaga, sexo, status, carga_horaria, publicar, codigo, km, faturar, texto_carga, quantidade_posicoes
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,10,$26,$27,$28,0,$29,1,$30,'30','S',$31,1)`,
+              sede, dataabertura, tipo_vaga, sexo, status, carga_horaria, publicar, codigo, km, faturar, texto_carga, quantidade_posicoes, beneficios_texto
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,10,$26,$27,$28,0,$29,1,$30,'30','S',$31,1,$32)`,
             [
               id, comparador, empresa.id, cargo.nome, salario, String(input.idade), input.idade_ate ? String(input.idade_ate) : null,
               horas.entrada, horas.saida,
@@ -785,6 +786,7 @@ export class CadastroService {
               horas.quarta_entrada, horas.quarta_saida, horas.quinta_entrada, horas.quinta_saida,
               horas.sexta_entrada, horas.sexta_saida, horas.sab_entrada, horas.sab_saida, horas.domingo_entrada, horas.domingo_saida,
               input.atividades, input.atividades, hoje, tipo, input.sexo, input.carga_horaria, codigo, horario,
+              input.beneficios?.trim() || null,
             ],
           );
           await pg.query(

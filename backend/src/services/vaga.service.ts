@@ -10,6 +10,7 @@ import { EmpresaRepository } from "../repositories/empresa.repository.js";
 import { one } from "../repositories/sql.js";
 import { VagaRepository } from "../repositories/vaga.repository.js";
 import type { VagaCreate, VagaListQuery, VagaPatch } from "../schemas/vaga.js";
+import { supabaseRest } from "../lib/supabase-rest.js";
 import { presentVaga } from "./presenters.js";
 
 export class VagaService {
@@ -70,6 +71,7 @@ export class VagaService {
       }
     }
     await this.repo.update(this.db, id, dados, salario);
+    if (input.beneficios !== undefined) await this.salvarBeneficios(id, input.beneficios);
     return presentVaga((await this.repo.findById(this.db, id))!);
   }
 
@@ -85,7 +87,35 @@ export class VagaService {
     const row = await this.repo.findById(this.db, id);
     if (!row) throw new AppError(404, "VAGA_NAO_ENCONTRADA", "Vaga não encontrada.");
     const ficha = await this.repo.ficha(this.db, id, row.comparador);
-    return { ...presentVaga(row), ...ficha };
+    return { ...presentVaga(row), ...ficha, beneficios: await this.lerBeneficios(id) };
+  }
+
+  private rest() {
+    if (!this.config.SUPABASE_URL || !this.config.SUPABASE_SERVICE_ROLE_KEY) return null;
+    return supabaseRest({ url: this.config.SUPABASE_URL, key: this.config.SUPABASE_SERVICE_ROLE_KEY });
+  }
+
+  private async lerBeneficios(id: string) {
+    const rest = this.rest();
+    if (rest) {
+      const rows = await rest.get<Array<{ beneficios: string | null }>>(`vaga?id=eq.${encodeURIComponent(id)}&select=beneficios`);
+      const publicado = rows[0]?.beneficios?.trim();
+      if (publicado) return publicado;
+    } else {
+      const publicada = await one<{ beneficios: string | null }>(this.db, "SELECT beneficios FROM public.vaga WHERE id::text = $1", [id]);
+      const publicado = publicada?.beneficios?.trim();
+      if (publicado) return publicado;
+    }
+    const local = await one<{ beneficios_texto: string | null }>(this.db, "SELECT beneficios_texto FROM dna_work.vaga WHERE id_vaga = $1", [id]);
+    return local?.beneficios_texto ?? "";
+  }
+
+  private async salvarBeneficios(id: string, beneficios: string) {
+    const texto = beneficios.trim() || null;
+    await this.db.query("UPDATE dna_work.vaga SET beneficios_texto = $2 WHERE id_vaga = $1", [id, texto]);
+    await this.db.query("UPDATE public.vaga SET beneficios = $2 WHERE id::text = $1", [id, texto]);
+    const rest = this.rest();
+    if (rest) await rest.update(`vaga?id=eq.${encodeURIComponent(id)}`, { beneficios: texto });
   }
 
   opcoesFiltro() {

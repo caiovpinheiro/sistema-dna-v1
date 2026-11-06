@@ -69,6 +69,7 @@ export const vagaCadastroSchema = z.object({
     z.number({ required_error: "Informe a idade até.", invalid_type_error: "Informe a idade até." }).int().min(14).max(80),
   ),
   atividades: z.string().trim().min(3).max(4000),
+  beneficios: z.string().trim().max(4000).optional(),
   quantidade: z.coerce.number().int().min(1).max(20),
 }).superRefine((value, ctx) => {
   if (Boolean(value.cargo_id) === Boolean(value.novo_cargo)) {

@@ -40,6 +40,7 @@ const schema = z.object({
   domindo_saida: z.string().optional(),
   texto_carga: z.string().optional(),
   sexo: z.enum(["M", "F", "I"]),
+  beneficios: z.string().optional(),
   situacao: z.enum(["aberta", "pausada", "contratada", "fechada"]),
 });
 type Form = z.infer<typeof schema>;
@@ -81,7 +82,7 @@ export function VagaFormPage() {
   const modes = useQuery({ queryKey: ["modalidades"], queryFn: () => api<Mode[]>("/api/v1/modalidades") });
   const modelo = useQuery({ queryKey: ["modelo", modeloId], enabled: Boolean(modeloId) && !id, queryFn: () => api<Modelo>(`/api/v1/modelos/${modeloId}`) });
   const current = useQuery({ queryKey: ["vaga", id], enabled: Boolean(id), queryFn: () => api<Form & { salario: number | null; razao_social?: string | null; nome_fantasia?: string | null }>(`/api/v1/vagas/${id}`) });
-  const form = useForm<Form>({ resolver: zodResolver(schema), defaultValues: { id_empresa: params.get("empresa") ?? "", quantidade_posicoes: 1, tipo_vaga: 2, sexo: "I", situacao: "aberta" } });
+  const form = useForm<Form>({ resolver: zodResolver(schema), defaultValues: { id_empresa: params.get("empresa") ?? "", quantidade_posicoes: 1, tipo_vaga: 2, sexo: "I", beneficios: "", situacao: "aberta" } });
   // Fixo, Escala ou Folga por dia, na ordem de "dias". Escala vem do texto do horário; dia sem hora é folga.
   const [modos, setModos] = useState<ModoDia[]>(() => dias.map(() => "fixo"));
   function textoPelosDias(atuais: ModoDia[]) {
@@ -131,6 +132,7 @@ export function VagaFormPage() {
       domindo_saida: hora(data.domindo_saida),
       texto_carga: hora(data.texto_carga),
       sexo: data.sexo === "M" || data.sexo === "F" ? data.sexo : "I",
+      beneficios: data.beneficios ?? "",
     });
     const escala = diasPorEscala(data.texto_carga);
     setModos(dias.map(([, entrada], indice) => (SEM_HORA.has(hora(data[entrada])) ? "folga" : escala.has(indice) ? "escala" : "fixo")));
@@ -152,12 +154,13 @@ export function VagaFormPage() {
       destaque: textoPlano(item.destaque),
       obs: "",
       sexo: "I",
+      beneficios: "",
       situacao: "aberta",
     });
   }, [modelo.data, id, form, empresaId]);
   const save = useMutation({
     mutationFn: (values: Form) => {
-      const horas = new Set(["horabase", "hora_saida_base", "segunda_entrada", "segunda_saida", "terca_entrada", "terca_saida", "quarta_entrada", "quarta_saida", "quinta_entrada", "quinta_saida", "sexta_entrada", "sexta_saida", "sab_entrada", "sab_saida", "domindo_entrada", "domindo_saida", "texto_carga"]);
+      const horas = new Set(["horabase", "hora_saida_base", "segunda_entrada", "segunda_saida", "terca_entrada", "terca_saida", "quarta_entrada", "quarta_saida", "quinta_entrada", "quinta_saida", "sexta_entrada", "sexta_saida", "sab_entrada", "sab_saida", "domindo_entrada", "domindo_saida", "texto_carga", "beneficios"]);
       const payload = Object.fromEntries(Object.entries(values).filter(([chave, value]) => horas.has(chave) || (value !== undefined && value !== null && value !== "")));
       return id
         ? api(`/api/v1/vagas/${id}`, { method: "PATCH", body: JSON.stringify(payload) })
@@ -234,6 +237,7 @@ export function VagaFormPage() {
           <div><Button type="button" variant="secondary" onClick={() => form.setValue("texto_carga", textoPelosDias(modos), { shouldDirty: true })}>Gerar texto pelos dias</Button></div>
         </div>
         <div className="md:col-span-2"><Field label="Atividades da vaga"><Textarea {...form.register("atribuicaoes")} /></Field></div>
+        <div className="md:col-span-2"><Field label="Benefícios"><Textarea className="min-h-24" placeholder={"Um por linha. Ex.: Auxílio Transporte — Mensal"} {...form.register("beneficios")} /></Field></div>
         <div className="md:col-span-2"><Field label="Atividades no contrato"><Textarea {...form.register("atribu_contrato")} /></Field></div>
         <div className="md:col-span-2"><Field label="Requisitos desejáveis"><Textarea {...form.register("requisitos_desejaveis")} /></Field></div>
         <div className="md:col-span-2"><Field label="Destaques"><Textarea {...form.register("destaque")} /></Field></div>

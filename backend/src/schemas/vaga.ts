@@ -35,6 +35,7 @@ const fields = {
   domindo_saida: z.string().trim().max(20).optional(),
   texto_carga: z.string().trim().max(255).optional(),
   sexo: z.enum(["M", "F", "I"]).optional(),
+  beneficios: z.string().trim().max(4000).optional(),
 };
 
 export const vagaCreateSchema = z.object({ ...fields, situacao: z.enum(STATUS_VAGA).optional() });
@@ -67,6 +68,7 @@ export const vagaPatchSchema = z.object({
   domindo_saida: fields.domindo_saida,
   texto_carga: fields.texto_carga,
   sexo: fields.sexo,
+  beneficios: fields.beneficios,
 });
 
 export const vagaListSchema = z.object({
