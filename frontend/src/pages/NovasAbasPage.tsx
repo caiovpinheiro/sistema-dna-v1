@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Paginacao } from "@/components/paginacao";
@@ -133,7 +133,7 @@ export function DocumentosPendentesPage() {
   );
 }
 
-type ModeloConsulta = { vaga_id: string; nome: string; cargo: string; tipo_vaga: string; salario: string; empresa_id: string | null };
+type ModeloConsulta = { vaga_id: string; cargo: string; tipo_vaga: string; salario: string; carga_horaria: string; horario: string };
 
 function normalizarBusca(value: string) {
   return value.normalize("NFD").replace(/\p{M}/gu, "").toLocaleLowerCase();
@@ -180,55 +180,68 @@ function Pesquisa({ label, value, onChange, sugestoes, placeholder }: {
 export function ConsultarModelosPage() {
   const [params, setParams] = useSearchParams();
   const consulta = Object.fromEntries(params.entries());
-  const [nome, setNome] = useState(params.get("nome") ?? "");
   const [cargo, setCargo] = useState(params.get("cargo") ?? "");
+  const client = useQueryClient();
   const result = useQuery({
     queryKey: ["modelos-consulta", consulta],
     queryFn: () => api<ModeloConsulta[]>(`/api/v1/vagas/modelos?${new URLSearchParams(consulta)}`),
   });
   const opcoes = useQuery({
     queryKey: ["modelos-opcoes"],
-    queryFn: () => api<{ empresas: string[]; cargos: string[] }>("/api/v1/vagas/modelos/opcoes"),
+    queryFn: () => api<{ cargos: string[] }>("/api/v1/vagas/modelos/opcoes"),
+  });
+  const apagar = useMutation({
+    mutationFn: (vagaId: string) => api(`/api/v1/vagas/modelos/${vagaId}`, { method: "DELETE" }),
+    onSuccess: async () => {
+      await client.invalidateQueries({ queryKey: ["modelos-consulta"] });
+      await client.invalidateQueries({ queryKey: ["modelos-vaga"] });
+    },
   });
   useEffect(() => {
-    setNome(params.get("nome") ?? "");
     setCargo(params.get("cargo") ?? "");
   }, [params]);
   function pesquisar(form: FormData) {
     const next = new URLSearchParams();
-    if (nome.trim()) next.set("nome", nome.trim());
     if (cargo.trim()) next.set("cargo", cargo.trim());
     const tipo = form.get("tipo");
     if (typeof tipo === "string" && tipo && tipo !== "todos") next.set("tipo", tipo);
     setParams(next);
   }
+  function confirmarApagar(item: ModeloConsulta) {
+    if (window.confirm(`Apagar o modelo ${item.cargo} (${item.tipo_vaga})? As vagas já abertas não mudam.`)) apagar.mutate(item.vaga_id);
+  }
   const linhas = result.data?.data ?? [];
   return (
-    <Screen title="Buscar" subtitle="Modelo de Vaga">
+    <Screen title="Modelos de vaga" subtitle="Um modelo por cargo e modalidade, para todas as empresas">
+      <div><Link to="/vagas/modelos/novo"><Button type="button">Criar modelo</Button></Link></div>
       <form onSubmit={(event) => { event.preventDefault(); pesquisar(new FormData(event.currentTarget)); }}>
-        <Card className="grid gap-4 md:grid-cols-4">
-          <Pesquisa label="Nome" value={nome} onChange={setNome} sugestoes={opcoes.data?.data.empresas ?? []} />
-          <Pesquisa label="Cargo da Vaga" value={cargo} onChange={setCargo} sugestoes={opcoes.data?.data.cargos ?? []} placeholder="Cargo" />
+        <Card className="grid gap-4 md:grid-cols-3">
+          <Pesquisa label="Cargo" value={cargo} onChange={setCargo} sugestoes={opcoes.data?.data.cargos ?? []} placeholder="Cargo" />
           <Field label="Modalidade">
             <Select name="tipo" aria-label="Modalidade" defaultValue={params.get("tipo") ?? "todos"}>
               <option value="todos">Todos</option>
               <option value="clt">CLT</option>
               <option value="estagio">Estágio</option>
-              <option value="pj">Pessoa Juridica</option>
             </Select>
           </Field>
           <Button type="submit" variant="secondary" className="self-end">Pesquisar</Button>
         </Card>
       </form>
+      {apagar.isError ? <p className="text-sm text-rose-600">Não foi possível apagar o modelo.</p> : null}
       {result.isError ? <p className="text-sm text-rose-600">Não foi possível consultar os modelos.</p> : (
         <DataTable
-          columns={["Nome", "Cargo", "Tipo de vaga", "Salário", "Abrir Vaga"]}
+          columns={["Cargo", "Modalidade", "Salário", "Carga", "Horário", "Ações"]}
           rows={linhas.map((item) => [
-            item.nome,
             item.cargo,
             item.tipo_vaga,
             item.salario,
-            <Link key={item.vaga_id} className="font-semibold text-cyan-800" to={`/grupos-empresas?aba=vaga&modelo=${item.vaga_id}${item.empresa_id ? `&empresa=${item.empresa_id}` : ""}`}>Abrir vaga</Link>,
+            item.carga_horaria ? `${item.carga_horaria} h` : "—",
+            item.horario || "—",
+            <div key={item.vaga_id} className="flex flex-wrap gap-3 whitespace-nowrap">
+              <Link className="font-semibold text-cyan-800" to={`/grupos-empresas?aba=vaga&modelo=${item.vaga_id}`}>Abrir vaga</Link>
+              <Link className="font-semibold text-cyan-800" to={`/vagas/modelos/${item.vaga_id}/editar`}>Editar</Link>
+              <button type="button" className="font-semibold text-rose-700" disabled={apagar.isPending} onClick={() => confirmarApagar(item)}>Apagar</button>
+            </div>,
           ])}
         />
       )}

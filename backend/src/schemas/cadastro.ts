@@ -32,8 +32,7 @@ export const empresaCadastroSchema = z.object({
 
 const hora = z.string().regex(/^\d{2}:\d{2}$/, "Use HH:MM.");
 
-export const vagaCadastroSchema = z.object({
-  empresa_id: z.string().uuid(),
+const vagaCampos = z.object({
   tipo: z.enum(["estagio", "clt"]),
   carga_horaria: z.enum(["20", "30", "40", "44"]),
   cargo_id: z.preprocess((value) => (value === "" ? undefined : value), z.string().uuid().optional()),
@@ -70,8 +69,9 @@ export const vagaCadastroSchema = z.object({
   ),
   atividades: z.string().trim().min(3).max(4000),
   beneficios: z.string().trim().max(4000).optional(),
-  quantidade: z.coerce.number().int().min(1).max(20),
-}).superRefine((value, ctx) => {
+});
+
+function regrasDaVaga(value: z.infer<typeof vagaCampos>, ctx: z.RefinementCtx) {
   if (Boolean(value.cargo_id) === Boolean(value.novo_cargo)) {
     ctx.addIssue({ code: "custom", message: "Escolha um cargo da lista ou cadastre um novo.", path: ["cargo_id"] });
   }
@@ -81,8 +81,17 @@ export const vagaCadastroSchema = z.object({
   if (value.idade_ate !== undefined && value.idade_ate < value.idade) {
     ctx.addIssue({ code: "custom", message: "A idade final é menor que a inicial.", path: ["idade_ate"] });
   }
-});
+}
+
+export const vagaCadastroSchema = vagaCampos.extend({
+  empresa_id: z.string().uuid(),
+  quantidade: z.coerce.number().int().min(1).max(20),
+}).superRefine(regrasDaVaga);
+
+/** Modelo global: os mesmos campos da vaga, sem empresa e sem quantidade. Um por cargo e modalidade. */
+export const modeloVagaSchema = vagaCampos.superRefine(regrasDaVaga);
 
 export type GrupoCreate = z.infer<typeof grupoCreateSchema>;
 export type EmpresaCadastro = z.infer<typeof empresaCadastroSchema>;
 export type VagaCadastro = z.infer<typeof vagaCadastroSchema>;
+export type ModeloVaga = z.infer<typeof modeloVagaSchema>;

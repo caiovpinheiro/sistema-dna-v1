@@ -54,3 +54,27 @@ export function diasPorEscala(texto: string | null | undefined): Set<number> {
   }
   return dias;
 }
+
+/**
+ * Lê de volta um texto gerado por textoDoHorario ("Segunda a sexta, 08:00 às 17:00; sábado por escala, 08:00 às 14:00").
+ * Dia que o texto não cita é folga. Devolve null quando o texto está em outro formato.
+ */
+export function diasDoTexto(texto: string | null | undefined): DiaDoHorario[] | null {
+  const partes = (texto ?? "").split(";").map((parte) => parte.trim()).filter(Boolean);
+  if (!partes.length) return null;
+  const nome = "(segunda|terça|terca|quarta|quinta|sexta|sábado|sabado|domingo)";
+  const formato = new RegExp(`^${nome}(?:\\s+(?:a|e)\\s+${nome})?(\\s+por escala)?,\\s*(\\d{2}:\\d{2}) às (\\d{2}:\\d{2})$`, "i");
+  const indice = (valor: string) => NOMES.indexOf(valor.toLowerCase().replace("terca", "terça").replace("sabado", "sábado"));
+  const dias: DiaDoHorario[] = DIAS_ESCALA.map(() => ({ modo: "folga", entrada: "", saida: "" }));
+  for (const parte of partes) {
+    const match = formato.exec(parte);
+    if (!match) return null;
+    const inicio = indice(match[1]);
+    const fim = match[2] ? indice(match[2]) : inicio;
+    if (inicio < 0 || fim < inicio) return null;
+    for (let dia = inicio; dia <= fim; dia += 1) {
+      dias[dia] = { modo: match[3] ? "escala" : "fixo", entrada: match[4], saida: match[5] };
+    }
+  }
+  return dias;
+}

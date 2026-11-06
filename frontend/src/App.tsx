@@ -14,7 +14,7 @@ import { EmailsPage } from "@/pages/EmailsPage";
 import { EmpresaDetailPage } from "@/pages/EmpresaDetailPage";
 import { EmpresaFormPage } from "@/pages/EmpresaFormPage";
 import { EmpresasPage } from "@/pages/EmpresasPage";
-import { GruposEmpresasPage } from "@/pages/GruposEmpresasPage";
+import { GruposEmpresasPage, ModeloFormPage } from "@/pages/GruposEmpresasPage";
 import { ComissaoConsultarPage, ComissaoEmpresasPage, GerarFaturamentoPage, GerarHoleritePage, RelatorioProcfyPage } from "@/pages/FinanceiroPage";
 import { ContasReceberPage } from "@/pages/ContasReceberPage";
 import { ReguaCobrancaPage } from "@/pages/ReguaCobrancaPage";
@@ -74,7 +74,8 @@ export function App() {
             <Route path="/empresas/:id/editar" element={<EmpresaFormPage />} />
             <Route path="/vagas" element={<VagasPage />} />
             <Route path="/vagas/modelos" element={<ConsultarModelosPage />} />
-            <Route path="/vagas/modelos/novo" element={<Navigate to="/grupos-empresas?aba=vaga" replace />} />
+            <Route path="/vagas/modelos/novo" element={<ModeloFormPage />} />
+            <Route path="/vagas/modelos/:id/editar" element={<ModeloFormPage />} />
             <Route path="/vagas/nova" element={<Navigate to="/grupos-empresas?aba=vaga" replace />} />
             <Route path="/vagas/:id" element={<VagaDetailPage />} />
             <Route path="/vagas/:id/editar" element={<VagaFormPage />} />

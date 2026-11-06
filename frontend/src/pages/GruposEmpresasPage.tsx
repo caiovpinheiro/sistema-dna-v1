@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { BuscaOpcao, normalizarBusca } from "@/components/busca-opcao";
 import { Button, Card, Empty, Field, Input, Select, Textarea } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
@@ -272,7 +272,10 @@ type FormularioVaga = {
   domingo_saida: string;
   beneficios: string;
 };
-type Modelo = { vagaId: string; empresaNome?: string; formulario: Omit<FormularioVaga, "cargo_id"> & { cargo_id: string | null } };
+type Modelo = {
+  vagaId: string;
+  formulario: Omit<FormularioVaga, "cargo_id"> & { cargo_id: string | null; escala?: DiaEscala[]; folga?: DiaEscala[] };
+};
 const NOVO_CARGO = "novo";
 const novoCargoVazio = { nome: "", descricao: "", requisitos: "" };
 const vagaVazia: FormularioVaga & { empresa_id: string; quantidade: string } = {
@@ -404,28 +407,39 @@ function cargaDoHorario(form: FormularioVaga) {
 
 function rotuloModelo(modelo: Modelo) {
   const tipo = modelo.formulario.tipo === "clt" ? "CLT" : "Estágio";
-  const carga = modelo.formulario.carga_horaria ? `${modelo.formulario.carga_horaria}h` : "";
-  return [modelo.formulario.cargo || "Sem cargo", tipo, carga].filter(Boolean).join(" · ");
+  return `${modelo.formulario.cargo || "Sem cargo"} · ${tipo}`;
 }
 
-function rotulosDistintos(lista: Modelo[]) {
-  const bases = lista.map(rotuloModelo);
-  const vezes = new Map<string, number>();
-  for (const base of bases) vezes.set(base, (vezes.get(base) ?? 0) + 1);
-  return lista.map((modelo, index) => {
-    const base = bases[index] ?? "";
-    if ((vezes.get(base) ?? 0) < 2) return base;
-    const sexo = modelo.formulario.sexo === "M" ? "Masculino" : modelo.formulario.sexo === "F" ? "Feminino" : "";
-    const idade = modelo.formulario.idade
-      ? `${modelo.formulario.idade}${modelo.formulario.idade_ate ? ` a ${modelo.formulario.idade_ate}` : ""}`
-      : "";
-    const extra = [modelo.empresaNome, sexo, idade].filter(Boolean).join(" · ");
-    return extra ? `${base} · ${extra}` : base;
-  });
+function semModos(modelo: Modelo) {
+  const { escala: _escala, folga: _folga, ...formulario } = modelo.formulario;
+  return formulario;
 }
 
-function AbaVaga({ empresaInicial, modeloInicial }: { empresaInicial: string; modeloInicial: string }) {
-  const empresas = useQuery({ queryKey: ["empresas-tela"], queryFn: () => api<Empresa[]>("/api/v1/grupos-empresas/empresas") });
+/** Tipo de cada dia que o modelo guardou: o que não é escala nem folga é fixo. */
+function modosDoModelo(modelo: Modelo): Record<DiaEscala, ModoDia> {
+  const escala = new Set(modelo.formulario.escala ?? []);
+  const folga = new Set(modelo.formulario.folga ?? []);
+  return Object.fromEntries(DIAS_ESCALA.map((dia) => [dia, folga.has(dia) ? "folga" : escala.has(dia) ? "escala" : "fixo"])) as Record<DiaEscala, ModoDia>;
+}
+
+/** Criar ou editar um modelo global: o mesmo formulário da vaga, sem empresa e sem quantidade. */
+export function ModeloFormPage() {
+  const { id } = useParams();
+  return (
+    <div className="grid gap-5">
+      <div>
+        <h1 className="text-2xl font-extrabold">{id ? "Editar modelo" : "Criar modelo"}</h1>
+        <p className="text-sm text-slate-500">Um modelo por cargo e modalidade, para todas as empresas. Ao abrir uma vaga, ele preenche tudo menos a empresa.</p>
+      </div>
+      <AbaVaga key={id ?? "novo"} modo="modelo" empresaInicial="" modeloInicial={id ?? ""} />
+    </div>
+  );
+}
+
+function AbaVaga({ empresaInicial, modeloInicial, modo = "vaga" }: { empresaInicial: string; modeloInicial: string; modo?: "vaga" | "modelo" }) {
+  const ehModelo = modo === "modelo";
+  const navigate = useNavigate();
+  const empresas = useQuery({ queryKey: ["empresas-tela"], enabled: !ehModelo, queryFn: () => api<Empresa[]>("/api/v1/grupos-empresas/empresas") });
   const [form, setForm] = useState({ ...vagaVazia, empresa_id: empresaInicial });
   const [modos, setModos] = useState(modosFixos);
   const [aviso, setAviso] = useState("");
@@ -439,9 +453,9 @@ function AbaVaga({ empresaInicial, modeloInicial }: { empresaInicial: string; mo
   const [modeloAberto, setModeloAberto] = useState(false);
   const aplicouModelo = useRef(false);
   const modelos = useQuery({
-    queryKey: ["modelos-vaga", form.empresa_id],
-    enabled: Boolean(form.empresa_id),
-    queryFn: () => api<Modelo[]>(`/api/v1/grupos-empresas/vagas?repetidas=${form.empresa_id}`),
+    queryKey: ["modelos-vaga"],
+    enabled: !ehModelo,
+    queryFn: () => api<Modelo[]>("/api/v1/grupos-empresas/vagas"),
   });
   const detalhe = useQuery({
     queryKey: ["modelo-abrir", modeloInicial],
@@ -455,8 +469,8 @@ function AbaVaga({ empresaInicial, modeloInicial }: { empresaInicial: string; mo
     aplicouModelo.current = true;
     setBuscaModelo(rotuloModelo(modelo));
     const doCargo = cargoDoFormulario(modelo);
-    setForm((atual) => ({ ...atual, ...modelo.formulario, ...doCargo, empresa_id: atual.empresa_id || empresaInicial, quantidade: atual.quantidade }));
-    setModos(modosFixos);
+    setForm((atual) => ({ ...atual, ...semModos(modelo), ...doCargo, empresa_id: atual.empresa_id || empresaInicial, quantidade: atual.quantidade }));
+    setModos(modosDoModelo(modelo));
   }, [detalhe.data, cargos.isFetched, empresaInicial]);
   const assinaturaHorario = [
     form.tipo, form.horario_entrada, form.horario_saida,
@@ -470,16 +484,36 @@ function AbaVaga({ empresaInicial, modeloInicial }: { empresaInicial: string; mo
     if (!calculada) return;
     setForm((atual) => atual.carga_horaria === calculada ? atual : { ...atual, carga_horaria: calculada });
   }, [assinaturaHorario]);
+  type EscolhaCargo = { cargoId: string; novo: typeof novoCargoVazio | null };
+  function corpo(escolha: EscolhaCargo) {
+    const { cargo: _cargo, cargo_id: _cargoId, descricao: _descricao, requisitos: _requisitos, ...resto } = semFolga(form, modos);
+    const escala = DIAS_ESCALA.filter((dia) => modos[dia] === "escala");
+    const folga = DIAS_ESCALA.filter((dia) => modos[dia] === "folga");
+    return { ...limpar(resto), escala, folga, ...(escolha.novo ? { novo_cargo: escolha.novo } : { cargo_id: escolha.cargoId }) };
+  }
   const save = useMutation({
-    mutationFn: (escolha: { cargoId: string; novo: typeof novoCargoVazio | null }) => {
-      const { cargo: _cargo, cargo_id: _cargoId, descricao: _descricao, requisitos: _requisitos, ...resto } = semFolga(form, modos);
-      const escala = DIAS_ESCALA.filter((dia) => modos[dia] === "escala");
-      const folga = DIAS_ESCALA.filter((dia) => modos[dia] === "folga");
-      const body = { ...limpar(resto), escala, folga, ...(escolha.novo ? { novo_cargo: escolha.novo } : { cargo_id: escolha.cargoId }) };
-      return api<{ codigo: string; quantidade: number; cargo: { nome: string; reaproveitado: boolean } }>("/api/v1/grupos-empresas/vagas", { method: "POST", body: JSON.stringify(body) });
-    },
+    mutationFn: (escolha: EscolhaCargo) => api<{ codigo: string; quantidade: number; cargo: { nome: string; reaproveitado: boolean } }>("/api/v1/grupos-empresas/vagas", { method: "POST", body: JSON.stringify(corpo(escolha)) }),
     onSuccess: (_resposta, escolha) => {
       if (escolha.novo) void queryClient.invalidateQueries({ queryKey: ["cargos"] });
+    },
+  });
+  const salvarModelo = useMutation({
+    mutationFn: (escolha: EscolhaCargo) => {
+      const body: Record<string, unknown> = corpo(escolha);
+      delete body.empresa_id;
+      delete body.quantidade;
+      return modeloInicial
+        ? api(`/api/v1/vagas/modelos/${modeloInicial}`, { method: "PUT", body: JSON.stringify(body) })
+        : api("/api/v1/vagas/modelos", { method: "POST", body: JSON.stringify(body) });
+    },
+    onSuccess: async (_resposta, escolha) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["modelos-consulta"] }),
+        queryClient.invalidateQueries({ queryKey: ["modelos-vaga"] }),
+        queryClient.invalidateQueries({ queryKey: ["modelo-abrir"] }),
+        escolha.novo ? queryClient.invalidateQueries({ queryKey: ["cargos"] }) : Promise.resolve(),
+      ]);
+      navigate("/vagas/modelos");
     },
   });
   /** Cargo do modelo aplicado: da lista, ou "Novo cargo" já com o nome do modelo. */
@@ -524,23 +558,23 @@ function AbaVaga({ empresaInicial, modeloInicial }: { empresaInicial: string; mo
   const cargas = form.tipo === "estagio" ? ["20", "30"] : ["40", "44"];
   const lista = modelos.data?.data ?? [];
   const termoModelo = normalizarBusca(buscaModelo);
-  const rotulos = rotulosDistintos(lista);
   const modelosVisiveis = lista
-    .map((modelo, index) => ({ modelo, rotulo: rotulos[index] ?? rotuloModelo(modelo) }))
+    .map((modelo) => ({ modelo, rotulo: rotuloModelo(modelo) }))
     .filter((item) => normalizarBusca(item.rotulo).includes(termoModelo))
     .slice(0, 20);
   function aplicarModelo(modelo: Modelo, rotulo: string) {
     setBuscaModelo(rotulo);
     setModeloAberto(false);
     const doCargo = cargoDoFormulario(modelo);
-    setForm((atual) => ({ ...atual, ...modelo.formulario, ...doCargo, empresa_id: atual.empresa_id, quantidade: atual.quantidade }));
+    setForm((atual) => ({ ...atual, ...semModos(modelo), ...doCargo, empresa_id: atual.empresa_id, quantidade: atual.quantidade }));
+    setModos(modosDoModelo(modelo));
   }
   return (
     <form className="grid w-full gap-3" onSubmit={(event) => {
       event.preventDefault();
       const escolha = resolverCargo();
       const novoIncompleto = escolha.novo && (escolha.novo.nome.trim().length < 2 || escolha.novo.descricao.trim().length < 3 || escolha.novo.requisitos.trim().length < 3);
-      const falta = !form.empresa_id
+      const falta = !ehModelo && !form.empresa_id
         ? "Escolha a empresa da vaga."
         : !escolha.cargoId && !escolha.novo
           ? "Escolha um cargo da lista ou \"+ Novo cargo\"."
@@ -548,14 +582,17 @@ function AbaVaga({ empresaInicial, modeloInicial }: { empresaInicial: string; mo
             ? "Preencha o nome, a descrição e os requisitos do novo cargo."
             : "";
       setAviso(falta);
-      if (!falta) save.mutate(escolha);
+      if (falta) return;
+      if (ehModelo) salvarModelo.mutate(escolha); else save.mutate(escolha);
     }}>
       <Erro error={save.error} />
+      <Erro error={salvarModelo.error} />
       <Aviso texto={aviso} />
       <Erro error={detalhe.error} />
       <Erro error={cargos.error} />
       {save.isSuccess ? <p className="text-sm font-semibold text-emerald-700">{save.data.data.quantidade} vaga(s) abertas com o código {save.data.data.codigo}.{save.data.data.cargo.reaproveitado ? ` O cargo ${save.data.data.cargo.nome} já existia: a vaga usa a descrição e os requisitos dele.` : ""}</p> : null}
       <Card className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {ehModelo ? null : (<>
         <div className="sm:col-span-2">
         <Field label="Empresa">
           <BuscaOpcao
@@ -566,13 +603,12 @@ function AbaVaga({ empresaInicial, modeloInicial }: { empresaInicial: string; mo
           />
         </Field>
         </div>
-        {form.empresa_id ? (
-          <div className="sm:col-span-2">
+        <div className="sm:col-span-2">
           <Field label="Modelo">
             <div className="relative">
               <Input
                 value={buscaModelo}
-                placeholder={modelos.isLoading ? "Carregando modelos…" : lista.length ? "Pesquisar modelo do grupo" : "Nenhum modelo deste grupo"}
+                placeholder={modelos.isLoading ? "Carregando modelos…" : lista.length ? "Pesquisar modelo pelo cargo" : "Nenhum modelo criado"}
                 autoComplete="off"
                 onChange={(event) => { setBuscaModelo(event.target.value); setModeloAberto(true); }}
                 onFocus={() => setModeloAberto(true)}
@@ -586,13 +622,13 @@ function AbaVaga({ empresaInicial, modeloInicial }: { empresaInicial: string; mo
                         {rotulo}
                       </button>
                     </li>
-                  )) : <li className="px-3 py-2 text-sm text-slate-500">{lista.length ? "Nenhum modelo encontrado" : "Nenhum modelo deste grupo"}</li>}
+                  )) : <li className="px-3 py-2 text-sm text-slate-500">{lista.length ? "Nenhum modelo encontrado" : "Nenhum modelo criado"}</li>}
                 </ul>
               ) : null}
             </div>
           </Field>
-          </div>
-        ) : null}
+        </div>
+        </>)}
         <Field label="Tipo">
           <Select value={form.tipo} onChange={(event) => {
             const tipo = event.target.value;
@@ -638,7 +674,7 @@ function AbaVaga({ empresaInicial, modeloInicial }: { empresaInicial: string; mo
         </Field>
         <Field label="Idade"><Input type="number" required min={14} max={80} value={form.idade} onChange={(event) => setForm({ ...form, idade: event.target.value })} /></Field>
         <Field label="Idade até"><Input type="number" required min={14} max={80} value={form.idade_ate} onChange={(event) => setForm({ ...form, idade_ate: event.target.value })} /></Field>
-        <Field label="Quantidade"><Input type="number" required min={1} max={20} value={form.quantidade} onChange={(event) => setForm({ ...form, quantidade: event.target.value })} /></Field>
+        {ehModelo ? null : <Field label="Quantidade"><Input type="number" required min={1} max={20} value={form.quantidade} onChange={(event) => setForm({ ...form, quantidade: event.target.value })} /></Field>}
         <div className="grid gap-2 sm:col-span-2 lg:col-span-4">
           <p className="text-sm font-medium text-slate-700">Dias do horário</p>
           <p className="text-xs text-slate-500">Escala: a pessoa trabalha nesse dia conforme a escala da empresa, não toda semana. Folga: não trabalha.</p>
@@ -665,7 +701,14 @@ function AbaVaga({ empresaInicial, modeloInicial }: { empresaInicial: string; mo
         <div className="sm:col-span-2 lg:col-span-4"><Field label="Atividades"><Textarea required minLength={3} className="min-h-20" value={form.atividades} onChange={(event) => setForm({ ...form, atividades: event.target.value })} /></Field></div>
         <div className="sm:col-span-2 lg:col-span-4"><Field label="Benefícios"><Textarea className="min-h-24" placeholder={"Um por linha. Ex.: Auxílio Transporte — Mensal"} value={form.beneficios} onChange={(event) => setForm({ ...form, beneficios: event.target.value })} /></Field></div>
       </Card>
-      <div><Button disabled={save.isPending}>{save.isPending ? "Salvando…" : "Salvar vaga"}</Button></div>
+      <div className="flex gap-2">
+        {ehModelo ? (
+          <>
+            <Button disabled={salvarModelo.isPending}>{salvarModelo.isPending ? "Salvando…" : "Salvar modelo"}</Button>
+            <Button type="button" variant="secondary" onClick={() => navigate("/vagas/modelos")}>Cancelar</Button>
+          </>
+        ) : <Button disabled={save.isPending}>{save.isPending ? "Salvando…" : "Salvar vaga"}</Button>}
+      </div>
     </form>
   );
 }

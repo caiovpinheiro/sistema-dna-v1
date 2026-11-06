@@ -3,6 +3,7 @@ import type { RowDataPacket } from "mysql2";
 import type { Pool } from "pg";
 import type { AppConfig } from "../config.js";
 import type { MysqlPool } from "../db/mysql.js";
+import { chaveCargo } from "../lib/cargo.js";
 import { moneyToNumber } from "../lib/money.js";
 import { supabaseRest } from "../lib/supabase-rest.js";
 import type { Logger } from "./notion-sync.service.js";
@@ -24,7 +25,6 @@ type VagaLightsail = RowDataPacket & Record<string, unknown> & {
 
 type EmpresaNova = { id: string; grupo_id: string | null; cep: string | null; latitude: number | null; longitude: number | null };
 type Espelho = { id: string; vaga_id: string | null };
-type Repetida = Record<string, unknown> & { vaga_id: string; empresa_id: string | null };
 
 export type LinhaVaga = {
   id: string;
@@ -118,13 +118,6 @@ export function beneficiosDe(lista: Array<{ nome: string; valor: string; tipo: s
   return linhas.length ? linhas.join("\n") : null;
 }
 
-/** Igualdade com um modelo já existente quando o comparador do Lightsail não resolve. */
-function chave(linha: Pick<LinhaVaga, "empresa_id" | "tipo_vaga" | "cargo" | "salario" | "carga_horaria" | "sexo" | "idade" | "idade_ate" | "atividades" | "horario">) {
-  return [linha.empresa_id, linha.tipo_vaga, linha.cargo, linha.salario, linha.carga_horaria, linha.sexo, linha.idade, linha.idade_ate, linha.atividades, linha.horario]
-    .map((valor) => texto(valor).toLowerCase())
-    .join("|");
-}
-
 export class VagasAbertasSyncService {
   constructor(
     private readonly db: Pool,
@@ -153,18 +146,19 @@ export class VagasAbertasSyncService {
       return resultado;
     }
 
-    const [supabase, postgres, empresas, repetidas] = await Promise.all([
+    const [supabase, postgres, empresas, modelos] = await Promise.all([
       this.todas<Espelho>("vaga?select=id,vaga_id"),
       this.db.query<Espelho>("SELECT id::text AS id, vaga_id::text AS vaga_id FROM public.vaga").then((r) => r.rows),
       this.todas<EmpresaNova>("empresa?select=id,grupo_id,cep,latitude,longitude"),
-      this.todas<Repetida>(`vaga_repetida?select=${COLUNAS_INSERT.filter((coluna) => coluna !== "tempo" && coluna !== "conducoes").join(",")}`),
+      this.db.query<{ vaga_id: string; cargo: string | null; tipo_vaga: string | null }>(
+        "SELECT vaga_id::text AS vaga_id, cargo, tipo_vaga FROM public.vaga_repetida",
+      ).then((r) => r.rows),
     ]);
     const noSistema = new Map<string, string | null>();
     for (const row of [...supabase, ...postgres]) noSistema.set(row.id, noSistema.get(row.id) ?? row.vaga_id);
     const empresaPorId = new Map(empresas.map((empresa) => [empresa.id, empresa]));
-    const { rows: repetidasPg } = await this.db.query<{ vaga_id: string }>("SELECT vaga_id::text AS vaga_id FROM public.vaga_repetida");
-    const modelosSupabase = new Set(repetidas.map((row) => row.vaga_id));
-    const modelosPostgres = new Set(repetidasPg.map((row) => row.vaga_id));
+    // Modelos são globais (um por cargo e modalidade) e só nascem pelo botão "Criar modelo": o sync só aponta para eles.
+    const modeloGlobal = new Map(modelos.map((row) => [`${chaveCargo(row.cargo ?? "")}|${row.tipo_vaga}`, row.vaga_id]));
 
     // 1) Copiar as novas.
     const [abertas] = await this.mysql.query<VagaLightsail[]>(`
@@ -194,14 +188,13 @@ export class VagasAbertasSyncService {
     if (novas.length) {
       const beneficios = await this.beneficios(novas.map((vaga) => vaga.id_vaga));
       const modeloPorComparador = await this.modelosPorComparador(novas, noSistema);
-      const modeloPorChave = new Map(repetidas.map((row) => [chave(row as unknown as LinhaVaga), row.vaga_id]));
       for (const vaga of novas) {
         const empresa = empresaPorId.get(vaga.id_empresa)!;
         const linha = this.linhaDe(vaga, empresa, beneficios.get(vaga.id_vaga) ?? []);
         const comparador = texto(vaga.comparador);
-        linha.vaga_id = (comparador && modeloPorComparador.get(comparador)) || modeloPorChave.get(chave(linha)) || randomUUID();
-        if (comparador) modeloPorComparador.set(comparador, linha.vaga_id);
-        modeloPorChave.set(chave(linha), linha.vaga_id);
+        linha.vaga_id = modeloGlobal.get(`${chaveCargo(linha.cargo)}|${linha.tipo_vaga}`)
+          || (comparador && modeloPorComparador.get(comparador)) || randomUUID();
+        if (comparador && !modeloPorComparador.has(comparador)) modeloPorComparador.set(comparador, linha.vaga_id);
         resultado.novas += 1;
         this.log.info({ dry, slot, id_vaga: linha.id, empresa_id: linha.empresa_id, vaga_id: linha.vaga_id, cargo: linha.cargo }, "sync vagas: nova");
         if (dry) {
@@ -209,9 +202,7 @@ export class VagasAbertasSyncService {
           continue;
         }
         try {
-          await this.inserir(linha, !modelosSupabase.has(linha.vaga_id), !modelosPostgres.has(linha.vaga_id));
-          modelosSupabase.add(linha.vaga_id);
-          modelosPostgres.add(linha.vaga_id);
+          await this.inserir(linha);
           noSistema.set(linha.id, linha.vaga_id);
           resultado.inseridas.push(linha.id);
         } catch (error) {
@@ -317,16 +308,10 @@ export class VagasAbertasSyncService {
   }
 
   /** Grava nos dois lados. Se o Postgres falhar, desfaz o Supabase: a vaga não fica só de um lado. */
-  private async inserir(linha: LinhaVaga, modeloSupabase: boolean, modeloPostgres: boolean) {
+  private async inserir(linha: LinhaVaga) {
     const rest = this.rest();
-    const modelo = { ...linha, id: randomUUID(), tipo_vaga: String(linha.tipo_vaga) };
-    let modeloInserido = false;
     let vagaInserida = false;
     try {
-      if (modeloSupabase) {
-        await rest.insert("vaga_repetida", modelo);
-        modeloInserido = true;
-      }
       await rest.insert("vaga", linha);
       vagaInserida = true;
       const pg = await this.db.connect();
@@ -334,7 +319,6 @@ export class VagasAbertasSyncService {
         await pg.query("BEGIN");
         const colunas = COLUNAS_INSERT.join(", ");
         const marcadores = COLUNAS_INSERT.map((_, indice) => `$${indice + 1}`).join(", ");
-        if (modeloPostgres) await pg.query(`INSERT INTO public.vaga_repetida (${colunas}) VALUES (${marcadores})`, COLUNAS_INSERT.map((coluna) => modelo[coluna]));
         await pg.query(`INSERT INTO public.vaga (${colunas}) VALUES (${marcadores})`, COLUNAS_INSERT.map((coluna) => linha[coluna]));
         await pg.query("COMMIT");
       } catch (error) {
@@ -345,7 +329,6 @@ export class VagasAbertasSyncService {
       }
     } catch (error) {
       if (vagaInserida) await rest.remove(`vaga?id=eq.${linha.id}`).catch(() => undefined);
-      if (modeloInserido) await rest.remove(`vaga_repetida?id=eq.${modelo.id}`).catch(() => undefined);
       throw error;
     }
   }

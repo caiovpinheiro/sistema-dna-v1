@@ -268,16 +268,11 @@ export class NotionSyncService {
     }
     if (supabase && !supabaseIgual) {
       const rest = supabaseRest({ url: this.config.SUPABASE_URL, key: this.config.SUPABASE_SERVICE_ROLE_KEY });
+      // Só a vaga: o modelo é global (um por cargo) e não muda pelo horário de uma empresa.
       await rest.update(`vaga?id=eq.${vaga.id_vaga}`, { horario: novoHorario });
-      if (supabase.vaga_id && supabase.horario != null) {
-        await rest.update(`vaga_repetida?vaga_id=eq.${supabase.vaga_id}&horario=eq.${encodeURIComponent(supabase.horario)}`, { horario: novoHorario });
-      }
     }
     if (postgres && !postgresIgual) {
       await this.db.query("UPDATE public.vaga SET horario = $1 WHERE id = $2", [novoHorario, vaga.id_vaga]);
-      if (postgres.vaga_id && postgres.horario != null) {
-        await this.db.query("UPDATE public.vaga_repetida SET horario = $1 WHERE vaga_id = $2 AND horario = $3", [novoHorario, postgres.vaga_id, postgres.horario]);
-      }
     }
     return true;
   }

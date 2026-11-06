@@ -1,4 +1,4 @@
-import { DIAS_ESCALA, textoDoHorario, type DiaEscala } from "../lib/horario-escala.js";
+import { DIAS_ESCALA, diasDoTexto, textoDoHorario, type DiaEscala } from "../lib/horario-escala.js";
 import { randomUUID, randomInt } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
 import type { RowDataPacket } from "mysql2";
@@ -10,7 +10,7 @@ import { formatMoneyLegacy, moneyToNumber, parseMoney } from "../lib/money.js";
 import { supabaseRest } from "../lib/supabase-rest.js";
 import type { CargoService } from "./cargo.service.js";
 import { chaveCargo } from "../lib/cargo.js";
-import type { EmpresaCadastro, GrupoCreate, VagaCadastro } from "../schemas/cadastro.js";
+import type { EmpresaCadastro, GrupoCreate, ModeloVaga, VagaCadastro } from "../schemas/cadastro.js";
 
 type GrupoRow = { id: string; nome: string; email: string | null; telefone: string | null; criado_em: string };
 type EmpresaRow = {
@@ -136,12 +136,12 @@ function localDe(bairro: string, cidade: string, uf: string) {
   return `${bairro} - ${cidade} / ${uf.toUpperCase()}`;
 }
 
-function horaInformada(input: VagaCadastro, nome: string, fallback: string | null) {
+function horaInformada(input: ModeloVaga, nome: string, fallback: string | null) {
   const value = (input as unknown as Record<string, string | undefined>)[nome];
   return value || fallback;
 }
 
-function horasDaVaga(input: VagaCadastro) {
+function horasDaVaga(input: ModeloVaga) {
   const entrada = input.horario_entrada;
   const saida = input.horario_saida;
   const horas = {
@@ -172,7 +172,7 @@ function horasDaVaga(input: VagaCadastro) {
 }
 
 /** Texto do horário com os dias de escala. Sem escala nem folga em dia útil, fica o formato de sempre ("08:00 às 17:00"). */
-function textoDaVaga(input: VagaCadastro, horas: ReturnType<typeof horasDaVaga>) {
+function textoDaVaga(input: ModeloVaga, horas: ReturnType<typeof horasDaVaga>) {
   const escala = new Set(input.escala ?? []);
   const folga = new Set(input.folga ?? []);
   const especial = escala.size > 0 || ["segunda", "terca", "quarta", "quinta", "sexta"].some((dia) => folga.has(dia as DiaEscala));
@@ -184,10 +184,18 @@ function textoDaVaga(input: VagaCadastro, horas: ReturnType<typeof horasDaVaga>)
   })));
 }
 
-function modeloAusente(error: unknown) {
-  const message = error instanceof Error ? error.message : "";
-  return /schema cache|PGRST205|does not exist|não existe/i.test(message);
+/** O modelo guarda sempre o texto por dia ("Segunda a sexta, 08:00 às 17:00; sábado, 08:00 às 12:00"): assim volta inteiro ao abrir. */
+function textoDoModelo(input: ModeloVaga, horas: ReturnType<typeof horasDaVaga>) {
+  const escala = new Set(input.escala ?? []);
+  const folga = new Set(input.folga ?? []);
+  return textoDoHorario(DIAS_ESCALA.map((dia) => ({
+    modo: folga.has(dia) ? "folga" : escala.has(dia) ? "escala" : "fixo",
+    entrada: horas[`${dia}_entrada`] ?? "",
+    saida: horas[`${dia}_saida`] ?? "",
+  })));
 }
+
+const TIPO_MODELO: Record<string, string> = { "1": "Estágio", "2": "CLT", "4": "Pessoa Jurídica" };
 
 type RepetidaLinha = {
   id: string;
@@ -206,6 +214,7 @@ type RepetidaLinha = {
   cargo_id: string | null;
   descricao: string | null;
   requisitos: string | null;
+  beneficios?: string | null;
   empresa_nome?: string | null;
 };
 
@@ -213,7 +222,7 @@ function atividadesLegiveis(valor: string | null) {
   return (valor ?? "").replace(/,(\S)/g, ", $1").replace(/,\s*$/g, "").trim();
 }
 
-const CAMPOS_REPETIDA = "id, vaga_id, empresa_id, grupo_id, tipo_vaga, cargo, salario, carga_horaria, sexo, idade, idade_ate, atividades, horario, cargo_id, descricao, requisitos";
+const CAMPOS_REPETIDA = "id, vaga_id, empresa_id, grupo_id, tipo_vaga, cargo, salario, carga_horaria, sexo, idade, idade_ate, atividades, horario, cargo_id, descricao, requisitos, beneficios";
 const DIAS_HORARIO = ["domingo", "segunda", "terca", "quarta", "quinta", "sexta", "sab"] as const;
 type DiaHorario = (typeof DIAS_HORARIO)[number];
 
@@ -241,16 +250,6 @@ function agendaDoHorario(horario: string | null) {
     ? agenda.segunda
     : DIAS_HORARIO.map((dia) => agenda[dia]).find((dia) => dia.entrada) ?? vazio;
   return { agenda, base };
-}
-
-function horarioEquivalente(armazenado: string | null, alvo: string) {
-  if ((armazenado ?? "") === alvo) return true;
-  // Com escala o texto inteiro precisa bater: a primeira faixa sozinha não diferencia os dias de escala.
-  if (/por escala/i.test(alvo) || /por escala/i.test(armazenado ?? "")) return false;
-  const partes = horarioPartes(alvo);
-  if (!partes.entrada) return false;
-  const { base } = agendaDoHorario(armazenado);
-  return base.entrada === partes.entrada && base.saida === partes.saida;
 }
 
 function minutosRelogio(hora: string) {
@@ -285,11 +284,31 @@ function salarioTexto(valor: number | string | null) {
 }
 
 function formularioDaLinha(row: RepetidaLinha) {
-  const { agenda, base } = agendaDoHorario(row.horario);
+  const porDia = diasDoTexto(row.horario);
+  let { agenda, base } = agendaDoHorario(row.horario);
+  let fixos = agenda;
+  const escala: DiaEscala[] = [];
+  const folga: DiaEscala[] = [];
+  if (porDia) {
+    // Texto por dia (modelos novos e vagas com escala): cada dia volta com o seu tipo.
+    const vazio = { entrada: "", saida: "" };
+    agenda = Object.fromEntries(DIAS_HORARIO.map((dia) => [dia, { ...vazio }])) as typeof agenda;
+    fixos = Object.fromEntries(DIAS_HORARIO.map((dia) => [dia, { ...vazio }])) as typeof agenda;
+    DIAS_ESCALA.forEach((dia, indice) => {
+      const valor = porDia[indice];
+      if (valor.modo === "folga") folga.push(dia);
+      else agenda[dia] = { entrada: valor.entrada, saida: valor.saida };
+      if (valor.modo === "escala") escala.push(dia);
+      if (valor.modo === "fixo") fixos[dia] = { entrada: valor.entrada, saida: valor.saida };
+    });
+    base = DIAS_ESCALA.map((dia, indice) => porDia[indice].modo === "fixo" ? agenda[dia] : null).find((dia) => dia?.entrada)
+      ?? DIAS_HORARIO.map((dia) => agenda[dia]).find((dia) => dia.entrada) ?? vazio;
+  }
   const tipo = String(row.tipo_vaga) === "2" ? "clt" : "estagio";
   const cargaBruta = String(row.carga_horaria ?? "").match(/\d+/)?.[0] ?? "";
   const cargaGuardada = cargaBruta === "20" || cargaBruta === "30" || cargaBruta === "40" || cargaBruta === "44" ? cargaBruta : "";
-  const carga = cargaCalculada(tipo, horasDaAgenda(agenda)) || cargaGuardada;
+  // Escala não é toda semana: a carga conta só os dias fixos.
+  const carga = cargaCalculada(tipo, horasDaAgenda(fixos)) || cargaGuardada;
   return {
     tipo,
     carga_horaria: carga,
@@ -304,6 +323,7 @@ function formularioDaLinha(row: RepetidaLinha) {
     idade: row.idade == null ? "" : String(row.idade),
     idade_ate: row.idade_ate == null ? "" : String(row.idade_ate),
     atividades: atividadesLegiveis(row.atividades),
+    beneficios: row.beneficios ?? "",
     segunda_entrada: agenda.segunda.entrada,
     segunda_saida: agenda.segunda.saida,
     terca_entrada: agenda.terca.entrada,
@@ -318,6 +338,8 @@ function formularioDaLinha(row: RepetidaLinha) {
     sab_saida: agenda.sab.saida,
     domingo_entrada: agenda.domingo.entrada,
     domingo_saida: agenda.domingo.saida,
+    escala,
+    folga,
   };
 }
 
@@ -382,22 +404,13 @@ export class CadastroService {
     );
   }
 
-  async listarModelos(empresaId: string) {
+  /** Modelos globais: um por cargo e modalidade, para qualquer empresa. */
+  async listarModelos() {
     await this.ensureMirror();
-    const rows = await this.linhasRepetida(empresaId);
-    const vistos = new Set<string>();
-    const conteudos = new Set<string>();
-    const modelos = [];
-    for (const row of rows) {
-      if (!row.vaga_id || vistos.has(row.vaga_id)) continue;
-      const formulario = formularioDaLinha(row);
-      const chave = JSON.stringify(formulario);
-      if (conteudos.has(chave)) continue;
-      vistos.add(row.vaga_id);
-      conteudos.add(chave);
-      modelos.push({ vagaId: row.vaga_id, empresaNome: row.empresa_nome ?? "", formulario });
-    }
-    return modelos;
+    const consulta = await this.db.query<RepetidaLinha>(
+      `SELECT ${CAMPOS_REPETIDA} FROM public.vaga_repetida ORDER BY lower(cargo), tipo_vaga`,
+    );
+    return consulta.rows.map((row) => ({ vagaId: row.vaga_id, formulario: formularioDaLinha(row) }));
   }
 
   async obterModelo(vagaId: string) {
@@ -413,12 +426,6 @@ export class CadastroService {
 
   async opcoesModelos() {
     await this.ensureMirror();
-    const empresas = await this.db.query<{ nome: string }>(
-      `SELECT DISTINCT btrim(coalesce(nullif(nome_fantasia, ''), razao_social)) AS nome
-       FROM public.empresa
-       WHERE btrim(coalesce(nome_fantasia, razao_social, '')) <> ''
-       ORDER BY 1`,
-    );
     const cargos = await this.db.query<{ cargo: string }>(
       `SELECT DISTINCT btrim(cargo) AS cargo
        FROM public.vaga_repetida
@@ -426,7 +433,6 @@ export class CadastroService {
        ORDER BY 1`,
     );
     return {
-      empresas: empresas.rows.map((row) => row.nome),
       cargos: cargos.rows.map((row) => row.cargo),
     };
   }
@@ -605,15 +611,8 @@ export class CadastroService {
     const salario = formatMoneyLegacy(salarioNumero);
     const horas = horasDaVaga(input);
     const horario = textoDaVaga(input, horas);
-    const igual = empresa.grupo_id
-      ? await this.buscarModeloIgual(empresa.grupo_id, {
-        tipo, cargo: cargo.nome, carga: input.carga_horaria, salario: salarioNumero, sexo: input.sexo,
-        idade: input.idade, idadeAte: input.idade_ate ?? null, atividades: input.atividades, horario,
-      })
-      : null;
-    const reutilizou = Boolean(igual);
-    const repetidaId = igual?.id ?? randomUUID();
-    const modeloId = igual?.vaga_id ?? repetidaId;
+    // Abrir vaga não cria modelo: ela só aponta para o modelo global do mesmo cargo e modalidade, quando existe.
+    const modeloId = (await this.modeloDoCargo(cargo.nome, String(tipo)))?.vaga_id ?? randomUUID();
     const comparador = await this.novoComparador();
     const codigo = await this.novoCodigo();
     const hoje = legacyToday();
@@ -622,28 +621,6 @@ export class CadastroService {
     const bairro = endereco?.bairro || localPartes[0] || "";
     const cidadeUf = (endereco?.cidade ? `${endereco.cidade} / ${endereco.uf ?? ""}` : localPartes[1] || "").trim();
 
-    const modelo = {
-      id: repetidaId,
-      vaga_id: modeloId,
-      grupo_id: igual?.grupo_id || empresa.grupo_id,
-      empresa_id: igual?.empresa_id || empresa.id,
-      tipo_vaga: String(tipo),
-      cargo: cargo.nome,
-      cargo_id: cargo.id,
-      descricao: cargo.descricao,
-      requisitos: cargo.requisitos,
-      salario: salarioNumero,
-      carga_horaria: input.carga_horaria,
-      sexo: input.sexo,
-      idade: input.idade,
-      idade_ate: input.idade_ate ?? null,
-      km: 30,
-      atividades: input.atividades,
-      horario,
-      cep: empresa.cep,
-      latitude: empresa.latitude,
-      longitude: empresa.longitude,
-    };
 
     const linhas = ids.map((id) => ({
       id,
@@ -673,7 +650,6 @@ export class CadastroService {
     const conn = await mysql.getConnection();
     let supabaseOk = false;
     let postgresOk = false;
-    let gravouModeloNovo = false;
     try {
       await conn.beginTransaction();
       await conn.query("INSERT INTO codigo_vaga (codigo) VALUES (?)", [codigo]);
@@ -728,14 +704,6 @@ export class CadastroService {
         ],
       );
 
-      try {
-        if (!reutilizou) {
-          await sb.insert("vaga_repetida", modelo);
-          gravouModeloNovo = true;
-        }
-      } catch (error) {
-        if (!modeloAusente(error)) throw error;
-      }
       await sb.insert("vaga", linhas);
       supabaseOk = true;
 
@@ -744,19 +712,6 @@ export class CadastroService {
         await pg.query("BEGIN");
         // O cargo pode existir só no Supabase (criado direto lá ou espelho que falhou): a chave estrangeira do Postgres exige a linha.
         const cargoPostgres = await this.cargos.idNoPostgres(pg, cargo);
-        if (!reutilizou) {
-          await pg.query(
-            `INSERT INTO public.vaga_repetida (
-              id, vaga_id, grupo_id, empresa_id, tipo_vaga, cargo, salario, carga_horaria, sexo, idade, idade_ate, km, atividades, horario, cep, latitude, longitude,
-              cargo_id, descricao, requisitos
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
-            [
-              modelo.id, modelo.vaga_id, modelo.grupo_id, modelo.empresa_id, modelo.tipo_vaga, modelo.cargo, modelo.salario,
-              modelo.carga_horaria, modelo.sexo, modelo.idade, modelo.idade_ate, modelo.km, modelo.atividades, modelo.horario,
-              modelo.cep, modelo.latitude, modelo.longitude, cargoPostgres, modelo.descricao, modelo.requisitos,
-            ],
-          );
-        }
         for (const linha of linhas) {
           await pg.query(
             `INSERT INTO public.vaga (
@@ -834,11 +789,8 @@ export class CadastroService {
       await conn.commit();
     } catch (error) {
       await conn.rollback().catch(() => undefined);
-      if (supabaseOk) {
-        await sb.remove(`vaga?id=in.(${ids.join(",")})`).catch(() => undefined);
-        if (gravouModeloNovo) await sb.remove(`vaga_repetida?id=eq.${repetidaId}`).catch(() => undefined);
-      }
-      if (postgresOk) await this.apagarVagaPostgres(ids, gravouModeloNovo ? repetidaId : null, codigo, comparador);
+      if (supabaseOk) await sb.remove(`vaga?id=in.(${ids.join(",")})`).catch(() => undefined);
+      if (postgresOk) await this.apagarVagaPostgres(ids, codigo, comparador);
       if (error instanceof AppError) throw error;
       throw this.falhaGravacao(error, "Não foi possível abrir a vaga nos três bancos. Nada ficou gravado.");
     } finally {
@@ -961,98 +913,148 @@ export class CadastroService {
     return String(Date.now());
   }
 
-  private async linhasDoGrupo(grupoId: string): Promise<RepetidaLinha[]> {
-    const consulta = await this.db.query<RepetidaLinha>(
-      `SELECT r.id, r.vaga_id, r.empresa_id, r.grupo_id, r.tipo_vaga, r.cargo, r.salario, r.carga_horaria, r.sexo, r.idade, r.idade_ate, r.atividades, r.horario, r.cargo_id, r.descricao, r.requisitos,
-              coalesce(nullif(btrim(e.nome_fantasia), ''), e.razao_social) AS empresa_nome
-       FROM public.vaga_repetida r
-       LEFT JOIN public.empresa e ON e.id = r.empresa_id
-       WHERE r.grupo_id = $1
-          OR r.empresa_id IN (SELECT id FROM public.empresa WHERE grupo_id = $1)`,
-      [grupoId],
-    );
-    return consulta.rows;
-  }
-
-  private async linhasRepetida(empresaId: string): Promise<RepetidaLinha[]> {
-    const grupo = await this.db.query<{ grupo_id: string | null }>(
-      "SELECT grupo_id FROM public.empresa WHERE id = $1",
-      [empresaId],
-    );
-    const grupoId = grupo.rows[0]?.grupo_id;
-    if (grupoId) return this.linhasDoGrupo(grupoId);
-    const consulta = await this.db.query<RepetidaLinha>(
-      `SELECT r.id, r.vaga_id, r.empresa_id, r.grupo_id, r.tipo_vaga, r.cargo, r.salario, r.carga_horaria, r.sexo, r.idade, r.idade_ate, r.atividades, r.horario, r.cargo_id, r.descricao, r.requisitos,
-              coalesce(nullif(btrim(e.nome_fantasia), ''), e.razao_social) AS empresa_nome
-       FROM public.vaga_repetida r
-       LEFT JOIN public.empresa e ON e.id = r.empresa_id
-       WHERE r.empresa_id = $1`,
-      [empresaId],
-    );
-    return consulta.rows;
-  }
-
-  async consultarModelos(filtro: { nome?: string; cargo?: string; tipo?: string }) {
+  async consultarModelos(filtro: { cargo?: string; tipo?: string }) {
     await this.ensureMirror();
     const tipo = filtro.tipo === "estagio" ? "1" : filtro.tipo === "clt" ? "2" : filtro.tipo === "pj" ? "4" : null;
-    const consulta = await this.db.query<{
-      vaga_id: string;
-      cargo: string | null;
-      tipo_vaga: string | null;
-      carga_horaria: string | null;
-      salario: number | string | null;
-      empresa_id: string | null;
-      nome_fantasia: string | null;
-      razao_social: string | null;
-    }>(
-      `SELECT r.vaga_id, r.cargo, r.tipo_vaga, r.carga_horaria, r.salario, r.empresa_id, e.nome_fantasia, e.razao_social
-       FROM public.vaga_repetida r
-       LEFT JOIN public.empresa e ON e.id = r.empresa_id
-       WHERE ($1::text IS NULL OR coalesce(e.nome_fantasia, '') ILIKE '%' || $1 || '%' OR coalesce(e.razao_social, '') ILIKE '%' || $1 || '%')
-         AND ($2::text IS NULL OR r.cargo ILIKE '%' || $2 || '%')
-         AND ($3::text IS NULL OR r.tipo_vaga = $3)
-       ORDER BY r.cargo NULLS LAST
-       LIMIT 200`,
-      [filtro.nome || null, filtro.cargo || null, tipo],
+    const consulta = await this.db.query<RepetidaLinha>(
+      `SELECT ${CAMPOS_REPETIDA}
+       FROM public.vaga_repetida
+       WHERE ($1::text IS NULL OR cargo ILIKE '%' || $1 || '%')
+         AND ($2::text IS NULL OR tipo_vaga = $2)
+       ORDER BY lower(cargo) NULLS LAST, tipo_vaga`,
+      [filtro.cargo || null, tipo],
     );
-    return consulta.rows.map((row) => ({
-      vaga_id: row.vaga_id,
-      nome: row.nome_fantasia || row.razao_social || row.cargo || "—",
-      cargo: row.cargo || "—",
-      tipo_vaga: row.tipo_vaga === "2" ? "CLT" : row.tipo_vaga === "4" ? "Pessoa Juridica" : "Estágio",
-      salario: salarioTexto(row.salario) || "—",
-      carga_horaria: row.carga_horaria,
-      empresa_id: row.empresa_id,
-    }));
+    return consulta.rows.map((row) => {
+      const formulario = formularioDaLinha(row);
+      // O texto guardado pode estar no formato do sync (";2-1;00:00;2=08:00-17:00"): mostra sempre o texto por dia.
+      const horario = textoDoHorario(DIAS_ESCALA.map((dia) => ({
+        modo: formulario.folga.includes(dia) ? "folga" : formulario.escala.includes(dia) ? "escala" : "fixo",
+        entrada: formulario[`${dia}_entrada`],
+        saida: formulario[`${dia}_saida`],
+      })));
+      return {
+        vaga_id: row.vaga_id,
+        cargo: row.cargo || "—",
+        tipo_vaga: TIPO_MODELO[String(row.tipo_vaga)] ?? "Estágio",
+        salario: salarioTexto(row.salario) || "—",
+        carga_horaria: formulario.carga_horaria,
+        horario,
+      };
+    });
   }
 
-  private async buscarModeloIgual(grupoId: string, alvo: {
-    tipo: number;
-    cargo: string;
-    carga: string;
-    salario: number;
-    sexo: string;
-    idade: number;
-    idadeAte: number | null;
-    atividades: string;
-    horario: string;
-  }) {
-    const rows = await this.linhasDoGrupo(grupoId);
-    return rows.find((row) => {
-      const salario = row.salario == null || row.salario === "" ? null : Number(row.salario);
-      const idadeAte = row.idade_ate == null ? null : Number(row.idade_ate);
-      const carga = String(row.carga_horaria ?? "").match(/\d+/)?.[0] ?? "";
-      return String(row.tipo_vaga) === String(alvo.tipo)
-        && chaveCargo(row.cargo ?? "") === chaveCargo(alvo.cargo)
-        && carga === alvo.carga
-        && (row.sexo ?? "") === alvo.sexo
-        && Number(row.idade) === alvo.idade
-        && idadeAte === alvo.idadeAte
-        && (row.atividades ?? "").trim() === alvo.atividades.trim()
-        && horarioEquivalente(row.horario, alvo.horario)
-        && salario != null
-        && Math.abs(salario - alvo.salario) < 0.001;
-    }) ?? null;
+  /** O modelo global do cargo e da modalidade (tipo "1" estágio, "2" CLT), se já existe. */
+  private async modeloDoCargo(cargo: string, tipo: string, ignorar?: string) {
+    const consulta = await this.db.query<{ vaga_id: string; cargo: string | null }>(
+      "SELECT vaga_id::text AS vaga_id, cargo FROM public.vaga_repetida WHERE tipo_vaga = $1",
+      [tipo],
+    );
+    const chave = chaveCargo(cargo);
+    return consulta.rows.find((row) => row.vaga_id !== ignorar && chaveCargo(row.cargo ?? "") === chave) ?? null;
+  }
+
+  private async linhaDoModelo(input: ModeloVaga) {
+    const { cargo } = input.cargo_id
+      ? { cargo: await this.cargos.obter(input.cargo_id) }
+      : await this.cargos.resolverNovo(input.novo_cargo!);
+    const tipo = input.tipo === "estagio" ? "1" : "2";
+    const horas = horasDaVaga(input);
+    return {
+      cargo,
+      linha: {
+        tipo_vaga: tipo,
+        cargo: cargo.nome,
+        cargo_id: cargo.id,
+        descricao: cargo.descricao,
+        requisitos: cargo.requisitos,
+        salario: parseMoney(input.salario),
+        carga_horaria: input.carga_horaria,
+        sexo: input.sexo,
+        idade: input.idade,
+        idade_ate: input.idade_ate ?? null,
+        km: 30,
+        atividades: input.atividades,
+        horario: textoDoModelo(input, horas),
+        beneficios: input.beneficios?.trim() || null,
+      },
+    };
+  }
+
+  private modeloRepetido(cargo: string, tipo: string): never {
+    throw new AppError(409, "MODELO_JA_EXISTE", `Já existe um modelo de ${cargo} (${TIPO_MODELO[tipo] ?? tipo}). Edite esse modelo em vez de criar outro.`);
+  }
+
+  /** Cria o modelo global no Supabase e no Postgres. Se o Postgres falhar, desfaz o Supabase. */
+  async criarModelo(input: ModeloVaga) {
+    await this.ensureMirror();
+    const { cargo, linha } = await this.linhaDoModelo(input);
+    if (await this.modeloDoCargo(cargo.nome, linha.tipo_vaga)) this.modeloRepetido(cargo.nome, linha.tipo_vaga);
+    const id = randomUUID();
+    const modelo = { id, vaga_id: id, grupo_id: null, empresa_id: null, cep: null, latitude: null, longitude: null, ...linha };
+    const sb = this.rest();
+    await sb.insert("vaga_repetida", modelo);
+    try {
+      const pg = await this.db.connect();
+      try {
+        const cargoPostgres = await this.cargos.idNoPostgres(pg, cargo);
+        await pg.query(
+          `INSERT INTO public.vaga_repetida (
+            id, vaga_id, tipo_vaga, cargo, cargo_id, descricao, requisitos, salario, carga_horaria, sexo, idade, idade_ate, km, atividades, horario, beneficios
+          ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+          [
+            id, id, linha.tipo_vaga, linha.cargo, cargoPostgres, linha.descricao, linha.requisitos, linha.salario, linha.carga_horaria,
+            linha.sexo, linha.idade, linha.idade_ate, linha.km, linha.atividades, linha.horario, linha.beneficios,
+          ],
+        );
+      } finally {
+        pg.release();
+      }
+    } catch (error) {
+      await sb.remove(`vaga_repetida?id=eq.${id}`).catch(() => undefined);
+      throw this.falhaGravacao(error, "Não foi possível gravar o modelo no Supabase e no Postgres.");
+    }
+    return { vagaId: id, cargo: cargo.nome };
+  }
+
+  async editarModelo(vagaId: string, input: ModeloVaga) {
+    await this.ensureMirror();
+    const atual = await this.db.query<RepetidaLinha>(`SELECT ${CAMPOS_REPETIDA} FROM public.vaga_repetida WHERE vaga_id = $1 LIMIT 1`, [vagaId]);
+    const anterior = atual.rows[0];
+    if (!anterior) throw new AppError(404, "MODELO_NAO_ENCONTRADO", "Modelo não encontrado.");
+    const { cargo, linha } = await this.linhaDoModelo(input);
+    if (await this.modeloDoCargo(cargo.nome, linha.tipo_vaga, vagaId)) this.modeloRepetido(cargo.nome, linha.tipo_vaga);
+    const sb = this.rest();
+    await sb.update(`vaga_repetida?vaga_id=eq.${vagaId}`, linha);
+    try {
+      const pg = await this.db.connect();
+      try {
+        const cargoPostgres = await this.cargos.idNoPostgres(pg, cargo);
+        await pg.query(
+          `UPDATE public.vaga_repetida SET tipo_vaga=$2, cargo=$3, cargo_id=$4, descricao=$5, requisitos=$6, salario=$7, carga_horaria=$8,
+             sexo=$9, idade=$10, idade_ate=$11, km=$12, atividades=$13, horario=$14, beneficios=$15
+           WHERE vaga_id = $1`,
+          [
+            vagaId, linha.tipo_vaga, linha.cargo, cargoPostgres, linha.descricao, linha.requisitos, linha.salario, linha.carga_horaria,
+            linha.sexo, linha.idade, linha.idade_ate, linha.km, linha.atividades, linha.horario, linha.beneficios,
+          ],
+        );
+      } finally {
+        pg.release();
+      }
+    } catch (error) {
+      const { empresa_nome: _nome, id: _id, vaga_id: _vagaId, empresa_id: _empresa, grupo_id: _grupo, ...volta } = anterior;
+      await sb.update(`vaga_repetida?vaga_id=eq.${vagaId}`, volta).catch(() => undefined);
+      throw this.falhaGravacao(error, "Não foi possível gravar o modelo no Supabase e no Postgres.");
+    }
+    return { vagaId, cargo: cargo.nome };
+  }
+
+  /** Apaga só o modelo: as vagas já abertas continuam como estão. */
+  async apagarModelo(vagaId: string) {
+    await this.ensureMirror();
+    await this.rest().remove(`vaga_repetida?vaga_id=eq.${vagaId}`);
+    await this.db.query("DELETE FROM public.vaga_repetida WHERE vaga_id = $1", [vagaId]);
+    return { vagaId };
   }
 
   private async geocode(cep: string) {
@@ -1073,9 +1075,8 @@ export class CadastroService {
     return location;
   }
 
-  private async apagarVagaPostgres(ids: string[], repetidaId: string | null, codigo: string, comparador: string) {
+  private async apagarVagaPostgres(ids: string[], codigo: string, comparador: string) {
     await this.db.query("DELETE FROM public.vaga WHERE id = ANY($1::uuid[])", [ids]).catch(() => undefined);
-    if (repetidaId) await this.db.query("DELETE FROM public.vaga_repetida WHERE id = $1", [repetidaId]).catch(() => undefined);
     await this.db.query("DELETE FROM dna_work.etapa_vaga WHERE id_vaga = ANY($1::varchar[])", [ids]).catch(() => undefined);
     await this.db.query("DELETE FROM dna_work.log_diversos WHERE id_vaga = ANY($1::varchar[]) AND acao = 'Abertura de vaga ADM'", [ids]).catch(() => undefined);
     await this.db.query("DELETE FROM dna_work.vaga WHERE id_vaga = ANY($1::varchar[])", [ids]).catch(() => undefined);
