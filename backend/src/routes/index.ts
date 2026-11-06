@@ -15,6 +15,7 @@ import { vagaCreateSchema, vagaListSchema, vagaPatchSchema } from "../schemas/va
 import { empresaCadastroSchema, grupoCreateSchema, modeloVagaSchema, vagaCadastroSchema } from "../schemas/cadastro.js";
 import { documentoSchema } from "../schemas/documento-contrato.js";
 import { gerarDocumento } from "../lib/documento-contrato.js";
+import { buildRescisaoMedioPdf } from "../lib/rescisao-medio-pdf.js";
 import type { AsaasService } from "../services/asaas.service.js";
 import type { ReguaService } from "../services/regua.service.js";
 import type { CandidatoService } from "../services/candidato.service.js";
@@ -289,9 +290,24 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
   api.get("/api/v1/termos", {
     schema: { tags: ["termos"], querystring: z.object({ status: z.enum(["gerado", "enviado", "assinado", "recusado", "cancelado"]).optional() }) },
   }, async (request) => ok(await services.termos.list(request.query.status)));
+  api.get("/api/v1/termos/rescisao-medio", {
+    schema: { tags: ["termos"], querystring: z.object({ q: z.string().max(120).optional() }) },
+  }, async (request) => ok(await services.termos.estagiariosMedio(request.query.q ?? "")));
+  api.get("/api/v1/termos/rescisao-medio/:id", {
+    schema: { tags: ["termos"], params: z.object({ id: z.coerce.number().int().positive() }) },
+  }, async (request) => ok(await services.termos.estagiarioMedio(request.params.id)));
   api.post("/api/v1/termos/documentos", {
     schema: { tags: ["termos"], body: documentoSchema },
   }, async (request, reply) => {
+    if (request.body.modelo === "rescisao_medio") {
+      const pdf = await buildRescisaoMedioPdf(request.body);
+      const nome = `Rescisão Estágio Ensino Médio - ${request.body.estagiario_nome}.pdf`;
+      const ascii = nome.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\w.\- ]+/g, "");
+      return reply
+        .type("application/pdf")
+        .header("Content-Disposition", `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(nome)}`)
+        .send(pdf);
+    }
     const documento = await gerarDocumento(request.body);
     const ascii = documento.filename.replace(/[^\w.\- ]+/g, "");
     return reply

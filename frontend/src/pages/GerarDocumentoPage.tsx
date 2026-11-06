@@ -1,10 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { useRef, useState, type FormEvent, type ReactNode } from "react";
+import { GerarRescisaoMedio } from "@/components/gerar-rescisao-medio";
 import { Button, Card, Field, Input, Select } from "@/components/ui";
 import { api } from "@/lib/api";
 import { formatCnpj, formatPhone } from "@/lib/format";
 
-type Modelo = "contrato" | "adesao";
+type Modelo = "contrato" | "adesao" | "rescisao";
 type Modalidade = "direta" | "estagio" | "ambas";
 type Empresa = {
   id_empresa: string;
@@ -120,7 +121,7 @@ export function GerarDocumentoPage() {
   const [email, setEmail] = useState("");
   const [data, setData] = useState(hoje);
   const [modalidade, setModalidade] = useState<Modalidade>("ambas");
-  const partes = useRef<Record<Modelo, Parte>>({ contrato: parteVazia(), adesao: parteVazia() });
+  const partes = useRef<Record<"contrato" | "adesao", Parte>>({ contrato: parteVazia(), adesao: parteVazia() });
   const [regimes, setRegimes] = useState<Regimes>(regimesIniciais);
   const [taxaPercentual, setTaxaPercentual] = useState("");
   const [vencimentoDias, setVencimentoDias] = useState("5");
@@ -145,6 +146,22 @@ export function GerarDocumentoPage() {
   const [local, setLocal] = useState("São Paulo");
 
   function trocarModelo(proximo: Modelo) {
+    if (proximo === "rescisao") {
+      partes.current[modelo === "adesao" ? "adesao" : "contrato"] = { razao, cnpj, endereco, email, data, modalidade };
+      setModelo("rescisao");
+      return;
+    }
+    if (modelo === "rescisao") {
+      const outra = partes.current[proximo];
+      setRazao(outra.razao);
+      setCnpj(outra.cnpj);
+      setEndereco(outra.endereco);
+      setEmail(outra.email);
+      setData(outra.data);
+      setModalidade(outra.modalidade);
+      setModelo(proximo);
+      return;
+    }
     if (proximo === modelo) return;
     partes.current[modelo] = { razao, cnpj, endereco, email, data, modalidade };
     const outra = partes.current[proximo];
@@ -277,6 +294,27 @@ export function GerarDocumentoPage() {
     }
   }
 
+  if (modelo === "rescisao") {
+    return (
+      <div className="mx-auto grid w-full max-w-5xl gap-4">
+        <div>
+          <h1 className="text-2xl font-extrabold">Gerar documento</h1>
+          <p className="text-sm text-slate-500">Escolha o estagiário efetivado. O termo sai preenchido com os dados do banco.</p>
+        </div>
+        <Card className="grid gap-3 md:grid-cols-2">
+          <Field label="Documento">
+            <Select aria-label="Documento" value={modelo} onChange={(event) => trocarModelo(event.target.value === "adesao" ? "adesao" : event.target.value === "rescisao" ? "rescisao" : "contrato")}>
+              <option value="contrato">Contrato de prestação de serviços (Modelo 1)</option>
+              <option value="adesao">Termo de adesão — Aderente (Modelo 2)</option>
+              <option value="rescisao">Rescisão estágio ensino médio</option>
+            </Select>
+          </Field>
+        </Card>
+        <GerarRescisaoMedio />
+      </div>
+    );
+  }
+
   return (
     <form className="mx-auto grid w-full max-w-5xl gap-4" onSubmit={gerar}>
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -289,9 +327,10 @@ export function GerarDocumentoPage() {
       {erro ? <p className="text-sm text-rose-600" role="alert">{erro}</p> : null}
       <Card className="grid gap-3 md:grid-cols-2">
         <Field label="Documento">
-          <Select aria-label="Documento" value={modelo} onChange={(event) => trocarModelo(event.target.value === "adesao" ? "adesao" : "contrato")}>
+          <Select aria-label="Documento" value={modelo} onChange={(event) => trocarModelo(event.target.value === "adesao" ? "adesao" : event.target.value === "rescisao" ? "rescisao" : "contrato")}>
             <option value="contrato">Contrato de prestação de serviços (Modelo 1)</option>
             <option value="adesao">Termo de adesão — Aderente (Modelo 2)</option>
+            <option value="rescisao">Rescisão estágio ensino médio</option>
           </Select>
         </Field>
         <Field label={modelo === "contrato" ? "Data do contrato" : "Data da adesão"}>

@@ -57,6 +57,56 @@ export const documentoAdesaoSchema = z.object({
   data,
 });
 
-export const documentoSchema = z.discriminatedUnion("modelo", [documentoContratoSchema, documentoAdesaoSchema]);
+const texto = z.string().trim().max(4000).optional().default("");
+
+export const documentoRescisaoMedioSchema = z.object({
+  modelo: z.literal("rescisao_medio"),
+  estagiario_nome: z.string().trim().min(3, "Informe o nome do estagiário."),
+  estagiario_nascimento: texto,
+  estagiario_cpf: texto,
+  estagiario_rg: texto,
+  estagiario_endereco: texto,
+  estagiario_cep: texto,
+  estagiario_cidade: texto,
+  estagiario_estado: texto,
+  estagiario_curso: texto,
+  estagiario_periodo: texto,
+  estagiario_turno: texto,
+  estagiario_contato: texto,
+  tipo_estagio: z.enum(["obrigatorio", "nao_obrigatorio"]).default("nao_obrigatorio"),
+  responsavel_nome: texto,
+  responsavel_nascimento: texto,
+  responsavel_cpf: texto,
+  responsavel_rg: texto,
+  responsavel_endereco: texto,
+  responsavel_cep: texto,
+  responsavel_cidade: texto,
+  responsavel_estado: texto,
+  responsavel_contato: texto,
+  concedente_razao: z.string().trim().min(3, "Informe a razão social da concedente."),
+  concedente_endereco: texto,
+  concedente_cnpj: texto,
+  concedente_email: texto,
+  concedente_representante: texto,
+  escola_nome: texto,
+  escola_endereco: texto,
+  escola_cidade: texto,
+  escola_estado: texto,
+  escola_cep: texto,
+  escola_cnpj: texto,
+  escola_email: texto,
+  escola_representante: texto,
+  data_tce: data,
+  data_rescisao: data,
+  atividades: z.string().trim().min(3, "Informe o resumo das atividades."),
+  motivo: z.string().trim().min(3, "Informe o motivo da rescisão."),
+  avaliacao: z.string().trim().min(2, "Informe a avaliação de desempenho."),
+});
+
+export const documentoSchema = z.discriminatedUnion("modelo", [
+  documentoContratoSchema,
+  documentoAdesaoSchema,
+  documentoRescisaoMedioSchema,
+]);
 
 export type DocumentoGerado = z.infer<typeof documentoSchema>;

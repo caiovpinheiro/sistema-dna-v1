@@ -263,7 +263,7 @@ function preencherAdesao(documento: string, dados: Extract<DocumentoGerado, { mo
 }
 
 function validar(dados: DocumentoGerado) {
-  if (dados.modelo === "adesao") return;
+  if (dados.modelo !== "contrato") return;
   const direta = dados.modalidade === "direta" || dados.modalidade === "ambas";
   const estagio = dados.modalidade === "estagio" || dados.modalidade === "ambas";
   const algumRegime = Object.entries(dados.regimes).some(([chave, valor]) => chave !== "outros_texto" && valor === true);
@@ -277,6 +277,9 @@ function validar(dados: DocumentoGerado) {
 }
 
 export async function gerarDocumento(dados: DocumentoGerado) {
+  if (dados.modelo === "rescisao_medio") {
+    throw new AppError(500, "MODELO_DIVERGENTE", "A rescisão de estágio é gerada em PDF.");
+  }
   validar(dados);
   if (dados.modelo === "contrato") {
     const aberto = await abrir(MODELOS.contrato);
