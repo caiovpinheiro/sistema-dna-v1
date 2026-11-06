@@ -39,6 +39,21 @@ function linhasDe(itens: Item[]) {
   }));
 }
 
+function celulaCsv(valor: string) {
+  const texto = valor.replaceAll("\"", "\"\"");
+  return /[;"\r\n]/.test(texto) ? `"${texto}"` : texto;
+}
+
+function baixarRelatorio(nome: string, conteudo: string) {
+  const blob = new Blob(["\uFEFF" + conteudo], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = nome;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 export function RelatorioEmpresaPainel({
   empresaId,
   mes,
@@ -122,6 +137,30 @@ export function RelatorioEmpresaPainel({
   });
 
   const dados = relatorio.data?.data;
+
+  function baixar() {
+    const competenciaTexto = `${mes.padStart(2, "0")}/${ano}`;
+    const corpo = [
+      ["Empresa", dados?.empresa ?? ""],
+      ["CNPJ", dados?.cnpj ? formatCnpj(dados.cnpj) : ""],
+      ["Competência", competenciaTexto],
+      ["E-mail", dados?.email ?? ""],
+      [],
+      ["Candidato", "Cargo", "Modalidade", "Início", "Situação", "Valor"],
+      ...visiveis.map((linha) => [
+        linha.nome || "Sem nome",
+        linha.cargo ?? "",
+        linha.modalidade ?? "",
+        linha.inicio ? dateBr(linha.inicio) : "",
+        linha.situacao,
+        numero(linha.valorTexto).toFixed(2).replace(".", ","),
+      ]),
+      [],
+      ["", "", "", "", "Total", total.toFixed(2).replace(".", ",")],
+    ];
+    const base = (dados?.empresa || "empresa").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\w]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "empresa";
+    baixarRelatorio(`relatorio-${base}-${mes.padStart(2, "0")}-${ano}.csv`, corpo.map((colunas) => colunas.map(celulaCsv).join(";")).join("\r\n"));
+  }
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-navy-950/40 p-4" role="dialog" aria-modal="true" aria-labelledby="relatorio-titulo">
@@ -214,6 +253,7 @@ export function RelatorioEmpresaPainel({
               {alterado ? <p className="text-slate-500">Calculado {money(original)}. A edição vale para este envio. Se o boleto do mês já existir, o valor dele não muda.</p> : null}
             </div>
             <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="secondary" disabled={visiveis.length === 0} onClick={baixar}>Baixar relatório</Button>
               <Button type="button" variant="secondary" onClick={() => dados && setLinhas(linhasDe(dados.itens))}>Restaurar</Button>
               <Button type="button" disabled={enviar.isPending || visiveis.length === 0} onClick={() => enviar.mutate()}>{enviar.isPending ? "Enviando..." : "Enviar este relatório"}</Button>
             </div>
