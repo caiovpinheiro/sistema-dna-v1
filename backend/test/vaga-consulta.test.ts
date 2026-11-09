@@ -2,6 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { cargosDistintos, nomesDistintos } from "../src/repositories/vaga.repository.js";
 import { codigoParaStatus, statusDaVaga } from "../src/lib/vaga-status.js";
+import { posicoesLivres } from "../src/services/presenters.js";
+
+test("vaga aberta sem quantidade vale uma posição livre", () => {
+  assert.equal(posicoesLivres(null, 0), 1);
+  assert.equal(posicoesLivres(null, 1), 0);
+  assert.equal(posicoesLivres(3, 1), 2);
+});
 
 test("código do Lightsail vira um dos quatro status", () => {
   for (const codigo of [0, 3, 4, 5, 9]) assert.equal(statusDaVaga(codigo), "aberta");

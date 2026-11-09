@@ -179,7 +179,7 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
     schema: { tags: ["empresas"], params: z.object({ id: z.string().min(1) }), body: empresaPatchSchema },
   }, async (request) => ok(await services.empresas.update(request.params.id, request.body)));
   api.get("/api/v1/empresas/:id/vagas", {
-    schema: { tags: ["empresas"], params: z.object({ id: z.string().min(1) }), querystring: pageQuery },
+    schema: { tags: ["empresas"], params: z.object({ id: z.string().min(1) }), querystring: pageQuery.extend({ situacao: z.enum(["aberta", "pausada", "contratada", "fechada"]).optional() }) },
   }, async (request) => {
     await services.empresas.get(request.params.id);
     const result = await services.vagas.list({ ...request.query, id_empresa: request.params.id });

@@ -59,17 +59,21 @@ export function presentEmpresa(row: EmpresaRow) {
   };
 }
 
+/** Vaga antiga não tem quantidade: vale uma posição, como no sistema em que cada vaga recebe uma contratação. */
+export function posicoesLivres(quantidade: number | null | undefined, ocupadas: number): number {
+  return Math.max((quantidade ?? 1) - ocupadas, 0);
+}
+
 export function vagaSituacao(row: Pick<VagaRow, "status" | "quantidade_posicoes" | "ocupadas">, bloqueadas: number[]) {
   if (row.status != null && bloqueadas.includes(Number(row.status))) return "encerrada" as const;
-  if (row.quantidade_posicoes == null) return "capacidade_pendente" as const;
-  if (row.ocupadas >= row.quantidade_posicoes) return "preenchida" as const;
+  if (posicoesLivres(row.quantidade_posicoes, row.ocupadas) <= 0) return "preenchida" as const;
   return "aberta" as const;
 }
 
 /** situacao é um dos quatro status do sistema novo (aberta, pausada, contratada, fechada), convertido do código do Lightsail. */
 export function presentVaga(row: VagaRow) {
   const situacao = statusDaVaga(row.status);
-  const disponiveis = row.quantidade_posicoes == null ? null : Math.max(row.quantidade_posicoes - row.ocupadas, 0);
+  const disponiveis = posicoesLivres(row.quantidade_posicoes, row.ocupadas);
   return {
     id_vaga: row.id_vaga,
     id_empresa: row.id_empresa,

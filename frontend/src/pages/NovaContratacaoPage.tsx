@@ -25,7 +25,7 @@ export function NovaContratacaoPage() {
   const [result, setResult] = useState<{ id_contratacao: number; id_colaborador: string; id_candidato: string; id_vaga: string; id_empresa: string } | null>(null);
 
   const companies = useQuery({ queryKey: ["busca-empresas", companyQuery], queryFn: () => api<Company[]>(`/api/v1/empresas?pageSize=8&q=${encodeURIComponent(companyQuery)}`), enabled: companyQuery.length >= 2 });
-  const jobs = useQuery({ queryKey: ["vagas-empresa", companyId], queryFn: () => api<Job[]>(`/api/v1/empresas/${companyId}/vagas?pageSize=50`), enabled: Boolean(companyId) });
+  const jobs = useQuery({ queryKey: ["vagas-empresa", companyId], queryFn: () => api<Job[]>(`/api/v1/empresas/${companyId}/vagas?pageSize=100&situacao=aberta`), enabled: Boolean(companyId) });
   const people = useQuery({ queryKey: ["busca-candidatos", personQuery], queryFn: () => api<Person[]>(`/api/v1/candidatos?pageSize=8&nome=${encodeURIComponent(personQuery)}`), enabled: personQuery.length >= 2 });
   const available = useMemo(() => (jobs.data?.data ?? []).filter((job) => job.situacao === "aberta" && (job.disponiveis ?? 0) > 0), [jobs.data]);
   const selectedJob = jobs.data?.data.find((job) => job.id_vaga === jobId);
@@ -78,7 +78,7 @@ export function NovaContratacaoPage() {
         {!companyId ? <p className="text-sm text-slate-500">Selecione a empresa para ver as vagas.</p> : available.length ? available.map((job) => (
           <button type="button" key={job.id_vaga} className={`rounded-xl border px-3 py-3 text-left ${jobId === job.id_vaga ? "border-cyan-600 bg-cyan-50" : "border-slate-200"}`} onClick={() => setJobId(job.id_vaga)}>
             <strong>{job.cargo}</strong>
-            <span className="mt-1 block text-sm">{job.quantidade_posicoes} posições · {job.ocupadas} preenchidas · {job.disponiveis} disponíveis · {regimeLabel[job.regime]}</span>
+            <span className="mt-1 block text-sm">{job.quantidade_posicoes ?? 1} posições · {job.ocupadas} preenchidas · {job.disponiveis} disponíveis · {regimeLabel[job.regime]}</span>
           </button>
         )) : <p className="text-sm text-slate-500">Não há vaga aberta com posição livre nesta empresa.</p>}
       </Card>

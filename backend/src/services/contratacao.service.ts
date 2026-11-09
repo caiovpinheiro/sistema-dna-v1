@@ -13,7 +13,8 @@ import type { ContratacaoCreate, ContratacaoEncerrar, ContratacaoListQuery } fro
 import { buildRescisaoPdf, type RescisaoPdfDados } from "../lib/rescisao-pdf.js";
 import { consultarDocumentoZapSign, criarDocumentoZapSign, type ZapDoc } from "../lib/zapsign.js";
 import { moneyToNumber } from "../lib/money.js";
-import { presentContratacao, vagaSituacao } from "./presenters.js";
+import { statusDaVaga } from "../lib/vaga-status.js";
+import { presentContratacao } from "./presenters.js";
 import type { ProcessoService } from "./processo.service.js";
 
 type StoredResponse = { statusCode: number; body: unknown };
@@ -110,12 +111,8 @@ export class ContratacaoService {
           id_empresa: vaga.id_empresa,
         });
       }
-      const situacao = vagaSituacao(vaga, this.config.vagaStatusBloqueadas);
-      if (situacao === "encerrada") {
-        throw new AppError(409, "VAGA_ENCERRADA", "A vaga não está habilitada para contratação.");
-      }
-      if (situacao === "capacidade_pendente") {
-        throw new AppError(409, "CAPACIDADE_NAO_CONFIGURADA", "Defina a quantidade de posições da vaga antes de contratar.");
+      if (statusDaVaga(vaga.status) !== "aberta") {
+        throw new AppError(409, "VAGA_ENCERRADA", "A vaga não está aberta para contratação.");
       }
       const regime = classifyRegime(vaga.modalidade);
       if (regime === "outro") {
@@ -141,12 +138,13 @@ export class ContratacaoService {
           });
         }
       }
-      if (situacao === "preenchida") {
+      const ocupadas = await this.repo.countActiveByVaga(client, vaga.id_vaga, this.config.CONTRATACAO_STATUS_ATIVO);
+      const capacidade = vaga.quantidade_posicoes ?? 1;
+      if (ocupadas.total >= capacidade) {
         throw new AppError(409, "VAGA_SEM_POSICAO", "Todas as posições desta vaga já estão ocupadas.");
       }
-      const ocupadas = await this.repo.countActiveByVaga(client, vaga.id_vaga, this.config.CONTRATACAO_STATUS_ATIVO);
-      if (vaga.quantidade_posicoes == null || ocupadas.total >= vaga.quantidade_posicoes) {
-        throw new AppError(409, "VAGA_SEM_POSICAO", "Todas as posições desta vaga já estão ocupadas.");
+      if (vaga.quantidade_posicoes == null) {
+        await client.query("UPDATE dna_work.vaga SET quantidade_posicoes = 1 WHERE id_vaga = $1 AND quantidade_posicoes IS NULL", [vaga.id_vaga]);
       }
       const idContratacao = await this.repo.insert(client, {
         idVaga: vaga.id_vaga,
@@ -181,7 +179,7 @@ export class ContratacaoService {
         idContratacao,
       });
       const depois = ocupadas.total + 1;
-      if (vaga.quantidade_posicoes != null && depois >= vaga.quantidade_posicoes) {
+      if (depois >= capacidade) {
         await this.vagas.setStatus(client, vaga.id_vaga, this.config.VAGA_STATUS_OCUPADA);
       }
       const saved = await this.repo.findById(client, idContratacao);
