@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { BuscaOpcao, normalizarBusca } from "@/components/busca-opcao";
 import { CobrancaEmpresa, type ValorEmpresa } from "@/components/cobranca-empresa";
 import { Button, Card, Empty, Field, Input, Select, Textarea } from "@/components/ui";
@@ -85,6 +85,7 @@ function Erro({ error }: { error: unknown }) {
 
 function AbaGrupo({ selecionado, onSelect }: { selecionado: string; onSelect: (id: string) => void }) {
   const client = useQueryClient();
+  const navigate = useNavigate();
   const grupos = useQuery({ queryKey: ["grupos"], queryFn: () => api<Grupo[]>("/api/v1/grupos") });
   const detalhe = useQuery({
     queryKey: ["grupo", selecionado],
@@ -127,9 +128,11 @@ function AbaGrupo({ selecionado, onSelect }: { selecionado: string; onSelect: (i
                   <thead className="text-slate-500"><tr className="border-b"><th className="py-2 pr-3">Empresa</th><th className="py-2 pr-3">CNPJ</th><th className="py-2">Endereço</th></tr></thead>
                   <tbody>
                     {grupo.empresas.map((empresa) => (
-                      <tr key={empresa.id} className="border-b border-slate-100 last:border-0">
+                      <tr key={empresa.id} className="cursor-pointer border-b border-slate-100 last:border-0 hover:bg-slate-50" onClick={() => navigate(`/empresas/${empresa.id}`)}>
                         <td className="py-2 pr-3">
-                          <div className="font-semibold">{empresa.nome_fantasia || empresa.razao_social}</div>
+                          <Link to={`/empresas/${empresa.id}`} className="font-semibold text-cyan-800 hover:underline" onClick={(event) => event.stopPropagation()}>
+                            {empresa.nome_fantasia || empresa.razao_social}
+                          </Link>
                           <div className="text-xs text-slate-500">{empresa.razao_social}</div>
                         </td>
                         <td className="py-2 pr-3">{formatCnpj(empresa.cnpj)}</td>

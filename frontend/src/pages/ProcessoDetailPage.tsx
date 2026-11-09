@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
-import { Button, Skeleton } from "@/components/ui";
+import { Button, Card, Skeleton } from "@/components/ui";
+import { FichaCandidato, type FichaCandidatoDados } from "@/components/ficha-candidato";
 import { ApiError, api } from "@/lib/api";
-import { dateBr, etapaLabel, origemLabel } from "@/lib/format";
+import { dateBr, etapaLabel, formatPhone, origemLabel } from "@/lib/format";
 
 const trilha = ["recebido", "encaminhado", "entrevista_agendada", "entrevista_realizada", "contratado"] as const;
 const finais = new Set(["contratado", "reprovado", "desistente"]);
@@ -31,6 +32,8 @@ type Processo = {
     tipo_de_vaga?: string;
   } | null;
   historico: Array<{ id: string; etapa: string; observacao: string | null; criado_em: string }>;
+  /** A mesma ficha da página do candidato. */
+  candidato: FichaCandidatoDados | null;
 };
 
 export function ProcessoDetailPage() {
@@ -51,7 +54,12 @@ export function ProcessoDetailPage() {
     <div className="grid gap-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight text-white">{data.candidato_nome}</h1>
+          <h1 className="text-xl font-semibold tracking-tight text-white">
+            <Link className="hover:underline" to={`/candidatos/${data.id_candidato}`}>{data.candidato_nome}</Link>
+          </h1>
+          {data.candidato ? (
+            <p className="text-sm text-slate-400">{[data.candidato.email, formatPhone(data.candidato.celular || data.candidato.telefonefixo)].filter((item) => item && item !== "—").join(" · ")}</p>
+          ) : null}
           <p className="text-sm text-slate-400">
             <Link className="text-cyan-300" to={`/empresas/${data.id_empresa}`}>{data.empresa_nome}</Link>
             {" · "}
@@ -82,27 +90,16 @@ export function ProcessoDetailPage() {
         {!aberto && data.etapa !== "contratado" ? <p className="text-sm text-slate-400">Processo encerrado como {etapaLabel[data.etapa].toLowerCase()}.</p> : null}
         {data.id_contratacao ? <Link className="text-sm font-semibold text-cyan-300" to={`/contratacoes/${data.id_contratacao}`}>Abrir contratação {data.id_contratacao}</Link> : null}
       </div>
-      {data.atendimento?.resumo_cv ? <Texto titulo="Currículo do atendimento" texto={data.atendimento.resumo_cv} /> : null}
+      {data.candidato ? <FichaCandidato data={data.candidato} /> : null}
       {data.atendimento?.resumo_entrevista ? <Texto titulo="Resumo da entrevista" texto={data.atendimento.resumo_entrevista} /> : null}
-      {data.atendimento?.teste_comportamental ? <Texto titulo="Teste comportamental" texto={data.atendimento.teste_comportamental} /> : null}
       {data.atendimento?.info_conducao ? <Texto titulo="Condução" texto={data.atendimento.info_conducao} /> : null}
-      {data.atendimento?.descricao_vaga || data.atendimento?.escolaridade || data.atendimento?.idade || data.atendimento?.tipo_de_vaga ? (
-        <section className="rounded-xl bg-[#12141a] p-4 ring-1 ring-white/10">
-          <h2 className="text-sm font-semibold text-white">Dados do atendimento</h2>
-          <div className="mt-2 grid gap-1 text-sm text-slate-300">
-            {data.atendimento.descricao_vaga ? <p className="whitespace-pre-wrap">{data.atendimento.descricao_vaga}</p> : null}
-            {data.atendimento.escolaridade ? <p>Escolaridade: {data.atendimento.escolaridade}</p> : null}
-            {data.atendimento.idade ? <p>Idade: {data.atendimento.idade}</p> : null}
-            {data.atendimento.tipo_de_vaga ? <p>Tipo de vaga: {data.atendimento.tipo_de_vaga}</p> : null}
-          </div>
-        </section>
-      ) : null}
-      <section className="rounded-xl bg-[#12141a] p-4 ring-1 ring-white/10">
-        <h2 className="text-sm font-semibold text-white">Datas</h2>
-        <p className="mt-2 text-sm text-slate-300">Recebido em {dateBr(data.data_recebimento)}. Encaminhado em {dateBr(data.data_encaminhamento)}.</p>
-      </section>
-      <section className="rounded-xl bg-[#12141a] p-4 ring-1 ring-white/10">
-        <h2 className="mb-3 text-sm font-semibold text-white">Histórico</h2>
+      {data.atendimento?.descricao_vaga ? <Texto titulo="Dados da vaga no atendimento" texto={data.atendimento.descricao_vaga} /> : null}
+      <Card>
+        <h2 className="mb-2 font-bold">Datas</h2>
+        <p className="text-sm text-slate-600">Recebido em {dateBr(data.data_recebimento)}. Encaminhado em {dateBr(data.data_encaminhamento)}.</p>
+      </Card>
+      <Card>
+        <h2 className="mb-3 font-bold">Histórico</h2>
         <ol className="grid gap-3">
           {data.historico.map((item) => (
             <li key={item.id} className="grid grid-cols-[8rem_1fr] gap-3 text-sm">
@@ -111,16 +108,11 @@ export function ProcessoDetailPage() {
             </li>
           ))}
         </ol>
-      </section>
+      </Card>
     </div>
   );
 }
 
 function Texto({ titulo, texto }: { titulo: string; texto: string }) {
-  return (
-    <section className="rounded-xl bg-[#12141a] p-4 ring-1 ring-white/10">
-      <h2 className="text-sm font-semibold text-white">{titulo}</h2>
-      <p className="mt-2 whitespace-pre-wrap text-sm text-slate-300">{texto}</p>
-    </section>
-  );
+  return <Card><h2 className="mb-2 font-bold">{titulo}</h2><p className="whitespace-pre-wrap text-sm text-slate-600">{texto}</p></Card>;
 }

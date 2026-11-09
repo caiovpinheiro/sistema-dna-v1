@@ -6,7 +6,31 @@ import { ApiError, api } from "@/lib/api";
 import { dateBr, formatCpf, formatPhone, money, regimeLabel, situacaoLabel, textoPlano } from "@/lib/format";
 import { ProcessosRelacionados } from "@/pages/ProcessosPage";
 
+/** Mensagem para o candidato no formato do Notion (cargo, local, salário + benefícios e horário), com botão de copiar. */
+function MensagemVaga({ texto }: { texto: string }) {
+  const [copiado, setCopiado] = useState(false);
+  async function copiar() {
+    try {
+      await navigator.clipboard.writeText(texto);
+      setCopiado(true);
+      window.setTimeout(() => setCopiado(false), 2000);
+    } catch {
+      setCopiado(false);
+    }
+  }
+  return (
+    <Card className="grid gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="font-bold">Mensagem para o candidato</h2>
+        <Button type="button" variant="secondary" onClick={() => void copiar()}>{copiado ? "Copiada" : "Copiar mensagem"}</Button>
+      </div>
+      <p className="whitespace-pre-line text-sm text-slate-600">{texto}</p>
+    </Card>
+  );
+}
+
 type Job = {
+  mensagem?: string;
   id_vaga: string; cargo: string; id_empresa: string; nome_fantasia: string | null; razao_social: string | null;
   regime: string; situacao: string; modalidade: string | null; quantidade_posicoes: number | null; ocupadas: number;
   disponiveis: number | null; salario: number | null; dataabertura: string | null; carga_horaria: string | null; status: number | null;
@@ -113,6 +137,7 @@ export function VagaDetailPage() {
           <Card key={String(etapa)} className="bg-cyan-800 text-white"><p className="text-xs uppercase">{etapa}</p><p className="mt-2 font-bold">{nome} {valor}</p></Card>
         ))}
       </div>
+      {data.mensagem ? <MensagemVaga texto={data.mensagem} /> : null}
       <Card className="grid gap-4">
         <h2 className="font-bold">Informações gerais</h2>
         <p className="text-sm text-slate-600">Distância: {data.km || "—"} km · Carga horária: {data.carga_horaria || "não informada"}</p>

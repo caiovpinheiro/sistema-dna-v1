@@ -5,6 +5,7 @@ import { cepCadastro, escolaridadeCadastro, sexoCadastro } from "../lib/atendime
 import { etapaInicial, podeMover } from "../lib/processo.js";
 import { isValidCpf, onlyDigits } from "../lib/normalize.js";
 import { CandidatoRepository } from "../repositories/candidato.repository.js";
+import { fichaDoCandidato } from "./candidato.service.js";
 import { EmpresaRepository } from "../repositories/empresa.repository.js";
 import { ProcessoRepository } from "../repositories/processo.repository.js";
 import { one, type Db } from "../repositories/sql.js";
@@ -63,7 +64,12 @@ export class ProcessoService {
     const row = await this.repo.findById(this.db, id);
     if (!row) throw new AppError(404, "PROCESSO_NAO_ENCONTRADO", "Processo não encontrado.");
     const historico = await this.repo.historico(this.db, id);
-    return { ...row, historico };
+    // A mesma ficha da página do candidato (sem dados bancários): uma fonte só para as duas telas.
+    const ficha = await fichaDoCandidato(this.db, this.candidatos, row.id_candidato);
+    const candidato = ficha
+      ? (({ banco: _banco, agencia: _agencia, numero_conta: _conta, nome_conta: _nome, tipo_chave_pix: _tipo, chave_pix: _pix, ...resto }) => resto)(ficha)
+      : null;
+    return { ...row, historico, candidato };
   }
 
   async create(input: ProcessoCreate) {

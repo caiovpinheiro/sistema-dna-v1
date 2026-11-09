@@ -5,6 +5,36 @@ import { CandidatoRepository } from "../repositories/candidato.repository.js";
 import type { CandidatoCreate, CandidatoListQuery, CandidatoPatch } from "../schemas/candidato.js";
 import { presentCandidato } from "./presenters.js";
 
+/** Dados do atendimento que são da pessoa (não da vaga): ficam na ficha do candidato. */
+const DO_CANDIDATO = ["resumo_cv", "teste_comportamental", "escolaridade", "idade", "tipo_de_vaga", "captado_por"] as const;
+
+/**
+ * Ficha única do candidato, usada na página do candidato e na do processo.
+ * O atendimento é o do candidato; o que faltar nele vem do processo mais recente
+ * (o atendimento chegava às vezes só no processo, como o teste comportamental).
+ */
+export async function fichaDoCandidato(db: Pool, repo: CandidatoRepository, id: string) {
+  const row = await repo.findById(db, id);
+  if (!row) return null;
+  const { rows: processos } = await db.query<{ atendimento: Record<string, string> | null }>(
+    `SELECT atendimento FROM dna_work.processo_seletivo
+     WHERE id_candidato = $1 AND atendimento IS NOT NULL
+     ORDER BY data_recebimento DESC NULLS LAST, id DESC`,
+    [id],
+  );
+  const atendimento: Record<string, string> = { ...(row.atendimento ?? {}) };
+  for (const chave of DO_CANDIDATO) {
+    if (atendimento[chave]?.trim()) continue;
+    const doProcesso = processos.map((processo) => processo.atendimento?.[chave]).find((valor) => valor?.trim());
+    if (doProcesso) atendimento[chave] = doProcesso;
+  }
+  return {
+    ...presentCandidato(row, true),
+    atendimento: Object.keys(atendimento).length ? atendimento : null,
+    curriculo: await repo.curriculo(db, row),
+  };
+}
+
 const PATCHABLE = new Set([
   "nome", "cpf", "rg", "rg_expedidor", "datanascimento", "email", "celular", "telefonefixo",
   "cep", "logradouro", "numero", "complemento", "bairro", "cidade", "estado", "sexo",
@@ -56,9 +86,9 @@ export class CandidatoService {
   }
 
   async get(id: string) {
-    const row = await this.repo.findById(this.db, id);
-    if (!row) throw new AppError(404, "CANDIDATO_NAO_ENCONTRADO", "Candidato não encontrado.");
-    return { ...presentCandidato(row, true), curriculo: await this.repo.curriculo(this.db, row) };
+    const ficha = await fichaDoCandidato(this.db, this.repo, id);
+    if (!ficha) throw new AppError(404, "CANDIDATO_NAO_ENCONTRADO", "Candidato não encontrado.");
+    return ficha;
   }
 
   async list(query: CandidatoListQuery) {

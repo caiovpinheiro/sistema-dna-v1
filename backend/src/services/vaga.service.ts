@@ -12,6 +12,24 @@ import { VagaRepository } from "../repositories/vaga.repository.js";
 import type { VagaCreate, VagaListQuery, VagaPatch } from "../schemas/vaga.js";
 import { supabaseRest } from "../lib/supabase-rest.js";
 import { presentVaga } from "./presenters.js";
+import { mensagemDaVaga } from "../lib/mensagem-vaga.js";
+import { DIAS_ESCALA, textoDoHorario } from "../lib/horario-escala.js";
+
+/** Horário da mensagem: o texto do horário da vaga; vazio, o texto montado pela grade de dias; sem grade, a entrada e a saída. */
+function horarioDaFicha(ficha: Record<string, unknown>): string | null {
+  const texto = String(ficha.texto_carga ?? "").trim();
+  if (texto) return texto;
+  const hora = (valor: unknown) => (/^\d{2}:\d{2}$/.test(String(valor ?? "")) ? String(valor) : "");
+  const dias = DIAS_ESCALA.map((dia) => {
+    const coluna = dia === "domingo" ? "domindo" : dia;
+    return { modo: "fixo" as const, entrada: hora(ficha[`${coluna}_entrada`]), saida: hora(ficha[`${coluna}_saida`]) };
+  });
+  const pelaGrade = textoDoHorario(dias);
+  if (pelaGrade) return pelaGrade;
+  const entrada = hora(ficha.horabase);
+  const saida = hora(ficha.hora_saida_base);
+  return entrada && saida ? `${entrada} às ${saida}` : null;
+}
 
 export class VagaService {
   constructor(
@@ -87,7 +105,27 @@ export class VagaService {
     const row = await this.repo.findById(this.db, id);
     if (!row) throw new AppError(404, "VAGA_NAO_ENCONTRADA", "Vaga não encontrada.");
     const ficha = await this.repo.ficha(this.db, id, row.comparador);
-    return { ...presentVaga(row), ...ficha, beneficios: await this.lerBeneficios(id) };
+    const beneficios = await this.lerBeneficios(id);
+    const mensagem = mensagemDaVaga({
+      cargo: row.cargo,
+      ...await this.localDaVaga(row.comparador, row.id_empresa),
+      salario: row.salario,
+      beneficios,
+      horario: horarioDaFicha(ficha),
+    });
+    return { ...presentVaga(row), ...ficha, beneficios, mensagem };
+  }
+
+  /** Bairro e cidade do endereço da vaga; sem eles, os da empresa. */
+  private async localDaVaga(comparador: string | null, idEmpresa: string | null) {
+    const daVaga = comparador
+      ? await one<{ bairro: string | null; cidade: string | null }>(this.db, "SELECT bairro, cidade FROM dna_work.vaga_endereco WHERE comparador = $1 LIMIT 1", [comparador])
+      : null;
+    if (daVaga?.bairro?.trim() || daVaga?.cidade?.trim()) return { bairro: daVaga.bairro, cidade: daVaga.cidade };
+    const daEmpresa = idEmpresa
+      ? await one<{ bairro: string | null; cidade: string | null }>(this.db, "SELECT bairro, cidade FROM dna_work.empresa WHERE id_empresa = $1", [idEmpresa])
+      : null;
+    return { bairro: daEmpresa?.bairro ?? null, cidade: daEmpresa?.cidade ?? null };
   }
 
   private rest() {
