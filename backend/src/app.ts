@@ -36,6 +36,7 @@ import { CadastroService } from "./services/cadastro.service.js";
 import { TriagemService } from "./services/triagem.service.js";
 import { CargoService } from "./services/cargo.service.js";
 import { normalizarAtendimento } from "./lib/atendimento.js";
+import { iniciarAgendaRegua } from "./lib/regua-agenda.js";
 import { atendimentoSchema } from "./schemas/processo.js";
 import { NotionSyncService } from "./services/notion-sync.service.js";
 import { VagasAbertasSyncService } from "./services/vagas-abertas-sync.service.js";
@@ -155,6 +156,13 @@ export async function buildApp(context: AppContext): Promise<FastifyInstance> {
   });
 
   await registerRoutes(app, context.config, services, context.db);
+  const agendaRegua = iniciarAgendaRegua({
+    ativo: context.config.REGUA_AGENDA === "1",
+    envioReal: context.config.REGUA_ENVIO_REAL === "1",
+    executar: (hoje) => services.regua.executarReal(hoje),
+    erro: (error) => app.log.error({ erro: error instanceof Error ? error.message : String(error) }, "regua: ciclo falhou"),
+  });
+  app.addHook("onClose", async () => agendaRegua.parar());
   if (context.agendarSyncNotion) {
     const parar = agendarPorSlot(
       (slot) => services.sync.executar(context.config.NOTION_SYNC_DRY, slot),

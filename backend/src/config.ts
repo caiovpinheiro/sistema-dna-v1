@@ -47,6 +47,11 @@ const envSchema = z.object({
   MAILJET_SECRET_KEY: z.string().optional().default(""),
   MAILJET_FROM: z.string().optional().default("documentos@dnawork.ai"),
   MAILJET_FROM_NAME: z.string().optional().default("DNA Work"),
+  // Só "1" envia e-mail de verdade. "0" mantém a régua desligada.
+  REGUA_ENVIO_REAL: z.string().optional().default("0"),
+  // Só "1" arma o relógio das 08:00 em America/Sao_Paulo. "0" deixa o agendamento parado.
+  REGUA_AGENDA: z.string().optional().default("0"),
+  REGUA_INICIO: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().default("2026-11-10"),
   DNA_WORK_DB_HOST: z.string().optional().default(""),
   DNA_WORK_DB_PORT: z.coerce.number().int().positive().default(3306),
   DNA_WORK_DB_USER: z.string().optional().default(""),

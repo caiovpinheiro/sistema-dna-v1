@@ -437,6 +437,9 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
   api.get("/api/v1/asaas/regua", {
     schema: { tags: ["asaas"], querystring: z.object({ competencia: z.string().regex(/^\d{4}-\d{2}$/) }) },
   }, async (request) => ok(await services.regua.listar(request.query.competencia)));
+  api.post("/api/v1/asaas/regua/simular", {
+    schema: { tags: ["asaas"], body: z.object({ competencia: z.string().regex(/^\d{4}-\d{2}$/), data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() }) },
+  }, async (request) => ok(await services.regua.simular(request.body.competencia, request.body.data)));
   api.get("/api/v1/asaas/regua/:id/relatorio", {
     schema: {
       tags: ["asaas"],
@@ -465,6 +468,9 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
       body: z.object({ data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }),
     },
   }, async (request) => ok(await services.regua.registrarComprovante(request.params.id, request.body.data)));
+  api.post("/api/v1/asaas/regua/:id/comprovante/validar", {
+    schema: { tags: ["asaas"], params: z.object({ id: z.string().uuid() }) },
+  }, async (request) => ok(await services.regua.validarComprovante(request.params.id, request.user.email)));
   api.post("/api/v1/asaas/cobrancas", {
     schema: {
       tags: ["asaas"],
@@ -504,7 +510,11 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
   }, async (request) => ok(await services.asaas.enviarFatura(request.params.id)));
   api.post("/api/v1/asaas/cobrancas/:id/sincronizar", {
     schema: { tags: ["asaas"], params: z.object({ id: z.string().uuid() }) },
-  }, async (request) => ok(await services.asaas.sincronizar(request.params.id)));
+  }, async (request) => {
+    const cobranca = await services.asaas.sincronizar(request.params.id);
+    if (cobranca?.situacao === "paga") await services.regua.encerrarPorCobrancaId(cobranca.id, cobranca.data_pagamento);
+    return ok(cobranca);
+  });
   api.post("/api/v1/asaas/cobrancas/:id/receber", {
     schema: {
       tags: ["asaas"],
@@ -677,7 +687,13 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
       return reply.code(401).send({ success: false, error: { code: "NAO_AUTORIZADO", message: "Webhook recusado." } });
     }
     const payload = request.body && typeof request.body === "object" ? request.body as Record<string, unknown> : {};
-    return ok(await services.asaas.receberWebhook(payload));
+    const resultado = await services.asaas.receberWebhook(payload);
+    const payment = payload.payment as { id?: string; status?: string; paymentDate?: string | null } | undefined;
+    const status = String(payment?.status ?? "").toUpperCase();
+    if (resultado.atualizado && payment?.id && (status === "RECEIVED" || status === "CONFIRMED" || status === "RECEIVED_IN_CASH")) {
+      await services.regua.encerrarPorPaymentId(payment.id, payment.paymentDate ?? null);
+    }
+    return ok(resultado);
   });
   api.get("/api/v1/grupos", { schema: { tags: ["grupos"] } }, async () => ok(await services.cadastro.listarGrupos()));
   api.get("/api/v1/grupos/:id", {
