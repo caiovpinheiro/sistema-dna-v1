@@ -188,3 +188,10 @@ test("cópia: salário com ponto decimal não é multiplicado por 100", () => {
     assert.equal(moneyToNumber(bruto), esperado, bruto);
   }
 });
+
+test("vaga em home office não repete o home office no horário", async () => {
+  const { semHomeOffice, horarioDoEspelho } = await import("../src/services/triagem.service.js");
+  assert.equal(semHomeOffice("Segunda a sexta, 13:00 às 22:00; sábado por escala, 4 horas. Home Office."), "Segunda a sexta, 13:00 às 22:00; sábado por escala, 4 horas.");
+  assert.equal(semHomeOffice("Segunda a sexta, 09:00 às 18:00"), "Segunda a sexta, 09:00 às 18:00");
+  assert.equal(horarioDoEspelho(";2-6;00:00;1=;2=09:00-19:00;3=09:00-19:00;4=09:00-19:00;5=09:00-19:00;6=09:00-19:00;7="), "Segunda a sexta, 09:00 às 19:00");
+});

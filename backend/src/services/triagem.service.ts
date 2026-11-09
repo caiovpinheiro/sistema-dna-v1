@@ -84,6 +84,17 @@ export function horarioDoEspelho(horario: string | null | undefined): string | n
   return porDia.size ? textoDoHorario(dias) || null : null;
 }
 
+/** Tira do horário o trecho "home office" ("…, 4 horas. Home Office." vira "…, 4 horas."). */
+export function semHomeOffice(horario: string | null): string | null {
+  if (!horario) return horario;
+  const limpo = horario
+    .replace(/[\s.,;:–-]*\b(?:vaga\s+(?:em\s+)?)?home[\s-]*office\b[\s.]*/gi, ". ")
+    .replace(/\s*\.\s*\.\s*/g, ". ")
+    .replace(/[\s.;,]+$/, "")
+    .trim();
+  return limpo ? (/[.!?]$/.test(horario.trim()) ? `${limpo}.` : limpo) : null;
+}
+
 /** "Barra Funda - São Paulo / SP" vira "Barra Funda, São Paulo SP". */
 export function localDaEmpresa(local: string | null | undefined): string {
   return String(local ?? "").replace(/\s+/g, " ").trim().replace(/\s+-\s+/, ", ").replace(/\s*\/\s*/, " ");
@@ -154,7 +165,9 @@ export class TriagemService {
         if (maxima != null && input.idade > maxima) continue;
       }
       const salario = Number(vaga.salario) || 0;
-      const horario = horarioDoEspelho(vaga.horario);
+      const homeOffice = vaga.tipo_trabalho === "remoto";
+      // Home office tem linha própria: não repete no horário.
+      const horario = homeOffice ? semHomeOffice(horarioDoEspelho(vaga.horario)) : horarioDoEspelho(vaga.horario);
       candidatas.push({
         id: vaga.id,
         grupo: vaga.vaga_id || vaga.id,
@@ -164,7 +177,7 @@ export class TriagemService {
         contractType: Number(vaga.tipo_vaga) === 1 ? "Estágio" : "CLT",
         salaryLabel: salario > 0 ? moeda.format(salario) : "salário a combinar",
         hasBenefits: Boolean(vaga.beneficios?.trim()),
-        homeOffice: vaga.tipo_trabalho === "remoto",
+        homeOffice,
         schedule: horario,
         schedules: horario ? [horario] : [],
         distanceKm: Math.round(distancia * 10) / 10,
