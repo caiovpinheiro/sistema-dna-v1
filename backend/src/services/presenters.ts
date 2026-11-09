@@ -96,6 +96,13 @@ export function presentVaga(row: VagaRow) {
     quantidade_posicoes: row.quantidade_posicoes,
     ocupadas: row.ocupadas,
     disponiveis,
+    codigo: row.codigo ?? null,
+    horario: row.texto_carga?.trim() || (row.horabase && row.hora_saida_base ? `${row.horabase} às ${row.hora_saida_base}` : null),
+    local: row.local ?? null,
+    beneficios: row.beneficios_resumo ?? null,
+    sexo: row.sexo ?? null,
+    idade: row.idade ?? null,
+    idade_ate: row.idadeate ?? null,
   };
 }
 

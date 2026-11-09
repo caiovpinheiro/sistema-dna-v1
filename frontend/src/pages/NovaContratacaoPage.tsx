@@ -3,11 +3,33 @@ import { useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button, Card, Field, Input } from "@/components/ui";
 import { ApiError, api, idempotencyKey } from "@/lib/api";
-import { formatCpf, regimeLabel } from "@/lib/format";
+import { formatCpf, money, regimeLabel } from "@/lib/format";
 
 type Company = { id_empresa: string; razao_social: string; nome_fantasia: string | null; cnpj: string };
-type Job = { id_vaga: string; cargo: string; regime: string; situacao: string; disponiveis: number | null; quantidade_posicoes: number | null; ocupadas: number };
+type Job = {
+  id_vaga: string; cargo: string; regime: string; modalidade: string | null; situacao: string;
+  disponiveis: number | null; quantidade_posicoes: number | null; ocupadas: number; salario: number | null;
+  codigo: string | null; horario: string | null; local: string | null; beneficios: string | null;
+  carga_horaria: string | null; sexo: string | null; idade: string | null; idade_ate: string | null;
+};
 type Person = { id_candidato: string; nome: string; cpf: string };
+
+function sexoDaVaga(valor: string | null) {
+  const sexo = (valor ?? "").trim().toUpperCase();
+  if (sexo === "M") return "Masculino";
+  if (sexo === "F") return "Feminino";
+  if (sexo === "I" || sexo === "A") return "Indiferente";
+  return sexo || "—";
+}
+
+function faixaIdade(de: string | null, ate: string | null) {
+  const inicio = (de ?? "").trim();
+  const fim = (ate ?? "").trim();
+  if (inicio && fim) return `${inicio} a ${fim} anos`;
+  if (inicio) return `a partir de ${inicio} anos`;
+  if (fim) return `até ${fim} anos`;
+  return "—";
+}
 
 export function NovaContratacaoPage() {
   const [params] = useSearchParams();
@@ -76,10 +98,25 @@ export function NovaContratacaoPage() {
       <Card className="grid gap-3">
         <h2 className="font-bold">2. Vaga disponível</h2>
         {!companyId ? <p className="text-sm text-slate-500">Selecione a empresa para ver as vagas.</p> : available.length ? available.map((job) => (
-          <button type="button" key={job.id_vaga} className={`rounded-xl border px-3 py-3 text-left ${jobId === job.id_vaga ? "border-cyan-600 bg-cyan-50" : "border-slate-200"}`} onClick={() => setJobId(job.id_vaga)}>
-            <strong>{job.cargo}</strong>
-            <span className="mt-1 block text-sm">{job.quantidade_posicoes ?? 1} posições · {job.ocupadas} preenchidas · {job.disponiveis} disponíveis · {regimeLabel[job.regime]}</span>
-          </button>
+          <div key={job.id_vaga} className="group relative">
+            <button type="button" className={`w-full rounded-xl border px-3 py-3 text-left ${jobId === job.id_vaga ? "border-cyan-600 bg-cyan-50" : "border-slate-200"}`} onClick={() => setJobId(job.id_vaga)}>
+              <strong>{job.cargo}</strong>
+              <span className="mt-1 block text-sm">{job.quantidade_posicoes ?? 1} posições · {job.ocupadas} preenchidas · {job.disponiveis} disponíveis · {regimeLabel[job.regime]}</span>
+            </button>
+            <div className="pointer-events-none absolute bottom-full left-0 z-30 mb-2 hidden w-full max-w-lg rounded-xl border border-slate-200 bg-white p-3 text-sm shadow-lg group-hover:block">
+              <p className="font-bold text-navy-900">{job.cargo}{job.codigo ? ` · ${job.codigo}` : ""}</p>
+              <dl className="mt-2 grid gap-1 text-slate-600">
+                <div><dt className="inline font-semibold">Salário: </dt><dd className="inline">{money(job.salario)}</dd></div>
+                <div><dt className="inline font-semibold">Horário: </dt><dd className="inline">{job.horario || "—"}</dd></div>
+                <div><dt className="inline font-semibold">Local: </dt><dd className="inline">{job.local || "—"}</dd></div>
+                <div><dt className="inline font-semibold">Carga horária: </dt><dd className="inline">{job.carga_horaria || "—"}</dd></div>
+                <div><dt className="inline font-semibold">Modalidade: </dt><dd className="inline">{job.modalidade || regimeLabel[job.regime]}</dd></div>
+                <div><dt className="inline font-semibold">Sexo: </dt><dd className="inline">{sexoDaVaga(job.sexo)}</dd></div>
+                <div><dt className="inline font-semibold">Idade: </dt><dd className="inline">{faixaIdade(job.idade, job.idade_ate)}</dd></div>
+                <div><dt className="inline font-semibold">Benefícios: </dt><dd className="inline whitespace-pre-line">{job.beneficios || "—"}</dd></div>
+              </dl>
+            </div>
+          </div>
         )) : <p className="text-sm text-slate-500">Não há vaga aberta com posição livre nesta empresa.</p>}
       </Card>
       <Card className="grid gap-3">

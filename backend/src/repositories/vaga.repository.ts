@@ -25,6 +25,15 @@ export type VagaRow = {
   /** Só na listagem: nome da unidade no cadastro do sistema (public.empresa) e o grupo dela. */
   empresa_nome?: string | null;
   grupo_nome?: string | null;
+  codigo?: string | null;
+  texto_carga?: string | null;
+  horabase?: string | null;
+  hora_saida_base?: string | null;
+  local?: string | null;
+  beneficios_resumo?: string | null;
+  sexo?: string | null;
+  idade?: string | null;
+  idadeate?: string | null;
 };
 
 type ContextoVaga = {
@@ -392,9 +401,36 @@ export class VagaRepository {
     const rows = await many<VagaRow>(db, `
       SELECT v.id_vaga, v.id_empresa, v.cargo, v.tipo_vaga, v.salario, v.status, v.comparador,
              v.dataabertura, v.publicar, v.carga_horaria, v.obs, v.quantidade_posicoes,
+             v.codigo, v.texto_carga, v.horabase, v.hora_saida_base, v.sexo, v.idade, v.idadeate,
              e.razao_social, e.nome_fantasia, m.descricao AS modalidade,
              NULLIF(btrim(pe.nome_fantasia), '') AS empresa_nome, g.nome AS grupo_nome,
-             COALESCE(o.ocupadas, 0)::int AS ocupadas
+             COALESCE(o.ocupadas, 0)::int AS ocupadas,
+             COALESCE(
+               (
+                 SELECT NULLIF(concat_ws(', ',
+                   NULLIF(btrim(en.logradouro), ''), NULLIF(btrim(en.numero), ''), NULLIF(btrim(en.complemento), ''),
+                   NULLIF(btrim(en.bairro), ''),
+                   NULLIF(concat_ws('/', NULLIF(btrim(en.cidade), ''), NULLIF(btrim(en.uf), '')), ''),
+                   CASE WHEN NULLIF(btrim(en.cep), '') IS NULL THEN NULL ELSE 'CEP ' || btrim(en.cep) END
+                 ), '')
+                 FROM dna_work.vaga_endereco en
+                 WHERE en.comparador = v.comparador AND coalesce(v.comparador, '') <> ''
+                 LIMIT 1
+               ),
+               NULLIF(concat_ws(', ',
+                 NULLIF(btrim(e.logradouro), ''), NULLIF(btrim(e.numero), ''), NULLIF(btrim(e.bairro), ''),
+                 NULLIF(concat_ws('/', NULLIF(btrim(e.cidade), ''), NULLIF(btrim(e.uf), '')), '')
+               ), '')
+             ) AS local,
+             COALESCE(
+               NULLIF(btrim(v.beneficios_texto), ''),
+               (
+                 SELECT string_agg(b.beneficios, ', ' ORDER BY b.beneficios)
+                 FROM dna_work.beneficio_vaga bv
+                 JOIN dna_work.beneficio b ON b.id = bv.id_beneficio
+                 WHERE bv.id_vaga = v.id_vaga
+               )
+             ) AS beneficios_resumo
       ${from}
       ORDER BY CASE WHEN v.cargo ILIKE 'teste%' AND ${blockedExpr} THEN 1 ELSE 0 END, ${order} NULLS LAST, v.id_vaga
       LIMIT $${params.length + 1} OFFSET $${params.length + 2}
