@@ -324,9 +324,6 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
     await services.tce.excluir(request.params.id);
     return ok({ id: request.params.id });
   });
-  api.post("/api/v1/termos", {
-    schema: { tags: ["termos"], body: z.object({ id_contratacao: z.number().int().positive() }) },
-  }, async (request, reply) => reply.code(201).send(ok(await services.termos.criar(request.body.id_contratacao))));
   api.get("/api/v1/tce/empresas", { schema: { tags: ["termos"] } }, async () => ok(await services.tce.listarEmpresas()));
   api.get("/api/v1/tce/escolas", {
     schema: { tags: ["termos"], querystring: z.object({ q: z.string().max(120).optional() }) },
@@ -337,11 +334,15 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
   api.get("/api/v1/tce/candidatos/:id", {
     schema: { tags: ["termos"], params: z.object({ id: z.string().min(1).max(80) }) },
   }, async (request) => ok(await services.tce.candidatoParaTce(request.params.id)));
+  api.get("/api/v1/tce/contratacoes/:id", {
+    schema: { tags: ["termos"], params: z.object({ id: z.coerce.number().int().positive() }) },
+  }, async (request) => ok(await services.tce.contratacaoParaTce(request.params.id)));
   api.post("/api/v1/tce/gerar", {
     schema: {
       tags: ["termos"],
       body: z.object({
         empresa_id: z.string().uuid(),
+        id_contratacao: z.number().int().positive().optional().nullable(),
         escola_id: z.string().max(255).optional().nullable(),
         concedente: z.object({
           razao_social: z.string().max(200).optional().default(""),
@@ -361,6 +362,7 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
     const termo = await services.tce.gerar({
       empresaId: request.body.empresa_id,
       escolaId: request.body.escola_id || null,
+      idContratacao: request.body.id_contratacao ?? null,
       concedente: request.body.concedente,
       campos: camposFromBody(known),
     });

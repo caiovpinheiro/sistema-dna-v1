@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button, Field, Input, Textarea } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 
@@ -24,6 +24,8 @@ type Preenchimento = {
   concedente: { razao_social: string; nome_fantasia?: string; cnpj: string; endereco: string; cep: string; cidade: string; estado: string; email: string; representante: string } | null;
   empresaId: string;
   escolaId: string;
+  idContratacao: number | null;
+  terminoEstudo: string;
 };
 
 const APOLICE = "Apólice Coletiva nº 09820055561928 da Porto Seguro";
@@ -83,12 +85,34 @@ const SECOES = [
   { id: "estagio", title: "Estágio" },
 ];
 
+function dataBr(iso: string) {
+  const partes = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return partes ? `${partes[3]}/${partes[2]}/${partes[1]}` : iso;
+}
+
+/** Mesmas travas do v0: término até o fim dos estudos e no máximo 2 anos. */
+function erroDasDatas(inicio: string, termino: string, terminoEstudo: string) {
+  if (!termino) return "";
+  if (inicio && termino < inicio) return "O término do estágio não pode ser antes do início.";
+  if (terminoEstudo && termino > terminoEstudo) return `O término passa da data de término dos estudos do candidato (${dataBr(terminoEstudo)}).`;
+  if (inicio) {
+    const limite = new Date(`${inicio}T00:00:00Z`);
+    limite.setUTCDate(limite.getUTCDate() + 730);
+    if (new Date(`${termino}T00:00:00Z`) > limite) return "O estágio não pode passar de 2 anos.";
+  }
+  return "";
+}
+
 function normalizar(value: string) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 }
 
 export function GeradorTce() {
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const contratacaoParam = Number(params.get("contratacao")) || null;
+  const [idContratacao, setIdContratacao] = useState<number | null>(null);
+  const [terminoEstudo, setTerminoEstudo] = useState("");
   const empresas = useQuery({ queryKey: ["tce-empresas"], queryFn: () => api<Empresa[]>("/api/v1/tce/empresas") });
   const [busca, setBusca] = useState("");
   const [aberta, setAberta] = useState(false);
@@ -124,13 +148,9 @@ export function GeradorTce() {
     }
   }
 
-  async function escolherCandidato(pessoa: CandidatoBusca) {
-    setCandidatoBusca(`${pessoa.nome}${pessoa.cpf ? ` · ${pessoa.cpf}` : ""}`);
-    setCandidatos([]);
-    setErro("");
-    try {
-      const result = await api<Preenchimento>(`/api/v1/tce/candidatos/${pessoa.id}`);
-      const dados = result.data;
+  function aplicarPreenchimento(dados: Preenchimento) {
+      setIdContratacao(dados.idContratacao ?? null);
+      setTerminoEstudo(dados.terminoEstudo ?? "");
       setCampos((atual) => ({ ...atual, ...dados.campos, seguro_apolice: APOLICE }));
       if (dados.campos.nome_responsavel) setResponsavel(true);
       if (dados.escolaId) setEscolaBusca(dados.campos.nome_escola || "");
@@ -149,10 +169,34 @@ export function GeradorTce() {
         setBusca(`${dados.concedente.razao_social} · ${dados.concedente.cnpj}`);
         setAberta(false);
       }
+  }
+
+  async function escolherCandidato(pessoa: CandidatoBusca) {
+    setCandidatoBusca(`${pessoa.nome}${pessoa.cpf ? ` · ${pessoa.cpf}` : ""}`);
+    setCandidatos([]);
+    setErro("");
+    try {
+      const result = await api<Preenchimento>(`/api/v1/tce/candidatos/${pessoa.id}`);
+      aplicarPreenchimento(result.data);
     } catch (error) {
       setErro(error instanceof ApiError ? error.message : "Não foi possível carregar o candidato.");
     }
   }
+
+  useEffect(() => {
+    if (!contratacaoParam) return;
+    let ativo = true;
+    api<Preenchimento>(`/api/v1/tce/contratacoes/${contratacaoParam}`)
+      .then((result) => {
+        if (!ativo) return;
+        aplicarPreenchimento(result.data);
+        setCandidatoBusca(result.data.campos.nome || "");
+      })
+      .catch((error) => {
+        if (ativo) setErro(error instanceof ApiError ? error.message : "Não foi possível carregar a contratação.");
+      });
+    return () => { ativo = false; };
+  }, [contratacaoParam]);
 
   async function procurarEscola(valor: string) {
     setEscolaBusca(valor);
@@ -174,14 +218,20 @@ export function GeradorTce() {
   const gerar = useMutation({
     mutationFn: () => api<{ id: string }>("/api/v1/tce/gerar", {
       method: "POST",
-      body: JSON.stringify({ empresa_id: empresaId, concedente, campos: { ...campos, seguro_apolice: APOLICE } }),
+      body: JSON.stringify({ empresa_id: empresaId, id_contratacao: idContratacao, concedente, campos: { ...campos, seguro_apolice: APOLICE } }),
     }),
     onSuccess: (result) => navigate(`/termos/${result.data.id}`),
     onError: (error) => setErro(error instanceof ApiError ? error.message : "Não foi possível gerar o TCE."),
   });
 
   return (
-    <form className="grid gap-5" onSubmit={(event) => { event.preventDefault(); setErro(""); gerar.mutate(); }}>
+    <form className="grid gap-5" onSubmit={(event) => {
+      event.preventDefault();
+      const problema = erroDasDatas(campos.estagio_inicio ?? "", campos.estagio_termino ?? "", terminoEstudo);
+      setErro(problema);
+      if (!problema) gerar.mutate();
+    }}>
+      {idContratacao ? <p className="rounded-xl bg-cyan-50 px-3 py-2 text-sm text-cyan-900">Dados carregados da contratação {idContratacao}. Confira antes de gerar.</p> : null}
       <section className="grid gap-3 md:grid-cols-2">
         <h2 className="font-bold md:col-span-2">Empresa concedente</h2>
         {empresas.isError ? <p className="text-sm text-rose-600 md:col-span-2">Não foi possível carregar as empresas. Confira SUPABASE_URL e a chave no ambiente.</p> : null}
@@ -271,6 +321,7 @@ export function GeradorTce() {
                 ) : (
                   <Input type={field.date ? "date" : "text"} readOnly={field.key === "seguro_apolice"} placeholder={field.placeholder} value={field.key === "seguro_apolice" ? APOLICE : campos[field.key] ?? ""} onChange={(event) => setCampos((atual) => ({ ...atual, [field.key]: event.target.value }))} />
                 )}
+                {field.key === "estagio_termino" && terminoEstudo ? <span className="text-xs text-slate-500">Término dos estudos: {dataBr(terminoEstudo)}</span> : null}
               </Field>
             </div>
           ))}

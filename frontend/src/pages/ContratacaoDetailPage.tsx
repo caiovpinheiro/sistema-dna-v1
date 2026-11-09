@@ -20,17 +20,6 @@ export function ContratacaoDetailPage() {
   const [message, setMessage] = useState("");
   const client = useQueryClient();
   const query = useQuery({ queryKey: ["contratacao", id], queryFn: () => api<Detail>(`/api/v1/contratacoes/${id}`) });
-  const termo = useMutation({
-    mutationFn: () => api<{ id: string }>("/api/v1/termos", { method: "POST", body: JSON.stringify({ id_contratacao: Number(id) }) }),
-    onSuccess: (result) => navigate(`/termos/${result.data.id}`),
-    onError: (error) => {
-      if (error instanceof ApiError && error.code === "TERMO_JA_ENVIADO" && typeof error.details?.id === "string") {
-        navigate(`/termos/${error.details.id}`);
-        return;
-      }
-      setMessage(error instanceof ApiError ? error.message : "Não foi possível enviar o termo.");
-    },
-  });
   const close = useMutation({
     mutationFn: () => api(`/api/v1/contratacoes/${id}/encerrar`, { method: "POST", body: JSON.stringify({ data_encerramento: date }) }),
     onSuccess: async () => {
@@ -76,9 +65,8 @@ export function ContratacaoDetailPage() {
       {data.regime === "estagio" ? (
         <Card className="grid gap-3 md:max-w-md">
           <h2 className="font-bold">Termo de estágio</h2>
-          <p className="text-sm text-slate-500">Envia o termo para o estagiário e para a empresa assinarem na ZapSign.</p>
-          <Button disabled={termo.isPending} onClick={() => termo.mutate()}>{termo.isPending ? "Enviando…" : "Gerar assinatura"}</Button>
-          {message ? <p className="text-sm">{message}</p> : null}
+          <p className="text-sm text-slate-500">Abre o gerador de TCE já preenchido com o candidato, a escola, a empresa e a vaga desta contratação. Confira os dados e gere o termo.</p>
+          <Button onClick={() => navigate(`/termos/gerar?contratacao=${data.id_contratacao}`)}>Gerar TCE</Button>
         </Card>
       ) : null}
       {data.situacao === "ativa" ? (

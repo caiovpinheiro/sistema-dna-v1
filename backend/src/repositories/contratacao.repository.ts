@@ -100,6 +100,21 @@ export class ContratacaoRepository {
     contador: number | null;
     comparador: string | null;
   }): Promise<number> {
+    // Outras origens (sync do legado) gravam contratações com id explícito e a sequence fica para trás,
+    // gerando "duplicate key conratacaovaga_pkey". Antes de usar a sequence, alinha com o maior id gravado.
+    // O lock (preso à transação da contratação) serializa só este trecho; nextval continua atômico.
+    await db.query("SELECT pg_advisory_xact_lock(hashtext('dna_work.conratacaovaga.id_contratacao'))");
+    await db.query(`
+      SELECT setval(
+        'dna_work.conratacaovaga_id_contratacao_seq',
+        GREATEST(
+          (SELECT COALESCE(MAX(id_contratacao), 0) FROM dna_work.conratacaovaga),
+          (SELECT CASE WHEN is_called THEN last_value ELSE 0 END FROM dna_work.conratacaovaga_id_contratacao_seq),
+          1
+        ),
+        true
+      )
+    `);
     const row = await one<{ id_contratacao: number }>(db, `
       INSERT INTO dna_work.conratacaovaga (
         id_contratacao, id_vaga, id_candidato, id_empresa, data_contratacao, status,

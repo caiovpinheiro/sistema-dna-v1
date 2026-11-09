@@ -22,6 +22,7 @@ export type GerarTceInput = {
   campos: ManualData;
   concedente: Concedente;
   escolaId: string | null;
+  idContratacao?: number | null;
 };
 
 export class TceService {
@@ -59,9 +60,17 @@ export class TceService {
     return rows.rows.map((row) => ({ id: row.id, nome: (row.nome ?? "").trim(), cpf: (row.cpf ?? "").trim(), empresa: (row.empresa ?? "").trim() }));
   }
 
-  async candidatoParaTce(id: string) {
+  async contratacaoParaTce(idContratacao: number) {
+    const origem = await one<{ id_candidato: string | null }>(this.db, `
+      SELECT id_candidato FROM dna_work.conratacaovaga WHERE id_contratacao = $1
+    `, [idContratacao]);
+    if (!origem?.id_candidato) throw new AppError(404, "NAO_ENCONTRADO", "Contratação não encontrada.");
+    return this.candidatoParaTce(origem.id_candidato, idContratacao);
+  }
+
+  async candidatoParaTce(id: string, idContratacao?: number) {
     const colunas = await this.colunas("candidato");
-    const extra = ["ano_escolar", "nome_responsavel", "nomepai", "nomemae", "cpf_responsavel", "email_responsavel", "celular_responsavel"]
+    const extra = ["ano_escolar", "terminoestudo", "nome_responsavel", "nomepai", "nomemae", "cpf_responsavel", "email_responsavel", "celular_responsavel"]
       .filter((coluna) => colunas.has(coluna))
       .map((coluna) => `c.${coluna}`)
       .join(", ");
@@ -74,20 +83,41 @@ export class TceService {
       WHERE c.id_candidato = $1
     `, [id]);
     if (!candidato) throw new AppError(404, "NAO_ENCONTRADO", "Candidato não encontrado.");
-    const escola = candidato.escola ? await getEscola(this.db, candidato.escola).catch(() => null) : null;
+    const escola = await this.escolaDoCandidato(candidato.escola, candidato.nome_escola);
+    const filtro = idContratacao ? "cv.id_contratacao = $3" : "cv.id_candidato = $1";
     const contrato = await one<Record<string, string | null>>(this.db, `
-      SELECT e.id_empresa, e.razao_social, e.nome_fantasia, e.cnpj, e.email AS emp_email, e.responsavel,
+      SELECT cv.id_contratacao::text AS id_contratacao, e.id_empresa, e.razao_social, e.nome_fantasia, e.cnpj, e.email AS emp_email, e.responsavel,
              e.logradouro AS emp_logradouro, e.numero AS emp_numero, e.complemento AS emp_complemento,
              e.bairro AS emp_bairro, e.cidade AS emp_cidade, e.uf AS emp_uf, e.cep AS emp_cep,
              v.salario, v.carga_horaria, v.texto_carga, v.atribuicaoes, cv.datainicio, cv.datafim
       FROM dna_work.conratacaovaga cv
       JOIN dna_work.empresa e ON e.id_empresa = cv.id_empresa
       LEFT JOIN dna_work.vaga v ON v.id_vaga = cv.id_vaga
-      WHERE cv.id_candidato = $1
+      WHERE ${filtro} AND cv.id_candidato = $1
       ORDER BY CASE WHEN cv.status = $2 THEN 0 ELSE 1 END, cv.id_contratacao DESC
       LIMIT 1
-    `, [id, this.config.CONTRATACAO_STATUS_ATIVO]).catch(() => null);
-    return preenchimentoDoCandidato(candidato, escola?.campos ?? null, contrato);
+    `, idContratacao ? [id, this.config.CONTRATACAO_STATUS_ATIVO, idContratacao] : [id, this.config.CONTRATACAO_STATUS_ATIVO]).catch(() => null);
+    if (idContratacao && !contrato) throw new AppError(404, "NAO_ENCONTRADO", "Contratação não encontrada.");
+    const preenchido = preenchimentoDoCandidato(candidato, escola?.campos ?? null, contrato);
+    if (escola) preenchido.escolaId = escola.id;
+    return preenchido;
+  }
+
+  /**
+   * Como no v0 (VariaveisEscola): a escola vem de candidato.escola -> instituicao.
+   * Se o candidato só tiver o nome da escola digitado, tenta achar a instituição
+   * pelo nome e usa quando houver uma única correspondência.
+   */
+  private async escolaDoCandidato(idEscola: string | null, nomeEscola: string | null) {
+    const id = (idEscola ?? "").trim();
+    if (id && id !== "0") {
+      const escola = await getEscola(this.db, id).catch(() => null);
+      if (escola) return escola;
+    }
+    const nome = (nomeEscola ?? "").trim();
+    if (nome.length < 3) return null;
+    const opcoes = await searchEscolas(this.db, nome).catch(() => []);
+    return opcoes.length === 1 ? opcoes[0] : null;
   }
 
   private async colunas(tabela: string) {
@@ -120,6 +150,16 @@ export class TceService {
       representante: input.concedente.representante || empresa.representante,
     };
     if (!texto(campos.nome)) throw new AppError(422, "NOME_OBRIGATORIO", "Nome do candidato é obrigatório.");
+    const inicioIso = texto(campos.estagio_inicio);
+    const terminoIso = texto(campos.estagio_termino);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(inicioIso) && /^\d{4}-\d{2}-\d{2}$/.test(terminoIso)) {
+      if (terminoIso < inicioIso) throw new AppError(422, "DATA_INVALIDA", "O término do estágio não pode ser antes do início.");
+      const limite = new Date(`${inicioIso}T00:00:00Z`);
+      limite.setUTCDate(limite.getUTCDate() + 730);
+      if (new Date(`${terminoIso}T00:00:00Z`) > limite) {
+        throw new AppError(422, "ESTAGIO_MAIS_DE_2_ANOS", "O estágio não pode passar de 2 anos.");
+      }
+    }
     for (const key of CAMPOS_DATA) {
       const value = texto(campos[key]);
       if (!value) continue;
@@ -156,7 +196,7 @@ export class TceService {
       await this.db.query(`
         INSERT INTO dna_work.termo_estagio
           (id, id_contratacao, nome, status, signatarios, tce_id, candidato_nome, empresa_nome)
-        VALUES ($1::uuid, NULL, $2, 'gerado', $3::jsonb, $6::text, $4, $5)
+        VALUES ($1::uuid, $7, $2, 'gerado', $3::jsonb, $6::text, $4, $5)
       `, [
         id,
         `TCE - ${candidatoNome}`.slice(0, 200),
@@ -164,6 +204,7 @@ export class TceService {
         candidatoNome,
         empresaNome,
         id,
+        input.idContratacao ?? null,
       ]);
       return await this.termos.get(id);
     } catch (error) {
@@ -202,7 +243,9 @@ export class TceService {
   async lerPdf(id: string): Promise<Buffer> {
     const row = await this.db.query<{ pdf_path: string }>("SELECT pdf_path FROM public.tces WHERE id = $1", [id]);
     const filename = row.rows[0]?.pdf_path;
-    if (!filename) throw new AppError(404, "NAO_ENCONTRADO", "PDF do TCE não encontrado.");
+    if (!filename) {
+      throw new AppError(404, "NAO_ENCONTRADO", "Este termo foi criado pelo envio antigo da contratação e não tem o PDF do TCE guardado. Gere o TCE novamente em Termos > Gerar TCE.");
+    }
     const safe = path.basename(filename);
     try {
       return await fs.readFile(path.join(await pastaGravavel(this.config.PDF_STORAGE_DIR), safe));

@@ -64,10 +64,34 @@ test("preenche o TCE com o candidato, a escola e a contratação que já existem
   assert.equal(preenchido.campos.nome_responsavel, "José Renato de Almeida Filho");
   assert.equal(preenchido.campos.nome_escola, "E.E. Koheiji Adachi");
   assert.equal(preenchido.campos.estagio_inicio, "2026-09-14");
-  assert.equal(preenchido.campos.bolsa, "1100,00");
+  assert.equal(preenchido.campos.bolsa, "R$ 1.100,00");
+  assert.equal(preenchido.campos.carga_horaria_semanal, "30 horas");
   assert.equal(preenchido.campos.plano_atividades, "Auxiliar no atendimento\nApoiar a reposição");
   assert.equal(preenchido.concedente?.razao_social, "Comércio de Alimentos Alves e Farias LTDA");
   assert.equal(preenchido.concedente?.representante, "Genivan Farias da Silva");
   assert.equal(preenchido.empresaId, "empresa-1");
   assert.equal(preenchido.escolaId, "escola-1");
+});
+
+test("término do estágio segue o v0: fim da contratação, limitado ao fim dos estudos e a 2 anos", async () => {
+  const { terminoDoEstagio } = await import("../src/lib/tce-candidato.js");
+  // sem data de fim na contratação: usa o término dos estudos (ensino médio)
+  assert.equal(terminoDoEstagio("2026-11-11", "", "2027-12-20"), "2027-12-20");
+  // contratação com fim depois do término dos estudos: corta no término dos estudos
+  assert.equal(terminoDoEstagio("2026-11-11", "2028-06-30", "2027-12-20"), "2027-12-20");
+  // fim da contratação antes do término dos estudos: mantém
+  assert.equal(terminoDoEstagio("2026-11-11", "2027-05-10", "2027-12-20"), "2027-05-10");
+  // nunca mais que 2 anos
+  assert.equal(terminoDoEstagio("2026-11-11", "", "2030-12-20"), "2028-11-10");
+  // sem nenhuma informação
+  assert.equal(terminoDoEstagio("2026-11-11", "", ""), "2028-11-10");
+  assert.equal(terminoDoEstagio("", "", ""), "");
+});
+
+test("preenchimento sem contratação usa o término dos estudos do candidato", () => {
+  const preenchido = preenchimentoDoCandidato({ nome: "Fernando", terminoestudo: "2027/12/20", escola: "10" }, { nome_escola: "E.E. Teste" }, null);
+  assert.equal(preenchido.campos.estagio_termino, "2027-12-20");
+  assert.equal(preenchido.terminoEstudo, "2027-12-20");
+  assert.equal(preenchido.campos.nome_escola, "E.E. Teste");
+  assert.equal(preenchido.idContratacao, null);
 });
