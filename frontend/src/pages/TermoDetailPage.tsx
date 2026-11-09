@@ -56,6 +56,7 @@ export function TermoDetailPage() {
   const client = useQueryClient();
   const [erro, setErro] = useState("");
   const [aviso, setAviso] = useState("");
+  const [copiado, setCopiado] = useState("");
   const query = useQuery({ queryKey: ["termo", id], queryFn: () => api<Termo>(`/api/v1/termos/${id}`) });
   const email = useMutation({
     mutationFn: () => api(`/api/v1/tce/${id}/email`, { method: "POST" }),
@@ -92,6 +93,17 @@ export function TermoDetailPage() {
   if (!query.data) return <p className="text-rose-600">Termo não encontrado.</p>;
   const data = query.data.data;
   const signers = Array.isArray(data.signatarios) ? data.signatarios : [];
+
+  async function copiar(url: string) {
+    try {
+      await navigator.clipboard.writeText(url);
+      setErro("");
+      setCopiado(url);
+      window.setTimeout(() => setCopiado((atual) => atual === url ? "" : atual), 2000);
+    } catch {
+      setErro("Não foi possível copiar o link de assinatura.");
+    }
+  }
   const gerado = data.status === "gerado";
   return (
     <div className="grid gap-5">
@@ -139,7 +151,12 @@ export function TermoDetailPage() {
               <p className="text-sm text-slate-500">{signer.email}</p>
             </div>
             {signer.url && data.status !== "assinado" ? (
-              <a className="text-sm font-semibold text-cyan-800" href={signer.url} target="_blank" rel="noreferrer">Abrir assinatura</a>
+              <span className="flex gap-3">
+                <button type="button" className="text-sm font-semibold text-cyan-800" onClick={() => void copiar(signer.url!)}>
+                  {copiado === signer.url ? "Link copiado" : "Copiar link"}
+                </button>
+                <a className="text-sm font-semibold text-cyan-800" href={signer.url} target="_blank" rel="noreferrer">Abrir assinatura</a>
+              </span>
             ) : <span className="text-sm text-slate-500">{signer.status}</span>}
           </div>
         ))}

@@ -6,6 +6,7 @@ import { GeradorTce } from "@/components/gerador-tce";
 import { Badge, Card, Empty, Skeleton } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 
+type Signatario = { nome?: string; email?: string; url?: string | null };
 type Termo = {
   id: string;
   id_contratacao: number | null;
@@ -14,7 +15,27 @@ type Termo = {
   criado_em: string;
   candidato_nome: string | null;
   empresa_nome: string | null;
+  signatarios?: Signatario[] | string | null;
 };
+
+function linksDoTermo(row: Termo) {
+  let bruto: unknown = row.signatarios;
+  if (typeof bruto === "string") {
+    try {
+      bruto = JSON.parse(bruto) as unknown;
+    } catch {
+      return [];
+    }
+  }
+  if (!Array.isArray(bruto)) return [];
+  return bruto.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const signer = item as Signatario;
+    const url = signer.url?.trim();
+    if (!url) return [];
+    return [{ nome: signer.nome?.trim() || signer.email?.trim() || "Signatário", url }];
+  });
+}
 
 const labels: Record<string, string> = {
   gerado: "Gerado",
@@ -70,7 +91,19 @@ export function TermosPage() {
     },
     onError: (error) => setErro(error instanceof ApiError ? error.message : "Não foi possível excluir o termo."),
   });
+  const [copiado, setCopiado] = useState("");
   const rows = query.data?.data ?? [];
+
+  async function copiar(chave: string, url: string) {
+    try {
+      await navigator.clipboard.writeText(url);
+      setErro("");
+      setCopiado(chave);
+      window.setTimeout(() => setCopiado((atual) => atual === chave ? "" : atual), 2000);
+    } catch {
+      setErro("Não foi possível copiar o link. Copie pelo endereço que aparece ao abrir o termo.");
+    }
+  }
   return (
     <div className="grid gap-5">
       <div>
@@ -111,6 +144,18 @@ export function TermosPage() {
                   <td className="px-4 py-3">
                     <div className="flex w-full items-center justify-between gap-6 pr-1">
                       <span>{new Date(row.criado_em).toLocaleDateString("pt-BR")}</span>
+                      <span className="flex items-center gap-2">
+                        {linksDoTermo(row).map((link) => (
+                          <button
+                            key={link.url}
+                            type="button"
+                            className="text-xs font-semibold text-cyan-800"
+                            onClick={() => void copiar(`${row.id}:${link.url}`, link.url)}
+                          >
+                            {copiado === `${row.id}:${link.url}` ? "Copiado" : `Copiar link de ${link.nome}`}
+                          </button>
+                        ))}
+                      </span>
                       <Link className="text-slate-400 hover:text-cyan-700" to={`/termos/${row.id}/editar`} aria-label={`Editar TCE de ${row.candidato_nome || row.nome}`}>
                         <Pencil className="h-4 w-4" />
                       </Link>
