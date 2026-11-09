@@ -48,11 +48,12 @@ function YearField() {
 }
 
 function MonthRange() {
-  const mes = `${nowYear()}-${nowMonth()}`;
+  const ate = `${nowYear()}-${nowMonth()}`;
+  const de = `${nowYear()}-01`;
   return (
     <>
-      <Field label="De Início"><Input name="de" aria-label="De Início" type="month" defaultValue={mes} /></Field>
-      <Field label="Até"><Input name="ate" aria-label="Até" type="month" defaultValue={mes} /></Field>
+      <Field label="De Início"><Input name="de" aria-label="De Início" type="month" defaultValue={de} /></Field>
+      <Field label="Até"><Input name="ate" aria-label="Até" type="month" defaultValue={ate} /></Field>
     </>
   );
 }
@@ -353,8 +354,7 @@ function vencida(item: Procfy) {
 }
 
 export function RelatorioProcfyPage() {
-  const mes = `${nowYear()}-${nowMonth()}`;
-  const inicial = { de: mes, ate: mes, tipoData: "vencimento_fatura", sistema: "ambos", status: "0" };
+  const inicial = { de: `${nowYear()}-01`, ate: `${nowYear()}-${nowMonth()}`, tipoData: "vencimento_fatura", sistema: "ambos", status: "" };
   const [busca, setBusca] = useState(inicial);
   const [pagina, setPagina] = useState(1);
   const [porPagamento, setPorPagamento] = useState(false);
@@ -411,7 +411,7 @@ export function RelatorioProcfyPage() {
         <MonthRange />
         {porPagamento ? null : (
           <Field label="Status">
-            <Select name="status" aria-label="Status" defaultValue="0">
+            <Select name="status" aria-label="Status" defaultValue="">
               <option value="">Selecione</option>
               <option value="0">Aberta</option>
               <option value="1">Paga</option>

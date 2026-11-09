@@ -425,10 +425,15 @@ export class LegadoService {
     const { pagina, tamanho, offset } = query.exportar
       ? { pagina: 1, tamanho: 5000, offset: 0 }
       : corte(query.page ?? 1, query.pageSize ?? 50);
+    const dataExpr = `replace(f.${tipo}::text, '-', '/')`;
     const where = `
-      WHERE ($1 = '' OR f.${tipo}::text >= $1)
-        AND ($2 = '' OR f.${tipo}::text <= $2 || '/31')
-        AND ($3 = '' OR f.status_fatura::text = $3)
+      WHERE ($1 = '' OR ${dataExpr} >= $1)
+        AND ($2 = '' OR ${dataExpr} <= $2 || '/31')
+        AND (
+          $3 = ''
+          OR ($3 = '0' AND coalesce(nullif(btrim(f.status_fatura::text), ''), '0') = '0')
+          OR ($3 <> '0' AND f.status_fatura::text = $3)
+        )
         AND coalesce(f.tipo_fatura, '') <> 'Subfatura'
     `;
     const params = [de ? `${de}/01` : "", ate, status];
