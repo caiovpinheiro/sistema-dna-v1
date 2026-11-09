@@ -88,7 +88,10 @@ export function VagaDetailPage() {
     <div className="grid gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-extrabold">{data.cargo}</h1>
+          <div className="flex flex-wrap items-center gap-3">
+            <h1 className="text-2xl font-extrabold">{data.cargo}</h1>
+            <Badge value={data.situacao}>{status}</Badge>
+          </div>
           <p className="text-sm text-slate-500"><Link className="text-cyan-800" to={`/empresas/${data.id_empresa}`}>{data.nome_fantasia || data.razao_social}</Link> · {data.modalidade || regimeLabel[data.regime]} · {money(data.salario)}</p>
         </div>
         <div className="flex gap-2">

@@ -3,7 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { CobrancaEmpresa, type ValorEmpresa } from "@/components/cobranca-empresa";
 import { Badge, Button, Card, Skeleton } from "@/components/ui";
 import { api } from "@/lib/api";
-import { formatCnpj, formatPhone, regimeLabel, situacaoLabel } from "@/lib/format";
+import { dateBr, formatCnpj, formatPhone, regimeLabel, situacaoLabel } from "@/lib/format";
 
 type Company = {
   id_empresa: string; razao_social: string; nome_fantasia: string | null; cnpj: string; email: string | null;
@@ -11,13 +11,37 @@ type Company = {
   complemento: string | null; bairro: string | null; cidade: string | null; uf: string | null; responsavel: string | null;
   matriz: string | null; ie: string | null; site: string | null; obs: string | null; status: number | null;
 };
-type Job = { id_vaga: string; cargo: string; regime: string; situacao: string; quantidade_posicoes: number | null; ocupadas: number; disponiveis: number | null };
+type Job = { id_vaga: string; cargo: string; regime: string; situacao: string; quantidade_posicoes: number | null; ocupadas: number; disponiveis: number | null; codigo: string | null; dataabertura: string | null };
+
+const ORDEM_SITUACAO = ["aberta", "pausada", "contratada", "fechada"];
+
+/** Abertas primeiro, depois pausadas, contratadas e fechadas; dentro de cada uma, a mais recente primeiro. */
+function ordenarVagas(lista: Job[]) {
+  const posicao = (situacao: string) => {
+    const indice = ORDEM_SITUACAO.indexOf(situacao);
+    return indice < 0 ? ORDEM_SITUACAO.length : indice;
+  };
+  return [...lista].sort((a, b) => posicao(a.situacao) - posicao(b.situacao) || (b.dataabertura ?? "").localeCompare(a.dataabertura ?? ""));
+}
+
 type Contract = { id_contratacao: number; candidato_nome: string | null; cargo: string | null; situacao: string };
 
 export function EmpresaDetailPage() {
   const { id } = useParams();
   const company = useQuery({ queryKey: ["empresa", id], queryFn: () => api<Company>(`/api/v1/empresas/${id}`) });
-  const jobs = useQuery({ queryKey: ["empresa-vagas", id], queryFn: () => api<Job[]>(`/api/v1/empresas/${id}/vagas`) });
+  // Todas as vagas da empresa (a API devolve 20 por página por padrão): de 100 em 100, até 1.000.
+  const jobs = useQuery({
+    queryKey: ["empresa-vagas", id],
+    queryFn: async () => {
+      const todas: Job[] = [];
+      for (let page = 1; page <= 10; page += 1) {
+        const resposta = await api<Job[]>(`/api/v1/empresas/${id}/vagas?page=${page}&pageSize=100`);
+        todas.push(...resposta.data);
+        if (resposta.data.length < 100) break;
+      }
+      return { data: todas };
+    },
+  });
   const contracts = useQuery({ queryKey: ["empresa-contratos", id], queryFn: () => api<Contract[]>(`/api/v1/empresas/${id}/contratacoes`) });
   const cobranca = useQuery({ queryKey: ["empresa-cobranca", id], queryFn: () => api<ValorEmpresa | null>(`/api/v1/empresas/${id}/cobranca`) });
   if (company.isLoading) return <Skeleton className="h-64" />;
@@ -38,12 +62,18 @@ export function EmpresaDetailPage() {
       {data.obs ? <Card><h2 className="mb-2 font-bold">Observações</h2><p className="whitespace-pre-line text-sm text-slate-600">{data.obs}</p></Card> : null}
       <Card>
         <h2 className="mb-3 font-bold">Vagas</h2>
-        <div className="grid gap-2">{jobs.data?.data.length ? jobs.data.data.map((job) => (
-          <Link key={job.id_vaga} to={`/vagas/${job.id_vaga}`} className="flex flex-wrap items-center justify-between rounded-xl border border-slate-100 px-3 py-3 hover:bg-slate-50">
-            <span><strong>{job.cargo}</strong><span className="ml-2 text-sm text-slate-500">{regimeLabel[job.regime]}</span></span>
-            <span className="text-sm">{job.quantidade_posicoes ?? "—"} posições · {job.ocupadas} preenchidas · {job.disponiveis ?? "—"} disponíveis</span>
-          </Link>
-        )) : <p className="text-sm text-slate-500">Nenhuma vaga vinculada.</p>}</div>
+        <div className="grid gap-2">{jobs.data?.data.length ? ordenarVagas(jobs.data.data).map((job) => {
+          return (
+            <Link key={job.id_vaga} to={`/vagas/${job.id_vaga}`} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-100 px-3 py-3 hover:bg-slate-50">
+              <span className="flex flex-wrap items-center gap-2">
+                <strong>{job.cargo}</strong>
+                <span className="text-sm text-slate-500">{regimeLabel[job.regime]}</span>
+                <Badge value={job.situacao}>{situacaoLabel[job.situacao] ?? job.situacao}</Badge>
+                <span className="text-xs text-slate-500">{[job.codigo, job.dataabertura ? `aberta em ${dateBr(job.dataabertura)}` : ""].filter(Boolean).join(" · ")}</span>
+              </span>
+            </Link>
+          );
+        }) : <p className="text-sm text-slate-500">Nenhuma vaga vinculada.</p>}</div>
       </Card>
       <Card>
         <h2 className="mb-3 font-bold">Contratações</h2>
