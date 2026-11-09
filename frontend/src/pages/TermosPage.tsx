@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Trash2 } from "lucide-react";
+import { Pencil, Trash2 } from "lucide-react";
 import { useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { GeradorTce } from "@/components/gerador-tce";
 import { Badge, Card, Empty, Skeleton } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
@@ -23,6 +23,19 @@ const labels: Record<string, string> = {
   recusado: "Recusado",
   cancelado: "Cancelado",
 };
+
+export function EditarTcePage() {
+  const { id } = useParams();
+  return (
+    <div className="grid gap-5">
+      <div>
+        <h1 className="text-2xl font-extrabold">Editar termo</h1>
+        <p className="text-sm text-slate-500">Altere os dados e salve. O PDF é gerado de novo com o que estiver neste formulário.</p>
+      </div>
+      <Card>{id ? <GeradorTce editarId={id} /> : null}</Card>
+    </div>
+  );
+}
 
 export function GerarTcePage() {
   return (
@@ -98,6 +111,9 @@ export function TermosPage() {
                   <td className="px-4 py-3">
                     <div className="flex w-full items-center justify-between gap-6 pr-1">
                       <span>{new Date(row.criado_em).toLocaleDateString("pt-BR")}</span>
+                      <Link className="text-slate-400 hover:text-cyan-700" to={`/termos/${row.id}/editar`} aria-label={`Editar TCE de ${row.candidato_nome || row.nome}`}>
+                        <Pencil className="h-4 w-4" />
+                      </Link>
                       <button
                         type="button"
                         className="text-slate-400 hover:text-rose-600 disabled:opacity-40"

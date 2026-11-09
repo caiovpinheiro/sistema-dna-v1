@@ -107,7 +107,10 @@ export function TermoDetailPage() {
           <h1 className="text-2xl font-extrabold">{data.candidato_nome || data.nome}</h1>
           <p className="text-sm text-slate-500">{data.empresa_nome || "Empresa não informada"}</p>
         </div>
-        <Badge value={data.status}>{labels[data.status] ?? data.status}</Badge>
+        <div className="flex items-center gap-2">
+          {data.status !== "assinado" ? <Link to={`/termos/${data.id}/editar`}><Button type="button" variant="secondary">Editar dados</Button></Link> : null}
+          <Badge value={data.status}>{labels[data.status] ?? data.status}</Badge>
+        </div>
       </div>
       {gerado ? (
         <Card className="grid gap-4">

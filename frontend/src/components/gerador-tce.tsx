@@ -107,7 +107,14 @@ function normalizar(value: string) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 }
 
-export function GeradorTce() {
+type DadosTce = {
+  empresa_id: string;
+  status: string;
+  concedente: { razao_social: string; cnpj: string; endereco: string; cep: string; cidade: string; estado: string; email: string; representante: string };
+  campos: Record<string, string>;
+};
+
+export function GeradorTce({ editarId }: { editarId?: string }) {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const contratacaoParam = Number(params.get("contratacao")) || null;
@@ -126,6 +133,23 @@ export function GeradorTce() {
   const [escolaErro, setEscolaErro] = useState("");
   const [responsavel, setResponsavel] = useState(false);
   const [erro, setErro] = useState("");
+  const [pronto, setPronto] = useState(!editarId);
+  const dados = useQuery({
+    queryKey: ["tce-dados", editarId],
+    enabled: Boolean(editarId),
+    queryFn: () => api<DadosTce>(`/api/v1/tce/${editarId}/dados`),
+  });
+  useEffect(() => {
+    const salvo = dados.data?.data;
+    if (!editarId || !salvo || pronto) return;
+    setEmpresaId(salvo.empresa_id || "");
+    setConcedente(salvo.concedente);
+    setBusca(salvo.concedente.razao_social ? `${salvo.concedente.razao_social} · ${salvo.concedente.cnpj}` : "");
+    setCampos({ ...salvo.campos, seguro_apolice: APOLICE });
+    setEscolaBusca(salvo.campos.nome_escola || "");
+    setResponsavel(Boolean(salvo.campos.nome_responsavel));
+    setPronto(true);
+  }, [dados.data, editarId, pronto]);
 
   const lista = empresas.data?.data ?? [];
   const termo = busca.trim();
@@ -215,13 +239,13 @@ export function GeradorTce() {
     }
   }
 
+  const corpo = { empresa_id: empresaId, id_contratacao: idContratacao, concedente, campos: { ...campos, seguro_apolice: APOLICE } };
   const gerar = useMutation({
-    mutationFn: () => api<{ id: string }>("/api/v1/tce/gerar", {
-      method: "POST",
-      body: JSON.stringify({ empresa_id: empresaId, id_contratacao: idContratacao, concedente, campos: { ...campos, seguro_apolice: APOLICE } }),
-    }),
+    mutationFn: () => editarId
+      ? api<{ id: string }>(`/api/v1/tce/${editarId}`, { method: "PATCH", body: JSON.stringify(corpo) })
+      : api<{ id: string }>("/api/v1/tce/gerar", { method: "POST", body: JSON.stringify(corpo) }),
     onSuccess: (result) => navigate(`/termos/${result.data.id}`),
-    onError: (error) => setErro(error instanceof ApiError ? error.message : "Não foi possível gerar o TCE."),
+    onError: (error) => setErro(error instanceof ApiError ? error.message : "Não foi possível salvar o TCE."),
   });
 
   return (
@@ -232,6 +256,10 @@ export function GeradorTce() {
       if (!problema) gerar.mutate();
     }}>
       {idContratacao ? <p className="rounded-xl bg-cyan-50 px-3 py-2 text-sm text-cyan-900">Dados carregados da contratação {idContratacao}. Confira antes de gerar.</p> : null}
+      {editarId && dados.data?.data.status && dados.data.data.status !== "gerado" ? (
+        <p className="text-sm text-amber-800">Este termo já foi enviado. Ao salvar, o PDF é refeito e ele volta para Gerado, para ser enviado de novo.</p>
+      ) : null}
+      {editarId && dados.isError ? <p className="text-sm text-rose-600">Este termo não tem dados para editar. Ele foi gerado sem o formulário do TCE.</p> : null}
       <section className="grid gap-3 md:grid-cols-2">
         <h2 className="font-bold md:col-span-2">Empresa concedente</h2>
         {empresas.isError ? <p className="text-sm text-rose-600 md:col-span-2">Não foi possível carregar as empresas. Confira SUPABASE_URL e a chave no ambiente.</p> : null}
@@ -328,7 +356,7 @@ export function GeradorTce() {
         </section>
       ))}
       {erro ? <p className="text-sm text-rose-600">{erro}</p> : null}
-      <Button type="submit" disabled={gerar.isPending || !empresaId}>{gerar.isPending ? "Gerando…" : "Gerar TCE"}</Button>
+      <Button type="submit" disabled={gerar.isPending || !pronto || (!editarId && !empresaId)}>{gerar.isPending ? "Salvando…" : editarId ? "Salvar e atualizar o PDF" : "Gerar TCE"}</Button>
     </form>
   );
 }

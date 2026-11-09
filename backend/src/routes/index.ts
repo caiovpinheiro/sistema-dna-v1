@@ -368,6 +368,38 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
     });
     return reply.code(201).send(ok(termo));
   });
+  api.get("/api/v1/tce/:id/dados", {
+    schema: { tags: ["termos"], params: z.object({ id: z.string().uuid() }) },
+  }, async (request) => ok(await services.tce.dados(request.params.id)));
+  api.patch("/api/v1/tce/:id", {
+    schema: {
+      tags: ["termos"],
+      params: z.object({ id: z.string().uuid() }),
+      body: z.object({
+        empresa_id: z.string().uuid().or(z.literal("")).optional().default(""),
+        escola_id: z.string().max(255).optional().nullable(),
+        concedente: z.object({
+          razao_social: z.string().max(200).optional().default(""),
+          cnpj: z.string().max(30).optional().default(""),
+          endereco: z.string().max(300).optional().default(""),
+          cep: z.string().max(20).optional().default(""),
+          cidade: z.string().max(80).optional().default(""),
+          estado: z.string().max(40).optional().default(""),
+          email: z.string().max(160).optional().default(""),
+          representante: z.string().max(160).optional().default(""),
+        }),
+        campos: z.record(z.string().max(4000)),
+      }),
+    },
+  }, async (request) => {
+    const known = Object.fromEntries(MANUAL_FIELDS.map((key) => [key, request.body.campos[key] ?? ""]));
+    return ok(await services.tce.atualizar(request.params.id, {
+      empresaId: request.body.empresa_id,
+      escolaId: request.body.escola_id || null,
+      concedente: request.body.concedente,
+      campos: camposFromBody(known),
+    }));
+  });
   api.get("/api/v1/tce/:id/pdf", {
     schema: { tags: ["termos"], params: z.object({ id: z.string().uuid() }) },
   }, async (request, reply) => {

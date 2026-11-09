@@ -131,58 +131,12 @@ export class TceService {
   async gerar(input: GerarTceInput) {
     const empresa = await getEmpresaCadastro(this.config.SUPABASE_URL, this.config.SUPABASE_SERVICE_ROLE_KEY, input.empresaId);
     if (!empresa) throw new AppError(404, "NAO_ENCONTRADO", "Empresa não encontrada.");
-    const campos = { ...input.campos, seguro_apolice: APOLICE_SEGURO };
-    if (input.escolaId) {
-      const escola = await getEscola(this.db, input.escolaId);
-      if (!escola) throw new AppError(404, "NAO_ENCONTRADO", "Escola não encontrada.");
-      for (const key of ESCOLA_KEYS) {
-        if (!campos[key]) campos[key] = escola.campos[key];
-      }
-    }
-    const concedente = {
-      razao_social: input.concedente.razao_social || empresa.razao_social,
-      cnpj: input.concedente.cnpj || empresa.cnpj,
-      endereco: input.concedente.endereco || empresa.endereco,
-      cep: input.concedente.cep || empresa.cep,
-      cidade: input.concedente.cidade || empresa.cidade,
-      estado: input.concedente.estado || empresa.estado,
-      email: texto(input.concedente.email || empresa.email).toLowerCase(),
-      representante: input.concedente.representante || empresa.representante,
-    };
-    if (!texto(campos.nome)) throw new AppError(422, "NOME_OBRIGATORIO", "Nome do candidato é obrigatório.");
-    const inicioIso = texto(campos.estagio_inicio);
-    const terminoIso = texto(campos.estagio_termino);
-    if (/^\d{4}-\d{2}-\d{2}$/.test(inicioIso) && /^\d{4}-\d{2}-\d{2}$/.test(terminoIso)) {
-      if (terminoIso < inicioIso) throw new AppError(422, "DATA_INVALIDA", "O término do estágio não pode ser antes do início.");
-      const limite = new Date(`${inicioIso}T00:00:00Z`);
-      limite.setUTCDate(limite.getUTCDate() + 730);
-      if (new Date(`${terminoIso}T00:00:00Z`) > limite) {
-        throw new AppError(422, "ESTAGIO_MAIS_DE_2_ANOS", "O estágio não pode passar de 2 anos.");
-      }
-    }
-    for (const key of CAMPOS_DATA) {
-      const value = texto(campos[key]);
-      if (!value) continue;
-      const partes = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-      const data = partes ? new Date(Number(partes[1]), Number(partes[2]) - 1, Number(partes[3])) : null;
-      const valida = Boolean(partes && data && data.getFullYear() === Number(partes[1]) && data.getMonth() === Number(partes[2]) - 1 && data.getDate() === Number(partes[3]));
-      if (!valida) throw new AppError(422, "DATA_INVALIDA", "Informe uma data válida.");
-      campos[key] = dataParaPdf(value);
-    }
+    const montado = await this.montar(input, empresa);
 
     const id = randomUUID();
     const dir = await pastaGravavel(this.config.PDF_STORAGE_DIR);
-    const pdf = await fillTceTemplate({
-      concedente_razao_social: concedente.razao_social,
-      concedente_cnpj: concedente.cnpj,
-      concedente_endereco: concedente.endereco,
-      concedente_cep: concedente.cep,
-      concedente_cidade: concedente.cidade,
-      concedente_estado: concedente.estado,
-      concedente_email: concedente.email,
-      concedente_representante: concedente.representante,
-      ...campos,
-    });
+    const { campos, concedente } = montado;
+    const pdf = await this.pdfDe(concedente, campos);
     const filename = `${id}.pdf`;
     try {
       await fs.writeFile(path.join(dir, filename), pdf);
@@ -212,6 +166,110 @@ export class TceService {
       await this.db.query("DELETE FROM public.tces WHERE id = $1", [id]).catch(() => undefined);
       throw erroGravacao(error);
     }
+  }
+
+  async dados(id: string) {
+    const termo = await this.termos.get(id);
+    if (termo.status === "assinado") throw new AppError(409, "TERMO_BLOQUEADO", "Este termo já foi assinado e não pode ser editado.");
+    const saved = await this.db.query<{ empresa_id: string | null; payload: { campos?: ManualData; empresa?: Concedente } }>(
+      "SELECT empresa_id::text AS empresa_id, payload FROM public.tces WHERE id = $1",
+      [id],
+    );
+    const row = saved.rows[0];
+    const campos = row?.payload?.campos;
+    const concedente = row?.payload?.empresa;
+    if (!campos || !concedente) throw new AppError(404, "NAO_ENCONTRADO", "Este termo não tem dados para editar.");
+    const editaveis = { ...campos };
+    for (const key of CAMPOS_DATA) {
+      const valor = texto(editaveis[key]);
+      const br = valor.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+      if (br) editaveis[key] = `${br[3]}-${br[2]}-${br[1]}`;
+    }
+    return { empresa_id: row.empresa_id ?? "", status: termo.status, concedente, campos: editaveis };
+  }
+
+  async atualizar(id: string, input: GerarTceInput) {
+    const termo = await this.termos.get(id);
+    if (termo.status === "assinado" || termo.status === "cancelado") {
+      throw new AppError(409, "TERMO_BLOQUEADO", "Este termo já foi assinado e não pode ser editado.");
+    }
+    const atual = await this.db.query<{ pdf_path: string }>("SELECT pdf_path FROM public.tces WHERE id = $1", [id]);
+    if (!atual.rows[0]) throw new AppError(404, "NAO_ENCONTRADO", "Este termo não tem dados para editar.");
+    const { campos, concedente } = await this.montar(input, null);
+    const pdf = await this.pdfDe(concedente, campos);
+    const filename = path.basename(atual.rows[0].pdf_path || `${id}.pdf`);
+    await fs.writeFile(path.join(await pastaGravavel(this.config.PDF_STORAGE_DIR), filename), pdf);
+    const candidatoNome = limite(campos.nome);
+    const empresaNome = limite(concedente.razao_social);
+    await this.db.query(`
+      UPDATE public.tces
+      SET empresa_id = COALESCE($2, empresa_id), empresa_nome = $3, candidato_nome = $4, payload = $5::jsonb
+      WHERE id = $1
+    `, [id, input.empresaId || null, empresaNome, candidatoNome, JSON.stringify({ campos, empresa: concedente })]);
+    await this.db.query(`
+      UPDATE dna_work.termo_estagio
+      SET nome = $2, candidato_nome = $3, empresa_nome = $4, signatarios = $5::jsonb,
+          status = 'gerado', zapsign_token = NULL, atualizado_em = now()
+      WHERE id = $1
+    `, [id, `TCE - ${candidatoNome}`.slice(0, 200), candidatoNome, empresaNome, JSON.stringify(signatariosDe(campos, concedente))]);
+    return this.termos.get(id);
+  }
+
+  private async montar(input: GerarTceInput, empresa: Concedente | null) {
+    const campos = { ...input.campos, seguro_apolice: APOLICE_SEGURO };
+    if (input.escolaId) {
+      const escola = await getEscola(this.db, input.escolaId);
+      if (!escola) throw new AppError(404, "NAO_ENCONTRADO", "Escola não encontrada.");
+      for (const key of ESCOLA_KEYS) {
+        if (!campos[key]) campos[key] = escola.campos[key];
+      }
+    }
+    if (!texto(campos.nome)) throw new AppError(422, "NOME_OBRIGATORIO", "Nome do candidato é obrigatório.");
+    const inicioIso = texto(campos.estagio_inicio);
+    const terminoIso = texto(campos.estagio_termino);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(inicioIso) && /^\d{4}-\d{2}-\d{2}$/.test(terminoIso)) {
+      if (terminoIso < inicioIso) throw new AppError(422, "DATA_INVALIDA", "O término do estágio não pode ser antes do início.");
+      const limite = new Date(`${inicioIso}T00:00:00Z`);
+      limite.setUTCDate(limite.getUTCDate() + 730);
+      if (new Date(`${terminoIso}T00:00:00Z`) > limite) {
+        throw new AppError(422, "ESTAGIO_MAIS_DE_2_ANOS", "O estágio não pode passar de 2 anos.");
+      }
+    }
+    for (const key of CAMPOS_DATA) {
+      const value = texto(campos[key]);
+      if (!value) continue;
+      const partes = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      const data = partes ? new Date(Number(partes[1]), Number(partes[2]) - 1, Number(partes[3])) : null;
+      const valida = Boolean(partes && data && data.getFullYear() === Number(partes[1]) && data.getMonth() === Number(partes[2]) - 1 && data.getDate() === Number(partes[3]));
+      if (!valida) throw new AppError(422, "DATA_INVALIDA", "Informe uma data válida.");
+      campos[key] = dataParaPdf(value);
+    }
+    const concedente: Concedente = {
+      razao_social: input.concedente.razao_social || empresa?.razao_social || "",
+      cnpj: input.concedente.cnpj || empresa?.cnpj || "",
+      endereco: input.concedente.endereco || empresa?.endereco || "",
+      cep: input.concedente.cep || empresa?.cep || "",
+      cidade: input.concedente.cidade || empresa?.cidade || "",
+      estado: input.concedente.estado || empresa?.estado || "",
+      email: texto(input.concedente.email || empresa?.email).toLowerCase(),
+      representante: input.concedente.representante || empresa?.representante || "",
+    };
+    if (!texto(concedente.razao_social)) throw new AppError(422, "EMPRESA_OBRIGATORIA", "Informe a razão social da concedente.");
+    return { campos, concedente };
+  }
+
+  private pdfDe(concedente: Concedente, campos: ManualData) {
+    return fillTceTemplate({
+      concedente_razao_social: concedente.razao_social,
+      concedente_cnpj: concedente.cnpj,
+      concedente_endereco: concedente.endereco,
+      concedente_cep: concedente.cep,
+      concedente_cidade: concedente.cidade,
+      concedente_estado: concedente.estado,
+      concedente_email: concedente.email,
+      concedente_representante: concedente.representante,
+      ...campos,
+    });
   }
 
   async excluir(id: string) {
