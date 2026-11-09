@@ -14,6 +14,7 @@ type Vaga = {
   contractType: string;
   salaryLabel: string;
   hasBenefits: boolean;
+  homeOffice?: boolean;
   schedule: string | null;
   schedules: string[];
   distanceKm: number;
@@ -44,6 +45,7 @@ export function textoParaCandidato(vagas: Vaga[]) {
     const partes = [`${indice + 1}. ${vaga.title}`];
     if (vaga.location) partes.push(`📍 ${vaga.location}`);
     for (const horario of vaga.schedules) partes.push(`🕒 ${horario}`);
+    if (vaga.homeOffice) partes.push("🏠 Home office");
     partes.push(`💰 ${vaga.salaryLabel}${vaga.hasBenefits ? " + benefícios" : ""}`);
     return partes.join("\n");
   });
@@ -222,6 +224,7 @@ export function TriagemPage() {
                     </div>
                     <p className="text-sm text-slate-600">📍 {vaga.location || "Local não informado"}</p>
                     {vaga.schedules.map((horario) => <p key={horario} className="text-sm text-slate-600">🕒 {horario}</p>)}
+                    {vaga.homeOffice ? <p className="text-sm text-slate-600">🏠 Home office</p> : null}
                     <p className="text-sm text-slate-600">💰 {vaga.salaryLabel}{vaga.hasBenefits ? " + benefícios" : ""}</p>
                   </div>
                 </label>
