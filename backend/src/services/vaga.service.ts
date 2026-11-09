@@ -12,6 +12,7 @@ import { one } from "../repositories/sql.js";
 import { VagaRepository } from "../repositories/vaga.repository.js";
 import type { VagaCreate, VagaListQuery, VagaPatch } from "../schemas/vaga.js";
 import { supabaseRest } from "../lib/supabase-rest.js";
+import { reagruparVagaIds } from "../lib/vaga-id.js";
 import { presentVaga } from "./presenters.js";
 import { mensagemDaVaga } from "../lib/mensagem-vaga.js";
 import { DIAS_ESCALA, textoDoHorario } from "../lib/horario-escala.js";
@@ -104,6 +105,9 @@ export class VagaService {
     }
     await this.alinharEspelho(id, espelhar.campos, espelhar.grade);
     if (input.beneficios !== undefined) await this.salvarBeneficios(id, input.beneficios);
+    // Detalhe diferente, vaga_id diferente: a vaga editada sai do grupo das repetidas (ou entra no grupo igual).
+    // Se falhar aqui, o sync de vagas abertas recalcula no próximo ciclo.
+    await reagruparVagaIds(this.db).catch(() => undefined);
     return presentVaga((await this.repo.findById(this.db, id))!);
   }
 

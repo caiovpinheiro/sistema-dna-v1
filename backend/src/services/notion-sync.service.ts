@@ -3,7 +3,7 @@ import type { Pool } from "pg";
 import type { AppConfig } from "../config.js";
 import type { MysqlPool } from "../db/mysql.js";
 import { supabaseRest } from "../lib/supabase-rest.js";
-import { formatarLocal, lerNotion, turnosDe, type LocalPartes, type Turnos, type VagaNotion } from "../lib/triagem-notion.js";
+import { formatarLocal, lerNotion, normalizarUf, turnosDe, type LocalPartes, type Turnos, type VagaNotion } from "../lib/triagem-notion.js";
 
 export type Logger = {
   info: (obj: object, msg?: string) => void;
@@ -288,7 +288,7 @@ export class NotionSyncService {
     const depois: LocalPartes = {
       bairro: partes.bairro.slice(0, 50),
       cidade: (partes.cidade || antes.cidade).slice(0, 100),
-      uf: (partes.uf || antes.uf).slice(0, 5),
+      uf: normalizarUf(partes.uf || antes.uf).slice(0, 5),
     };
     if (mesmoTexto(antes.bairro, depois.bairro) && mesmoTexto(antes.cidade, depois.cidade) && mesmoTexto(antes.uf, depois.uf)) return;
     const local = formatarLocal(depois);

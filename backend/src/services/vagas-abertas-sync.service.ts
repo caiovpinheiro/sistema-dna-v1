@@ -3,9 +3,9 @@ import type { RowDataPacket } from "mysql2";
 import type { Pool } from "pg";
 import type { AppConfig } from "../config.js";
 import type { MysqlPool } from "../db/mysql.js";
-import { chaveCargo } from "../lib/cargo.js";
 import { moneyToNumber } from "../lib/money.js";
 import { supabaseRest } from "../lib/supabase-rest.js";
+import { reagruparVagaIds, type MudancaVagaId } from "../lib/vaga-id.js";
 import type { Logger } from "./notion-sync.service.js";
 
 /** Colunas da grade no Lightsail, na numeração 1 domingo … 7 sábado. O Lightsail escreve "domindo". */
@@ -69,6 +69,8 @@ export type ResultadoAbertas = {
   atualizadas: Array<{ id_vaga: string; codigo: string; lado: "supabase" | "postgres"; campos: string[] }>;
   /** Vagas abertas que estavam só de um lado do espelho e foram copiadas para o outro. */
   completadas: Array<{ id_vaga: string; codigo: string; para: "supabase" | "postgres" }>;
+  /** Vagas que mudaram de vaga_id: o mesmo só para vagas repetidas da mesma empresa com todos os detalhes iguais. */
+  reagrupadas: MudancaVagaId[];
 };
 
 const COLUNAS_INSERT = [
@@ -190,25 +192,20 @@ export class VagasAbertasSyncService {
   }
 
   async executar(dry: boolean, slot: string): Promise<ResultadoAbertas> {
-    const resultado: ResultadoAbertas = { dry, lidas: 0, novas: 0, jaExistiam: 0, fora: 0, erros: 0, pendentes: [], inseridas: [], apagadas: [], atualizadas: [], completadas: [] };
+    const resultado: ResultadoAbertas = { dry, lidas: 0, novas: 0, jaExistiam: 0, fora: 0, erros: 0, pendentes: [], inseridas: [], apagadas: [], atualizadas: [], completadas: [], reagrupadas: [] };
     if (!this.mysql || !this.config.SUPABASE_URL || !this.config.SUPABASE_SERVICE_ROLE_KEY) {
       this.log.error({ slot }, "sync vagas: MySQL ou Supabase não configurado");
       return resultado;
     }
 
-    const [supabase, postgres, empresas, modelos] = await Promise.all([
+    const [supabase, postgres, empresas] = await Promise.all([
       this.todas<Espelho>("vaga?select=id,vaga_id"),
       this.db.query<Espelho>("SELECT id::text AS id, vaga_id::text AS vaga_id FROM public.vaga").then((r) => r.rows),
       this.todas<EmpresaNova>("empresa?select=id,grupo_id,cep,latitude,longitude"),
-      this.db.query<{ vaga_id: string; cargo: string | null; tipo_vaga: string | null }>(
-        "SELECT vaga_id::text AS vaga_id, cargo, tipo_vaga FROM public.vaga_repetida",
-      ).then((r) => r.rows),
     ]);
     const noSistema = new Map<string, string | null>();
     for (const row of [...supabase, ...postgres]) noSistema.set(row.id, noSistema.get(row.id) ?? row.vaga_id);
     const empresaPorId = new Map(empresas.map((empresa) => [empresa.id, empresa]));
-    // Modelos são globais (um por cargo e modalidade) e só nascem pelo botão "Criar modelo": o sync só aponta para eles.
-    const modeloGlobal = new Map(modelos.map((row) => [`${chaveCargo(row.cargo ?? "")}|${row.tipo_vaga}`, row.vaga_id]));
 
     // 1) Copiar as novas.
     const [abertas] = await this.mysql.query<VagaLightsail[]>(`
@@ -237,14 +234,11 @@ export class VagasAbertasSyncService {
 
     if (novas.length) {
       const beneficios = await this.beneficios(novas.map((vaga) => vaga.id_vaga));
-      const modeloPorComparador = await this.modelosPorComparador(novas, noSistema);
       for (const vaga of novas) {
         const empresa = empresaPorId.get(vaga.id_empresa)!;
         const linha = this.linhaDe(vaga, empresa, beneficios.get(vaga.id_vaga) ?? []);
-        const comparador = texto(vaga.comparador);
-        linha.vaga_id = modeloGlobal.get(`${chaveCargo(linha.cargo)}|${linha.tipo_vaga}`)
-          || (comparador && modeloPorComparador.get(comparador)) || randomUUID();
-        if (comparador && !modeloPorComparador.has(comparador)) modeloPorComparador.set(comparador, linha.vaga_id);
+        // Provisório: no fim do sync o vaga_id é recalculado (vagas repetidas da mesma empresa, com tudo igual, dividem o mesmo).
+        linha.vaga_id = randomUUID();
         resultado.novas += 1;
         this.log.info({ dry, slot, id_vaga: linha.id, empresa_id: linha.empresa_id, vaga_id: linha.vaga_id, cargo: linha.cargo }, "sync vagas: nova");
         if (dry) {
@@ -296,9 +290,18 @@ export class VagasAbertasSyncService {
       }
     }
 
+    // 3) vaga_id no Postgres: o mesmo só para vagas repetidas da mesma empresa com todos os detalhes iguais.
+    try {
+      resultado.reagrupadas = await reagruparVagaIds(this.db, dry);
+    } catch (error) {
+      resultado.erros += 1;
+      this.log.error({ slot, erro: error instanceof Error ? error.message : String(error) }, "sync vagas: falha ao recalcular o vaga_id");
+    }
+
     const { lidas, novas: inseridas, jaExistiam, fora, erros } = resultado;
     this.log.info({
       dry, slot, lidas, novas: inseridas, jaExistiam, fora, erros, atualizadas: resultado.atualizadas.length, completadas: resultado.completadas.length,
+      reagrupadas: resultado.reagrupadas.length,
       pendentes: resultado.pendentes.map((item) => `${item.nome} | ${item.cnpj} | ${item.vagas}`),
     }, "sync vagas: fim");
     return resultado;
@@ -391,19 +394,6 @@ export class VagasAbertasSyncService {
       porVaga.set(String(row.id_vaga), lista);
     }
     return new Map([...porVaga].map(([id, lista]) => [id, lista]));
-  }
-
-  /** Vagas iguais compartilham o vaga_id: o comparador do Lightsail aponta para uma vaga que já está no sistema. */
-  private async modelosPorComparador(novas: VagaLightsail[], noSistema: Map<string, string | null>) {
-    const comparadores = [...new Set(novas.map((vaga) => texto(vaga.comparador)).filter(Boolean))];
-    const mapa = new Map<string, string>();
-    if (!comparadores.length) return mapa;
-    const [rows] = await this.mysql!.query<RowDataPacket[]>("SELECT id_vaga, comparador FROM vaga WHERE comparador IN (?)", [comparadores]);
-    for (const row of rows) {
-      const vagaId = noSistema.get(String(row.id_vaga));
-      if (vagaId && !mapa.has(texto(row.comparador))) mapa.set(texto(row.comparador), vagaId);
-    }
-    return mapa;
   }
 
   private linhaDe(vaga: VagaLightsail, empresa: EmpresaNova, beneficios: Array<{ nome: string; valor: string; tipo: string }>): LinhaVaga {

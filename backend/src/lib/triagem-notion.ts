@@ -105,8 +105,26 @@ export function partesDoLocal(linha: string, endereco = ""): LocalPartes | null 
   return { bairro: bairro.trim(), cidade: cidade.trim(), uf };
 }
 
+const ESTADOS: Record<string, string> = {
+  acre: "AC", alagoas: "AL", amapa: "AP", amazonas: "AM", bahia: "BA", ceara: "CE", "distrito federal": "DF", "espirito santo": "ES",
+  goias: "GO", maranhao: "MA", "mato grosso": "MT", "mato grosso do sul": "MS", "minas gerais": "MG", para: "PA", paraiba: "PB",
+  parana: "PR", pernambuco: "PE", piaui: "PI", "rio de janeiro": "RJ", "rio grande do norte": "RN", "rio grande do sul": "RS",
+  rondonia: "RO", roraima: "RR", "santa catarina": "SC", "sao paulo": "SP", sergipe: "SE", tocantins: "TO",
+};
+
+/** UF sempre em sigla maiúscula: "Sp" vira "SP" e o nome do estado (inteiro ou cortado, como "São P") vira a sigla. */
+export function normalizarUf(uf: string): string {
+  const bruto = uf.trim();
+  if (/^[a-z]{2}$/i.test(bruto)) return bruto.toUpperCase();
+  const chave = bruto.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ");
+  if (chave.length < 3) return bruto;
+  if (ESTADOS[chave]) return ESTADOS[chave];
+  const achados = [...new Set(Object.entries(ESTADOS).filter(([nome]) => nome === chave || nome.startsWith(chave)).map(([, sigla]) => sigla))];
+  return achados.length === 1 ? achados[0] : bruto;
+}
+
 export function formatarLocal(partes: LocalPartes): string {
-  const cidadeUf = [partes.cidade, partes.uf].filter(Boolean).join(" / ");
+  const cidadeUf = [partes.cidade, normalizarUf(partes.uf)].filter(Boolean).join(" / ");
   return cidadeUf ? `${partes.bairro} - ${cidadeUf}` : partes.bairro;
 }
 
