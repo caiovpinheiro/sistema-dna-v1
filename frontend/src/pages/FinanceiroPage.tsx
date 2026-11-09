@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useState, type FormEvent, type MouseEvent, type ReactNode } from "react";
 import { Paginacao } from "@/components/paginacao";
 import { Button, Card, Field, Input, Select } from "@/components/ui";
 import { RelatorioEmpresaPainel } from "@/components/relatorio-empresa";
@@ -48,12 +48,11 @@ function YearField() {
 }
 
 function MonthRange() {
-  const ate = `${nowYear()}-${nowMonth()}`;
-  const de = `${nowYear()}-01`;
+  const mes = `${nowYear()}-${nowMonth()}`;
   return (
     <>
-      <Field label="De Início"><Input name="de" aria-label="De Início" type="month" defaultValue={de} /></Field>
-      <Field label="Até"><Input name="ate" aria-label="Até" type="month" defaultValue={ate} /></Field>
+      <Field label="De Início"><Input name="de" aria-label="De Início" type="month" defaultValue={mes} /></Field>
+      <Field label="Até"><Input name="ate" aria-label="Até" type="month" defaultValue={mes} /></Field>
     </>
   );
 }
@@ -77,8 +76,8 @@ function lerFiltros(event: FormEvent<HTMLFormElement>, chaves: string[]) {
   return next;
 }
 
-function ExcelButton() {
-  return <Button type="button" variant="secondary" className="self-end">Gerar excel</Button>;
+function ExcelButton({ onClick, disabled }: { onClick?: (event: MouseEvent<HTMLButtonElement>) => void; disabled?: boolean }) {
+  return <Button type="button" variant="secondary" className="self-end" disabled={disabled} onClick={onClick}>Gerar excel</Button>;
 }
 
 function DataTable({ columns, rows }: { columns: ReactNode[]; rows: ReactNode[][] }) {
@@ -318,41 +317,108 @@ export function GerarFaturamentoPage() {
   );
 }
 
-type Procfy = { razao_social: string | null; nome_fantasia: string | null; tipo: string | null; vencimento: string | null; valor: number | null; forma_pg: string | null; data_pg: string | null; status: string };
+type Procfy = {
+  id: string;
+  razao_social: string | null;
+  nome_fantasia: string | null;
+  cnpj: string | null;
+  tipo: string | null;
+  vencimento: string | null;
+  valor: number | null;
+  recorrente: number;
+  recrutamento: number;
+  desconto: number;
+  parcela: string | null;
+  forma_pg: string | null;
+  data_pg: string | null;
+  status: string;
+};
+type ProcfyDetalhe = {
+  empresa: string | null;
+  razao: string | null;
+  cnpj: string | null;
+  valor: number;
+  desconto: number;
+  parcela: string | null;
+  vencimento: string | null;
+  itens: Array<{ tipo: string; nome: string | null; cargo: string | null; valor: number }>;
+};
 type Comissao = { nome_fantasia: string | null; cnpj: string | null; vencimento: string | null; data_pg: string | null; status_boleto: string; itens: number; vendedor: string | null; treinamento: string | null; valor: number | null; status: string };
 type ComissaoEmpresa = { nome_fantasia: string | null; vendedor: string | null; data_cadastro: string | null; primeira_contratacao: string | null; primeira_vaga: string | null; tipo: string | null; valor: number | null; status: string };
 type Holerite = { cnpj: string | null; razao_social: string | null; nome_fantasia: string | null; candidatos: number };
 
+function vencida(item: Procfy) {
+  if (item.status !== "Aberta" || !item.vencimento) return false;
+  return item.vencimento.slice(0, 10).replaceAll("/", "-") < new Date().toISOString().slice(0, 10);
+}
+
 export function RelatorioProcfyPage() {
-  const inicial = { de: `${nowYear()}-01`, ate: `${nowYear()}-${nowMonth()}`, tipoData: "vencimento_fatura", sistema: "ambos" };
+  const mes = `${nowYear()}-${nowMonth()}`;
+  const inicial = { de: mes, ate: mes, tipoData: "vencimento_fatura", sistema: "ambos", status: "0" };
   const [busca, setBusca] = useState(inicial);
   const [pagina, setPagina] = useState(1);
+  const [porPagamento, setPorPagamento] = useState(false);
+  const [detalheId, setDetalheId] = useState<string | null>(null);
   const result = useQuery({
     queryKey: ["procfy", busca, pagina],
     queryFn: () => api<Procfy[]>(`/api/v1/procfy?${new URLSearchParams({ ...busca, page: String(pagina), pageSize: String(TAMANHO) })}`),
   });
+  const detalhe = useQuery({
+    queryKey: ["procfy-fatura", detalheId],
+    queryFn: () => api<ProcfyDetalhe>(`/api/v1/procfy/fatura/${detalheId}`),
+    enabled: Boolean(detalheId),
+  });
   const linhas = result.data?.data ?? [];
   const total = Number(result.data?.meta?.total ?? 0);
+  function excel(event: MouseEvent<HTMLButtonElement>) {
+    const form = event.currentTarget.form;
+    const data = form ? new FormData(form) : null;
+    const tipoData = String(data?.get("tipoData") ?? busca.tipoData);
+    const filtros = {
+      de: String(data?.get("de") ?? busca.de),
+      ate: String(data?.get("ate") ?? busca.ate),
+      tipoData,
+      sistema: String(data?.get("sistema") ?? busca.sistema),
+      status: tipoData === "data_pg" ? "1" : String(data?.get("status") ?? busca.status),
+    };
+    setBusca(filtros);
+    setPagina(1);
+    const link = document.createElement("a");
+    link.href = `/api/v1/procfy/excel?${new URLSearchParams(filtros)}`;
+    link.download = "Faturas.xls";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  }
   return (
     <Screen title="Contas" subtitle="Contas a Receber DNA + DISC">
-      <form onSubmit={(event) => { event.preventDefault(); setBusca({ ...inicial, ...lerFiltros(event, ["tipoData", "de", "ate", "status", "sistema"]) }); setPagina(1); }}>
+      <form onSubmit={(event) => {
+        event.preventDefault();
+        const filtros = lerFiltros(event, ["tipoData", "de", "ate", "status", "sistema"]);
+        const status = String(new FormData(event.currentTarget).get("status") ?? "");
+        filtros.status = filtros.tipoData === "data_pg" ? "1" : status;
+        setBusca({ ...inicial, ...filtros });
+        setPagina(1);
+      }}>
       <Card className="grid items-end gap-3 md:grid-cols-2 xl:grid-cols-6">
         <Field label="Tipo data">
-          <Select name="tipoData" aria-label="Tipo data" defaultValue="vencimento_fatura">
+          <Select name="tipoData" aria-label="Tipo data" defaultValue="vencimento_fatura" onChange={(event) => setPorPagamento(event.target.value === "data_pg")}>
             <option value="vencimento_fatura">Vencimento</option>
             <option value="data_pg">Pagamento</option>
             <option value="data_cadastro">Cadastro da cobrança</option>
           </Select>
         </Field>
         <MonthRange />
-        <Field label="Status">
-          <Select name="status" aria-label="Status" defaultValue="">
-            <option value="">Selecione</option>
-            <option value="0">Aberta</option>
-            <option value="1">Paga</option>
-            <option value="2">Cancelada</option>
-          </Select>
-        </Field>
+        {porPagamento ? null : (
+          <Field label="Status">
+            <Select name="status" aria-label="Status" defaultValue="0">
+              <option value="">Selecione</option>
+              <option value="0">Aberta</option>
+              <option value="1">Paga</option>
+              <option value="2">Cancelada</option>
+            </Select>
+          </Field>
+        )}
         <Field label="Sistema">
           <Select name="sistema" aria-label="Sistema" defaultValue="ambos">
             <option value="ambos">Ambos</option>
@@ -362,17 +428,75 @@ export function RelatorioProcfyPage() {
         </Field>
         <div className="flex flex-wrap gap-2">
           <SearchButton />
-          <ExcelButton />
+          <ExcelButton onClick={excel} />
         </div>
       </Card>
       </form>
       <Consulta carregando={result.isLoading} erro={result.error} />
-      <DataTable
-        columns={["Razão Social", "Nome Fantasia", "Tipo", "Vencimento", "Valor da Fatura", "Forma de Pagamento", "Data de Pagamento", "Status", "Detalhes"]}
-        rows={linhas.map((item) => [item.razao_social, item.nome_fantasia, item.tipo, dateBr(item.vencimento), item.valor == null ? "—" : money(item.valor), item.forma_pg, dateBr(item.data_pg), item.status, "DNA"])}
-      />
+      <Card className="overflow-x-auto p-0">
+        <table className="w-full min-w-[960px] text-left text-sm">
+          <thead className="text-slate-500">
+            <tr className="border-b">
+              {["Razão Social", "Nome Fantasia", "Tipo", "Vencimento", "Valor da Fatura", "Forma de Pagamento", "Data de Pagamento", "Status", ""].map((coluna) => <th key={coluna || "detalhe"} className="px-4 py-3 font-semibold whitespace-nowrap">{coluna}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {linhas.map((item) => (
+              <tr key={item.id} className="border-b border-slate-100">
+                <td className="px-4 py-3">{item.razao_social}</td>
+                <td className="px-4 py-3">{item.nome_fantasia}</td>
+                <td className="px-4 py-3">{item.tipo}</td>
+                <td className={`px-4 py-3 ${vencida(item) ? "font-semibold text-rose-600" : ""}`}>{dateBr(item.vencimento)}</td>
+                <td className="px-4 py-3">{money(item.valor)}</td>
+                <td className="px-4 py-3">{item.forma_pg}</td>
+                <td className="px-4 py-3">{dateBr(item.data_pg)}</td>
+                <td className="px-4 py-3">{vencida(item) ? "Vencido" : item.status}</td>
+                <td className="px-4 py-3"><button type="button" className="acao acao-cyan" onClick={() => setDetalheId(item.id)}>Detalhes</button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Card>
       <Paginacao pagina={pagina} tamanho={TAMANHO} total={total} onPagina={setPagina} />
       <ListingFooter count={total} total={reais(result.data?.meta?.totalReceber)} />
+      {detalheId ? (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-navy-950/40 p-4" role="dialog" aria-modal="true">
+          <Card className="grid max-h-[90vh] w-full max-w-3xl gap-4 overflow-auto">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-bold">{detalhe.data?.data.empresa || "Fatura"}</h2>
+                <p className="text-sm text-slate-500">{detalhe.data?.data.razao}{detalhe.data?.data.cnpj ? ` · ${formatCnpj(detalhe.data.data.cnpj)}` : ""}</p>
+              </div>
+              <Button type="button" variant="secondary" onClick={() => setDetalheId(null)}>Fechar</Button>
+            </div>
+            {detalhe.isLoading ? <p className="text-sm text-slate-500">Carregando relatório...</p> : null}
+            {detalhe.error instanceof Error ? <p className="text-sm text-rose-600">{detalhe.error.message}</p> : null}
+            {detalhe.data ? (
+              <>
+                <p className="text-sm">Valor {money(detalhe.data.data.valor)}{detalhe.data.data.desconto > 0 ? ` · desconto ${money(detalhe.data.data.desconto)}` : ""}{detalhe.data.data.parcela && detalhe.data.data.parcela !== "1/1" ? ` · parcela ${detalhe.data.data.parcela}` : ""} · vencimento {dateBr(detalhe.data.data.vencimento)}</p>
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[640px] text-left text-sm">
+                    <thead className="text-xs uppercase text-slate-400">
+                      <tr><th className="py-2">Tipo</th><th>Candidato</th><th>Cargo</th><th>Valor</th></tr>
+                    </thead>
+                    <tbody>
+                      {detalhe.data.data.itens.map((linha, index) => (
+                        <tr key={`${linha.nome}-${index}`} className="border-t border-slate-100">
+                          <td className="py-2">{linha.tipo}</td>
+                          <td>{linha.nome || "Sem nome"}</td>
+                          <td>{linha.cargo}</td>
+                          <td>{money(linha.valor)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {detalhe.data.data.itens.length === 0 ? <p className="text-sm text-slate-500">Esta fatura não tem candidatos vinculados.</p> : null}
+              </>
+            ) : null}
+          </Card>
+        </div>
+      ) : null}
     </Screen>
   );
 }

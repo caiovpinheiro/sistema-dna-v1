@@ -593,8 +593,17 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
       : null;
     return ok(await legado.enviarRelatorios(config, ids, request.body.mes, request.body.ano, (input) => services.asaas.boletoDoFaturamento(input), ajuste));
   });
-  api.get("/api/v1/procfy", { schema: { tags: ["procfy"], querystring: z.object({ ...pagina, de: z.string().optional(), ate: z.string().optional(), status: z.string().optional(), tipoData: z.string().optional(), sistema: z.string().optional() }) } }, async (request) => {
-    const result = await legado.procfy(request.query);
+  api.get("/api/v1/procfy/excel", {
+    schema: { tags: ["procfy"], querystring: z.object({ de: z.string().optional(), ate: z.string().optional(), status: z.string().optional(), tipoData: z.string().optional(), sistema: z.string().optional() }) },
+  }, async (request, reply) => {
+    const html = await legado.planilhaProcfy(request.query);
+    return reply.type("application/vnd.ms-excel; charset=utf-8").header("Content-Disposition", "attachment; filename=\"Faturas.xls\"").send(html);
+  });
+  api.get("/api/v1/procfy/fatura/:id", {
+    schema: { tags: ["procfy"], params: z.object({ id: z.string().min(1) }) },
+  }, async (request) => ok(await legado.procfyFatura(request.params.id)));
+  api.get("/api/v1/procfy", { schema: { tags: ["procfy"], querystring: z.object({ ...pagina, de: z.string().optional(), ate: z.string().optional(), status: z.string().optional(), tipoData: z.string().optional(), sistema: z.string().optional(), exportar: z.enum(["1"]).optional() }) } }, async (request) => {
+    const result = await legado.procfy({ ...request.query, exportar: request.query.exportar === "1" });
     return ok(result.data, result.meta);
   });
   api.get("/api/v1/comissao/empresas", { schema: { tags: ["comissao"], querystring: z.object({ ...pagina, empresa: z.string().optional(), consultor: z.string().optional(), mes: z.string().optional(), ano: z.string().optional(), status: z.string().optional() }) } }, async (request) => {

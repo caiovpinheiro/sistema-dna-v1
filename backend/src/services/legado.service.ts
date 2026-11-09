@@ -413,7 +413,7 @@ export class LegadoService {
     return { enviados: enviados.length, boletos: boletos.length, pulados: pulados.length, empresas: enviados, falhas };
   }
 
-  async procfy(query: { de?: string; ate?: string; status?: string; tipoData?: string; sistema?: string; page?: number; pageSize?: number }) {
+  async procfy(query: { de?: string; ate?: string; status?: string; tipoData?: string; sistema?: string; page?: number; pageSize?: number; exportar?: boolean }) {
     const tipo = ["vencimento_fatura", "data_pg", "data_cadastro"].includes(texto(query.tipoData)) ? texto(query.tipoData) : "vencimento_fatura";
     const sistema = texto(query.sistema) || "ambos";
     if (sistema === "disc") {
@@ -421,8 +421,10 @@ export class LegadoService {
     }
     const de = texto(query.de).replaceAll("-", "/");
     const ate = texto(query.ate).replaceAll("-", "/");
-    const status = texto(query.status);
-    const { pagina, tamanho, offset } = corte(query.page ?? 1, query.pageSize ?? 50);
+    const status = tipo === "data_pg" ? "1" : texto(query.status);
+    const { pagina, tamanho, offset } = query.exportar
+      ? { pagina: 1, tamanho: 5000, offset: 0 }
+      : corte(query.page ?? 1, query.pageSize ?? 50);
     const where = `
       WHERE ($1 = '' OR f.${tipo}::text >= $1)
         AND ($2 = '' OR f.${tipo}::text <= $2 || '/31')
@@ -432,37 +434,143 @@ export class LegadoService {
     const params = [de ? `${de}/01` : "", ate, status];
     const total = await one<{ total: number; valor: string }>(this.db, `
       SELECT count(*)::int AS total,
-             coalesce(sum(CASE WHEN replace(coalesce(f.valor_final, ''), ',', '.') ~ '^[0-9]+(\\.[0-9]+)?$'
-                               THEN replace(f.valor_final, ',', '.')::numeric ELSE 0 END), 0)::text AS valor
+             coalesce(sum(${numero("f.valor_final")}), 0)::text AS valor
       FROM dna_work.fatura f
       JOIN dna_work.empresa e ON e.id_empresa = f.id_empresa
       ${where}
     `, params);
+    const itens = await one<{ ok: string | null }>(this.db, `SELECT to_regclass('dna_work.fatura_contratacao')::text AS ok`);
+    const join = itens?.ok
+      ? `LEFT JOIN LATERAL (
+           SELECT coalesce(sum(CASE WHEN fc.item = 'Selecao' THEN ${numero("fc.valor")} ELSE 0 END), 0)::text AS recrutamento,
+                  coalesce(sum(CASE WHEN fc.item = 'Recorrente' THEN ${numero("fc.valor_periodico")}
+                                    WHEN fc.item = 'Software' THEN ${numero("fc.valor")} ELSE 0 END), 0)::text AS recorrente
+           FROM dna_work.fatura_contratacao fc
+           WHERE fc.id_fatura::text = f.id_fatura::text
+         ) itens ON true`
+      : `LEFT JOIN LATERAL (SELECT '0' AS recrutamento, '0' AS recorrente) itens ON true`;
     const rows = await many<{
-      razao_social: string | null; nome_fantasia: string | null; tipo: string | null;
-      vencimento: string | null; valor: string | null; forma_pg: string | null; data_pg: string | null; status_fatura: number | null;
+      id: string; razao_social: string | null; nome_fantasia: string | null; cnpj: string | null;
+      tipo_fatura: string | null; tipo_cobranca: string | null; parcela: string | null;
+      vencimento: string | null; valor: string | null; desconto: string | null;
+      forma_pg: string | null; data_pg: string | null; status_fatura: number | null;
+      recrutamento: string | null; recorrente: string | null;
     }>(this.db, `
-      SELECT e.razao_social, e.nome_fantasia, f.tipo_fatura AS tipo, f.vencimento_fatura AS vencimento,
-             f.valor_final AS valor, f.forma_pg, f.data_pg, f.status_fatura
+      SELECT f.id_fatura::text AS id, e.razao_social, e.nome_fantasia, e.cnpj,
+             f.tipo_fatura, f.tipo_cobranca, f.parcela, f.vencimento_fatura AS vencimento,
+             f.valor_final AS valor, f.desconto, f.forma_pg, f.data_pg, f.status_fatura,
+             itens.recrutamento, itens.recorrente
       FROM dna_work.fatura f
       JOIN dna_work.empresa e ON e.id_empresa = f.id_empresa
+      ${join}
       ${where}
       ORDER BY f.vencimento_fatura DESC NULLS LAST, e.razao_social
       LIMIT $4 OFFSET $5
     `, [...params, tamanho, offset]);
     return {
-      data: rows.map((item) => ({
-        razao_social: item.razao_social,
-        nome_fantasia: item.nome_fantasia,
-        tipo: item.tipo,
-        vencimento: item.vencimento,
-        valor: item.valor != null && item.valor !== "" ? Number(String(item.valor).replace(",", ".")) : null,
-        forma_pg: item.forma_pg,
-        data_pg: item.data_pg,
-        status: item.status_fatura === 1 ? "Paga" : item.status_fatura === 2 ? "Cancelada" : "Aberta",
-      })),
+      data: rows.map((item) => this.linhaProcfy(item)),
       meta: { total: total?.total ?? 0, page: pagina, pageSize: tamanho, totalReceber: Number(total?.valor ?? 0) },
     };
+  }
+
+  async planilhaProcfy(query: { de?: string; ate?: string; status?: string; tipoData?: string; sistema?: string }) {
+    const { data } = await this.procfy({ ...query, exportar: true });
+    const celula = (valor: string) => valor.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+    const dinheiro = (valor: number) => valor.toFixed(2).replace(".", ",");
+    const linhas = data.map((item) => [
+      item.razao_social ?? "",
+      item.nome_fantasia ?? "",
+      item.tipo ?? "",
+      dinheiro(item.valor),
+      dinheiro(item.recorrente),
+      dinheiro(item.recrutamento),
+      dinheiro(item.desconto),
+      (item.parcela ?? "").replaceAll("/", " de "),
+      item.vencimento ? (() => {
+        const [ano, mes, dia] = item.vencimento.slice(0, 10).replaceAll("/", "-").split("-");
+        return ano && mes && dia && ano.length >= 4 ? `${dia}/${mes}/${ano}` : item.vencimento;
+      })() : "",
+    ]);
+    const cabecalho = ["Razão Social", "Nome Fantasia", "Tipo", "Valor da Fatura", "Valor Recorrente", "Valor Recrutamento", "Desconto", "Parcela", "Vencimento"];
+    const tabela = [cabecalho, ...linhas]
+      .map((colunas) => `<tr>${colunas.map((coluna) => `<td>${celula(coluna)}</td>`).join("")}</tr>`)
+      .join("");
+    return `<html><head><meta charset="utf-8"></head><body><table border="1">${tabela}</table></body></html>`;
+  }
+
+  async procfyFatura(id: string) {
+    const fatura = await one<{
+      empresa: string | null; razao: string | null; cnpj: string | null;
+      valor: string | null; desconto: string | null; parcela: string | null; vencimento: string | null;
+    }>(this.db, `
+      SELECT coalesce(e.nome_fantasia, e.razao_social) AS empresa, e.razao_social AS razao, e.cnpj,
+             f.valor_final AS valor, f.desconto, f.parcela, f.vencimento_fatura AS vencimento
+      FROM dna_work.fatura f
+      JOIN dna_work.empresa e ON e.id_empresa = f.id_empresa
+      WHERE f.id_fatura::text = $1
+    `, [id]);
+    if (!fatura) throw new AppError(404, "FATURA_NAO_ENCONTRADA", "Fatura não encontrada.");
+    const tem = await one<{ ok: string | null }>(this.db, `SELECT to_regclass('dna_work.fatura_contratacao')::text AS ok`);
+    const itens = tem?.ok ? await many<{ item: string | null; nome: string | null; cargo: string | null; valor: string | null; periodico: string | null }>(this.db, `
+      SELECT fc.item, c.nome, v.cargo, fc.valor, fc.valor_periodico AS periodico
+      FROM dna_work.fatura_contratacao fc
+      LEFT JOIN dna_work.conratacaovaga cv ON cv.id_contratacao::text = fc.id_contratacao::text
+      LEFT JOIN dna_work.candidato c ON c.id_candidato = cv.id_candidato
+      LEFT JOIN dna_work.vaga v ON v.id_vaga = cv.id_vaga
+      WHERE fc.id_fatura::text = $1
+      ORDER BY c.nome
+    `, [id]) : [];
+    return {
+      empresa: fatura.empresa,
+      razao: fatura.razao,
+      cnpj: fatura.cnpj,
+      valor: this.valorProcfy(fatura.valor),
+      desconto: this.valorProcfy(fatura.desconto),
+      parcela: fatura.parcela,
+      vencimento: fatura.vencimento,
+      itens: itens.map((item) => ({
+        tipo: item.item === "Selecao" ? "Recrutamento" : item.item || "",
+        nome: item.nome,
+        cargo: item.cargo,
+        valor: this.valorProcfy(item.item === "Recorrente" ? item.periodico : item.valor),
+      })),
+    };
+  }
+
+  private linhaProcfy(item: {
+    id: string; razao_social: string | null; nome_fantasia: string | null; cnpj: string | null;
+    tipo_fatura: string | null; tipo_cobranca: string | null; parcela: string | null;
+    vencimento: string | null; valor: string | null; desconto: string | null;
+    forma_pg: string | null; data_pg: string | null; status_fatura: number | null;
+    recrutamento: string | null; recorrente: string | null;
+  }) {
+    const parcelado = Boolean(item.parcela && item.parcela !== "1/1");
+    const valor = this.valorProcfy(item.valor);
+    const recrutamento = parcelado ? (item.tipo_cobranca === "Recrutamento" ? valor : 0) : this.valorProcfy(item.recrutamento);
+    const recorrente = parcelado ? (item.tipo_cobranca === "Recrutamento" ? 0 : valor) : this.valorProcfy(item.recorrente);
+    const partes = [recorrente > 0 ? "Recorrente" : "", recrutamento > 0 ? "Recrutamento" : ""].filter(Boolean);
+    return {
+      id: item.id,
+      razao_social: item.razao_social,
+      nome_fantasia: item.nome_fantasia,
+      cnpj: item.cnpj,
+      tipo: parcelado ? (item.tipo_cobranca || "") : (partes.join(" / ") || item.tipo_cobranca || item.tipo_fatura),
+      vencimento: item.vencimento,
+      valor,
+      recorrente,
+      recrutamento,
+      desconto: this.valorProcfy(item.desconto),
+      parcela: item.parcela,
+      forma_pg: item.status_fatura === 2 ? "Cancelado" : item.forma_pg,
+      data_pg: item.status_fatura === 2 ? null : item.data_pg,
+      status: item.status_fatura === 1 ? "Paga" : item.status_fatura === 2 ? "Cancelada" : "Aberta",
+    };
+  }
+
+  private valorProcfy(valor: string | null | undefined) {
+    if (valor == null || valor === "") return 0;
+    const numeroValor = Number(String(valor).replace(",", "."));
+    return Number.isFinite(numeroValor) ? numeroValor : 0;
   }
 
   async comissao(query: { empresa?: string; consultor?: string; mes?: string; ano?: string; status?: string; page?: number; pageSize?: number }) {
