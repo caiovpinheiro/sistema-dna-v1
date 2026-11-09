@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Pencil, Trash2 } from "lucide-react";
+import { Copy, Pencil, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { GeradorTce } from "@/components/gerador-tce";
@@ -124,58 +124,73 @@ export function TermosPage() {
       {!query.isLoading && !query.isError && rows.length === 0 ? <Empty title="Nenhum termo" text="Abra uma contratação de estágio e envie o termo para assinatura." /> : null}
       {rows.length > 0 ? (
         <Card className="overflow-x-auto p-0">
-          <table className="w-full min-w-[640px] text-left text-sm">
+          <table className="w-full min-w-[880px] text-left text-sm">
             <thead className="text-xs uppercase text-slate-400">
               <tr>
                 <th className="px-4 py-3">Estagiário</th>
                 <th className="px-4 py-3">Empresa</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Enviado</th>
+                <th className="px-4 py-3">Assinatura</th>
+                <th className="px-4 py-3" />
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => (
-                <tr key={row.id} className="border-t border-slate-100">
-                  <td className="px-4 py-3 font-semibold">
-                    <Link className="text-cyan-800" to={`/termos/${row.id}`}>{row.candidato_nome || row.nome}</Link>
-                  </td>
-                  <td className="px-4 py-3">{row.empresa_nome || "—"}</td>
-                  <td className="px-4 py-3"><Badge value={row.status}>{labels[row.status] ?? row.status}</Badge></td>
-                  <td className="px-4 py-3">
-                    <div className="flex w-full items-center justify-between gap-6 pr-1">
-                      <span>{new Date(row.criado_em).toLocaleDateString("pt-BR")}</span>
-                      <span className="flex items-center gap-2">
-                        {linksDoTermo(row).map((link) => (
-                          <button
-                            key={link.url}
-                            type="button"
-                            className="text-xs font-semibold text-cyan-800"
-                            onClick={() => void copiar(`${row.id}:${link.url}`, link.url)}
-                          >
-                            {copiado === `${row.id}:${link.url}` ? "Copiado" : `Copiar link de ${link.nome}`}
-                          </button>
-                        ))}
-                      </span>
-                      <Link className="text-slate-400 hover:text-cyan-700" to={`/termos/${row.id}/editar`} aria-label={`Editar TCE de ${row.candidato_nome || row.nome}`}>
-                        <Pencil className="h-4 w-4" />
-                      </Link>
-                      <button
-                        type="button"
-                        className="text-slate-400 hover:text-rose-600 disabled:opacity-40"
-                        aria-label={`Excluir TCE de ${row.candidato_nome || row.nome}`}
-                        disabled={excluir.isPending}
-                        onClick={() => {
-                          const nome = row.candidato_nome || row.nome;
-                          if (!window.confirm(`Excluir o TCE de ${nome}?`)) return;
-                          excluir.mutate(row.id);
-                        }}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {rows.map((row) => {
+                const links = linksDoTermo(row);
+                return (
+                  <tr key={row.id} className="border-t border-slate-100 align-top">
+                    <td className="px-4 py-3 font-semibold">
+                      <Link className="text-cyan-800" to={`/termos/${row.id}`}>{row.candidato_nome || row.nome}</Link>
+                    </td>
+                    <td className="px-4 py-3">{row.empresa_nome || "—"}</td>
+                    <td className="px-4 py-3"><Badge value={row.status}>{labels[row.status] ?? row.status}</Badge></td>
+                    <td className="whitespace-nowrap px-4 py-3">{new Date(row.criado_em).toLocaleDateString("pt-BR")}</td>
+                    <td className="px-4 py-3">
+                      {links.length === 0 ? <span className="text-slate-400">—</span> : (
+                        <ul className="grid gap-1">
+                          {links.map((link) => {
+                            const chave = `${row.id}:${link.url}`;
+                            return (
+                              <li key={link.url}>
+                                <button
+                                  type="button"
+                                  className="inline-flex max-w-56 items-center gap-1.5 text-left text-xs font-semibold text-cyan-800"
+                                  title={`Copiar link de ${link.nome}`}
+                                  onClick={() => void copiar(chave, link.url)}
+                                >
+                                  <Copy className="h-3.5 w-3.5 shrink-0" />
+                                  <span className="truncate">{copiado === chave ? "Copiado" : link.nome}</span>
+                                </button>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <Link className="text-slate-400 hover:text-cyan-700" to={`/termos/${row.id}/editar`} aria-label={`Editar TCE de ${row.candidato_nome || row.nome}`}>
+                          <Pencil className="h-4 w-4" />
+                        </Link>
+                        <button
+                          type="button"
+                          className="text-slate-400 hover:text-rose-600 disabled:opacity-40"
+                          aria-label={`Excluir TCE de ${row.candidato_nome || row.nome}`}
+                          disabled={excluir.isPending}
+                          onClick={() => {
+                            const nome = row.candidato_nome || row.nome;
+                            if (!window.confirm(`Excluir o TCE de ${nome}?`)) return;
+                            excluir.mutate(row.id);
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </Card>
