@@ -265,6 +265,11 @@ export class NotionSyncService {
         `UPDATE vaga SET ${campos.map((campo) => `${campo} = ?`).join(", ")} WHERE id_vaga = ? AND status = 0`,
         [...campos.map((campo) => depois[campo]), vaga.id_vaga],
       );
+      // A cópia do Postgres é a referência do espelho no sync de vagas abertas: recebe o mesmo horário.
+      await this.db.query(
+        `UPDATE dna_work.vaga SET ${campos.map((campo, indice) => `${campo} = $${indice + 2}`).join(", ")} WHERE id_vaga = $1`,
+        [vaga.id_vaga, ...campos.map((campo) => depois[campo])],
+      );
     }
     if (supabase && !supabaseIgual) {
       const rest = supabaseRest({ url: this.config.SUPABASE_URL, key: this.config.SUPABASE_SERVICE_ROLE_KEY });

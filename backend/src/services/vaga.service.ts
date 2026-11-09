@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto";
 import type { Pool } from "pg";
 import type { AppConfig } from "../config.js";
 import { migrationRequired, AppError } from "../lib/errors.js";
-import { formatMoneyLegacy, parseMoney } from "../lib/money.js";
+import { formatMoneyLegacy, moneyToNumber, parseMoney } from "../lib/money.js";
+import { faixaDaSemana, horarioAlinhado, horarioDe } from "./vagas-abertas-sync.service.js";
 import type { SchemaCapabilities } from "../db/capabilities.js";
 import type { MysqlPool } from "../db/mysql.js";
 import { codigoParaStatus } from "../lib/vaga-status.js";
@@ -14,6 +15,12 @@ import { supabaseRest } from "../lib/supabase-rest.js";
 import { presentVaga } from "./presenters.js";
 import { mensagemDaVaga } from "../lib/mensagem-vaga.js";
 import { DIAS_ESCALA, textoDoHorario } from "../lib/horario-escala.js";
+
+/** Campos do horário da vaga: quando algum muda na edição, a grade do espelho é refeita. */
+const CAMPOS_HORARIO = [
+  "horabase", "hora_saida_base", "segunda_entrada", "segunda_saida", "terca_entrada", "terca_saida", "quarta_entrada", "quarta_saida",
+  "quinta_entrada", "quinta_saida", "sexta_entrada", "sexta_saida", "sab_entrada", "sab_saida", "domindo_entrada", "domindo_saida", "texto_carga",
+];
 
 /** Horário da mensagem: o texto do horário da vaga; vazio, o texto montado pela grade de dias; sem grade, a entrada e a saída. */
 function horarioDaFicha(ficha: Record<string, unknown>): string | null {
@@ -44,7 +51,8 @@ export class VagaService {
   /** Grava o código no Lightsail antes do Postgres: se o Lightsail recusar, nada muda. Só o número do status, sem mexer em tabela. */
   private async statusNoLightsail(id: string, codigo: number) {
     if (!this.mysql) throw new AppError(503, "LIGHTSAIL_INDISPONIVEL", "Não foi possível falar com o Lightsail para mudar a situação.");
-    await this.mysql.query("UPDATE vaga SET status = ? WHERE id_vaga = ?", [codigo, id]);
+    // data_adicao muda sozinha a cada UPDATE no Lightsail; a abertura da vaga fica a original.
+    await this.mysql.query("UPDATE vaga SET status = ?, data_adicao = data_adicao WHERE id_vaga = ?", [codigo, id]);
   }
 
   private ensureCapacityColumn() {
@@ -88,9 +96,56 @@ export class VagaService {
         dados.status = codigo;
       }
     }
+    // Cargo, salário e horário: Postgres e o espelho (Supabase e public.vaga). O Lightsail não recebe a edição.
+    const espelhar = await this.dadosDoEspelho(id, dados, salario);
     await this.repo.update(this.db, id, dados, salario);
+    if (espelhar.faixa) {
+      await this.db.query("UPDATE dna_work.vaga SET semanas_inicio = $2, semanas_fim = $3 WHERE id_vaga = $1", [id, espelhar.faixa.inicio, espelhar.faixa.fim]);
+    }
+    await this.alinharEspelho(id, espelhar.campos, espelhar.grade);
     if (input.beneficios !== undefined) await this.salvarBeneficios(id, input.beneficios);
     return presentVaga((await this.repo.findById(this.db, id))!);
+  }
+
+  /** Quando muda o horário, recalcula a faixa de dias e devolve a grade completa para o espelho; mais os campos editados. */
+  private async dadosDoEspelho(id: string, dados: Record<string, unknown>, salario: string | undefined) {
+    const mudouHorario = CAMPOS_HORARIO.some((campo) => dados[campo] !== undefined);
+    let grade: Record<string, unknown> | null = null;
+    let faixa: { inicio: number; fim: number } | null = null;
+    if (mudouHorario) {
+      const atual = await one<Record<string, unknown>>(this.db, `SELECT ${CAMPOS_HORARIO.join(", ")}, periodo, tempo_refeicao FROM dna_work.vaga WHERE id_vaga = $1`, [id]);
+      grade = { ...(atual ?? {}), ...Object.fromEntries(CAMPOS_HORARIO.filter((campo) => dados[campo] !== undefined).map((campo) => [campo, dados[campo]])) };
+      faixa = faixaDaSemana(grade);
+      if (faixa) {
+        grade.semanas_inicio = faixa.inicio;
+        grade.semanas_fim = faixa.fim;
+      }
+    }
+    const campos: Record<string, unknown> = {};
+    if (dados.cargo !== undefined) campos.cargo = dados.cargo;
+    if (dados.carga_horaria !== undefined) campos.carga_horaria = dados.carga_horaria;
+    if (dados.sexo !== undefined) campos.sexo = dados.sexo;
+    if (salario !== undefined) campos.salario = moneyToNumber(salario);
+    return { campos, grade, faixa };
+  }
+
+  /** Espelho (Supabase e public.vaga): mesma grade de horário do sync de vagas abertas e os campos editados. */
+  private async alinharEspelho(id: string, campos: Record<string, unknown>, grade: Record<string, unknown> | null) {
+    const mudar: Record<string, unknown> = { ...campos };
+    if (grade) {
+      const rest = this.rest();
+      const atual = rest
+        ? (await rest.get<Array<{ horario: string | null }>>(`vaga?id=eq.${encodeURIComponent(id)}&select=horario`))[0]?.horario ?? null
+        : (await one<{ horario: string | null }>(this.db, "SELECT horario FROM public.vaga WHERE id::text = $1", [id]))?.horario ?? null;
+      const novo = horarioDe(grade);
+      // O texto novo vale; o do espelho só fica quando é o mesmo texto (emoji que o Lightsail troca por "?").
+      mudar.horario = horarioAlinhado(atual, novo) ?? atual ?? novo;
+    }
+    const nomes = Object.keys(mudar);
+    if (!nomes.length) return;
+    await this.db.query(`UPDATE public.vaga SET ${nomes.map((nome, indice) => `${nome} = $${indice + 2}`).join(", ")} WHERE id::text = $1`, [id, ...nomes.map((nome) => mudar[nome])]);
+    const rest = this.rest();
+    if (rest) await rest.update(`vaga?id=eq.${encodeURIComponent(id)}`, mudar);
   }
 
   async sugeridos(id: string) {

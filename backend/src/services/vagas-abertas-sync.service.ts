@@ -304,7 +304,7 @@ export class VagasAbertasSyncService {
     return resultado;
   }
 
-  /** Abertas que já estão no espelho: atualiza o que mudou no Lightsail e copia para o lado que não tem a vaga. */
+  /** Abertas que já estão no espelho: alinha ao cadastro do Postgres (ou do Lightsail, sem ele) e copia para o lado que não tem a vaga. */
   private async alinharEspelho(abertas: VagaLightsail[], empresaPorId: Map<string, EmpresaNova>, dry: boolean, slot: string, resultado: ResultadoAbertas) {
     const campos = "id,vaga_id,horario,turno,idade,idade_ate,salario,beneficios";
     const lista = abertas.filter((vaga) => empresaPorId.has(vaga.id_empresa));
@@ -323,9 +323,18 @@ export class VagasAbertasSyncService {
     const presentes = lista.filter((vaga) => supabasePorId.has(vaga.id_vaga) || postgresPorId.has(vaga.id_vaga));
     if (!presentes.length) return;
     const beneficios = await this.beneficios(presentes.map((vaga) => vaga.id_vaga));
+    // Referência do cadastro: a cópia do Postgres (o que o sistema mostra e a tela Editar vaga grava).
+    // Sem a linha no Postgres, vale o Lightsail. O id da empresa e o status sempre vêm do Lightsail.
+    const { rows: doCadastro } = await this.db.query<Record<string, unknown>>(
+      "SELECT * FROM dna_work.vaga WHERE id_vaga = ANY($1)",
+      [presentes.map((vaga) => vaga.id_vaga)],
+    );
+    const cadastroPorId = new Map(doCadastro.map((row) => [String(row.id_vaga), row]));
 
     for (const vaga of presentes) {
-      const linha = this.linhaDe(vaga, empresaPorId.get(vaga.id_empresa)!, beneficios.get(vaga.id_vaga) ?? []);
+      const cadastro = cadastroPorId.get(vaga.id_vaga);
+      const fonte = (cadastro ? { ...vaga, ...cadastro, id_vaga: vaga.id_vaga, id_empresa: vaga.id_empresa, status: vaga.status } : vaga) as VagaLightsail;
+      const linha = this.linhaDe(fonte, empresaPorId.get(vaga.id_empresa)!, beneficios.get(vaga.id_vaga) ?? []);
       const sb = supabasePorId.get(vaga.id_vaga);
       const pgRow = postgresPorId.get(vaga.id_vaga);
       linha.vaga_id = sb?.vaga_id || pgRow?.vaga_id || linha.vaga_id;
