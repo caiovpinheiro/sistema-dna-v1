@@ -25,6 +25,7 @@ import type { EmpresaService } from "../services/empresa.service.js";
 import { camposFromBody, type TceService } from "../services/tce.service.js";
 import type { TermoService } from "../services/termo.service.js";
 import { MANUAL_FIELDS } from "../lib/tce-fields.js";
+import { arquivoDoDocumento, candidatoDoTce, gravarDocumentosDoTce, listarDocumentos } from "../repositories/candidato-documento.repository.js";
 import { valorDaEmpresa, valoresDoGrupo } from "../repositories/valor-empresa.repository.js";
 import { origemComCache } from "../origem/cache.js";
 import { webhookGanho } from "../origem/webhook-ganho.js";
@@ -70,6 +71,8 @@ function idempotencyKey(header: string | string[] | undefined): string {
 }
 
 export async function registerRoutes(app: FastifyInstance, config: AppConfig, services: Services, db: Pool): Promise<void> {
+  const guardarDocumentosDoTce = (log: { warn: (o: unknown, m: string) => void }, input: { idCandidato?: string | null; idContratacao?: number | null; campos: Record<string, string>; tceId: string }) =>
+    guardarDocumentosDoTceCom(db, log, input);
   const api = app.withTypeProvider<ZodTypeProvider>();
   api.get("/health", async () => ({ success: true, data: { status: "ok" }, meta: {} }));
 
@@ -155,6 +158,21 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
   api.patch("/api/v1/candidatos/:id", {
     schema: { tags: ["candidatos"], params: z.object({ id: z.string().min(1) }), body: candidatoPatchSchema },
   }, async (request) => ok(await services.candidatos.update(request.params.id, request.body)));
+  api.get("/api/v1/candidatos/:id/documentos", {
+    schema: { tags: ["candidatos"], params: z.object({ id: z.string().min(1) }) },
+  }, async (request) => ok(await listarDocumentos(db, request.params.id)));
+  api.get("/api/v1/candidatos/:id/documentos/:documento/arquivo", {
+    schema: { tags: ["candidatos"], params: z.object({ id: z.string().min(1), documento: z.string().uuid() }) },
+  }, async (request, reply) => {
+    const arquivo = await arquivoDoDocumento(db, request.params.id, request.params.documento);
+    if (!arquivo?.arquivo) throw new AppError(404, "ARQUIVO_NAO_ENCONTRADO", "Este documento não tem arquivo.");
+    const nome = arquivo.arquivo_nome || "documento";
+    return reply
+      .type(arquivo.arquivo_tipo || "application/octet-stream")
+      .header("Content-Disposition", `inline; filename="${nome.replace(/[^\w.\-]+/g, "_")}"`)
+      .header("Cache-Control", "private, no-store")
+      .send(arquivo.arquivo);
+  });
   api.get("/api/v1/candidatos/:id/contratacoes", {
     schema: { tags: ["candidatos"], params: z.object({ id: z.string().min(1) }), querystring: pageQuery },
   }, async (request) => {
@@ -343,6 +361,7 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
       body: z.object({
         empresa_id: z.string().uuid(),
         id_contratacao: z.number().int().positive().optional().nullable(),
+        id_candidato: z.string().max(64).optional().nullable(),
         escola_id: z.string().max(255).optional().nullable(),
         concedente: z.object({
           razao_social: z.string().max(200).optional().default(""),
@@ -366,6 +385,7 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
       concedente: request.body.concedente,
       campos: camposFromBody(known),
     });
+    await guardarDocumentosDoTce(request.log, { idCandidato: request.body.id_candidato, idContratacao: request.body.id_contratacao, campos: known, tceId: String((termo as { id: string }).id) });
     return reply.code(201).send(ok(termo));
   });
   api.get("/api/v1/tce/:id/dados", {
@@ -377,6 +397,7 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
       params: z.object({ id: z.string().uuid() }),
       body: z.object({
         empresa_id: z.string().uuid().or(z.literal("")).optional().default(""),
+        id_candidato: z.string().max(64).optional().nullable(),
         escola_id: z.string().max(255).optional().nullable(),
         concedente: z.object({
           razao_social: z.string().max(200).optional().default(""),
@@ -393,12 +414,14 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
     },
   }, async (request) => {
     const known = Object.fromEntries(MANUAL_FIELDS.map((key) => [key, request.body.campos[key] ?? ""]));
-    return ok(await services.tce.atualizar(request.params.id, {
+    const atualizado = await services.tce.atualizar(request.params.id, {
       empresaId: request.body.empresa_id,
       escolaId: request.body.escola_id || null,
       concedente: request.body.concedente,
       campos: camposFromBody(known),
-    }));
+    });
+    await guardarDocumentosDoTce(request.log, { idCandidato: request.body.id_candidato, campos: known, tceId: request.params.id });
+    return ok(atualizado);
   });
   api.get("/api/v1/tce/:id/pdf", {
     schema: { tags: ["termos"], params: z.object({ id: z.string().uuid() }) },
@@ -745,6 +768,20 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
 }
 
 type StaffUser = { id: string; nome: string; email: string; senha_hash: string; ativo: boolean };
+
+/** Documentos do candidato a partir do TCE. Falha aqui não impede o TCE: só fica no log. */
+async function guardarDocumentosDoTceCom(db: Pool, log: { warn: (o: unknown, m: string) => void }, input: { idCandidato?: string | null; idContratacao?: number | null; campos: Record<string, string>; tceId: string }) {
+  try {
+    const idCandidato = await candidatoDoTce(db, { idCandidato: input.idCandidato, idContratacao: input.idContratacao, cpf: input.campos.cpf });
+    if (!idCandidato) {
+      log.warn({ tce: input.tceId }, "TCE sem candidato cadastrado: documentos não gravados");
+      return;
+    }
+    await gravarDocumentosDoTce(db, idCandidato, input.campos, input.tceId);
+  } catch (error) {
+    log.warn({ tce: input.tceId, erro: error instanceof Error ? error.message : String(error) }, "falha ao gravar os documentos do TCE");
+  }
+}
 
 async function findStaff(db: Pool, email: string): Promise<StaffUser | null> {
   try {

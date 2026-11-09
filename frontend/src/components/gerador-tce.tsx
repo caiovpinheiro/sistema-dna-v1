@@ -127,6 +127,8 @@ export function GeradorTce({ editarId }: { editarId?: string }) {
   const [concedente, setConcedente] = useState({ razao_social: "", cnpj: "", endereco: "", cep: "", cidade: "", estado: "", email: "", representante: "" });
   const [campos, setCampos] = useState<Record<string, string>>({ seguro_apolice: APOLICE });
   const [candidatoBusca, setCandidatoBusca] = useState("");
+  // Candidato escolhido na pesquisa: o TCE grava os documentos dele (CPF, RG, endereço, responsável) na ficha.
+  const [candidatoId, setCandidatoId] = useState<string | null>(null);
   const [candidatos, setCandidatos] = useState<CandidatoBusca[]>([]);
   const [escolaBusca, setEscolaBusca] = useState("");
   const [escolas, setEscolas] = useState<Escola[]>([]);
@@ -160,6 +162,7 @@ export function GeradorTce({ editarId }: { editarId?: string }) {
 
   async function procurarCandidato(valor: string) {
     setCandidatoBusca(valor);
+    setCandidatoId(null);
     if (valor.trim().length < 2) {
       setCandidatos([]);
       return;
@@ -197,6 +200,7 @@ export function GeradorTce({ editarId }: { editarId?: string }) {
 
   async function escolherCandidato(pessoa: CandidatoBusca) {
     setCandidatoBusca(`${pessoa.nome}${pessoa.cpf ? ` · ${pessoa.cpf}` : ""}`);
+    setCandidatoId(pessoa.id);
     setCandidatos([]);
     setErro("");
     try {
@@ -239,7 +243,7 @@ export function GeradorTce({ editarId }: { editarId?: string }) {
     }
   }
 
-  const corpo = { empresa_id: empresaId, id_contratacao: idContratacao, concedente, campos: { ...campos, seguro_apolice: APOLICE } };
+  const corpo = { empresa_id: empresaId, id_contratacao: idContratacao, id_candidato: candidatoId, concedente, campos: { ...campos, seguro_apolice: APOLICE } };
   const gerar = useMutation({
     mutationFn: () => editarId
       ? api<{ id: string }>(`/api/v1/tce/${editarId}`, { method: "PATCH", body: JSON.stringify(corpo) })

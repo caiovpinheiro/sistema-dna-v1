@@ -5,6 +5,7 @@ import { api } from "@/lib/api";
 import { dateBr, formatCpf, formatPhone, regimeLabel, situacaoLabel } from "@/lib/format";
 import { ProcessosRelacionados } from "@/pages/ProcessosPage";
 import { FichaCandidato, type FichaCandidatoDados } from "@/components/ficha-candidato";
+import { DocumentosCandidato } from "@/components/documentos-candidato";
 
 type Candidate = FichaCandidatoDados;
 
@@ -62,6 +63,7 @@ export function CandidatoDetailPage() {
         ) : <p className="text-sm text-slate-500">Este candidato ainda não tem contratações.</p>}
       </Card>
       <ProcessosRelacionados filtro={`id_candidato=${id}`} />
+      <DocumentosCandidato idCandidato={data.id_candidato} />
     </div>
   );
 }
