@@ -1,4 +1,4 @@
-import type { AcaoPlanejada } from "./regua.js";
+import type { AcaoPlanejada, FaturaEnvio } from "./regua.js";
 
 export type ResultadoDisparo = {
   enviados: number;
@@ -16,7 +16,7 @@ export async function dispararRegua(acoes: AcaoPlanejada[], deps: {
   const resultado: ResultadoDisparo = { enviados: 0, falhas: 0, duplicados: 0, marcos: 0, encaminhados: 0 };
   for (const acao of acoes) {
     const alvos = acao.faturas?.length ? acao.faturas : [{ chave: acao.chave, id_cobranca: acao.id_cobranca, empresa: acao.empresa, valor: acao.valor, vencimento: acao.vencimento, link: null }];
-    const reservados = [];
+    const reservados: FaturaEnvio[] = [];
     for (const alvo of alvos) {
       if (await deps.reservar(alvo.chave)) reservados.push(alvo);
       else resultado.duplicados += 1;
