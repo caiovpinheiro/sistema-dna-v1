@@ -63,11 +63,11 @@ export class AsaasClient {
   }
 
   emitirNota(id: string) {
-    return this.request<{ id: string; status?: string; pdfUrl?: string }>("POST", `/v3/invoices/${id}/authorize`);
+    return this.request<{ id: string; status?: string; pdfUrl?: string | null }>("POST", `/v3/invoices/${id}/authorize`);
   }
 
   consultarNota(id: string) {
-    return this.request<{ id: string; status?: string; pdfUrl?: string }>("GET", `/v3/invoices/${id}`);
+    return this.request<{ id: string; status?: string; pdfUrl?: string | null }>("GET", `/v3/invoices/${id}`);
   }
 
   estatisticas(params: Record<string, string>) {

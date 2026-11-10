@@ -568,6 +568,9 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
     iss: request.body.iss,
     descricao: request.body.descricao,
   })));
+  api.post("/api/v1/asaas/notas/:id/pdf", {
+    schema: { tags: ["asaas"], params: z.object({ id: z.string().uuid() }) },
+  }, async (request) => ok(await services.asaas.baixarNota(request.params.id)));
   api.post("/api/v1/asaas/notas/:id/cancelar", {
     schema: { tags: ["asaas"], params: z.object({ id: z.string().uuid() }) },
   }, async (request) => ok(await services.asaas.cancelarNota(request.params.id)));

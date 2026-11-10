@@ -283,12 +283,43 @@ export class AsaasService {
       taxes: { retainIss: false, cofins: 0, inss: 0, ir: 0, pis: 0, iss: input.iss },
     });
     const emitida = await asaas.emitirNota(agendada.id);
+    const consultada = emitida.pdfUrl ? emitida : await this.aguardarPdf(agendada.id);
     const notaId = randomUUID();
     await this.db.query(`
       INSERT INTO dna_work.nota_asaas (id, id_cobranca, asaas_invoice_id, tipo, valor, status, pdf_url)
       VALUES ($1,$2,$3,$4,$5,$6,$7)
-    `, [notaId, id, agendada.id, input.tipo, input.valor, emitida.status ?? agendada.status ?? "SCHEDULED", emitida.pdfUrl ?? null]);
+    `, [notaId, id, agendada.id, input.tipo, input.valor, consultada.status ?? emitida.status ?? agendada.status ?? "SCHEDULED", consultada.pdfUrl || null]);
     return (await this.listar({})).find((item) => item.id === id);
+  }
+
+  async baixarNota(idNota: string) {
+    const nota = await this.db.query<{ asaas_invoice_id: string; pdf_url: string | null }>(
+      "SELECT asaas_invoice_id, pdf_url FROM dna_work.nota_asaas WHERE id = $1",
+      [idNota],
+    );
+    const row = nota.rows[0];
+    if (!row?.asaas_invoice_id) throw new AppError(404, "NAO_ENCONTRADO", "Nota fiscal não encontrada.");
+    if (row.pdf_url) return { id: idNota, pdf_url: row.pdf_url };
+    const atual = await this.aguardarPdf(row.asaas_invoice_id);
+    await this.db.query(
+      "UPDATE dna_work.nota_asaas SET status = $2, pdf_url = COALESCE($3, pdf_url) WHERE id = $1",
+      [idNota, atual.status ?? "SCHEDULED", atual.pdfUrl || null],
+    );
+    if (!atual.pdfUrl) {
+      throw new AppError(409, "NOTA_SEM_PDF", atual.status === "ERROR"
+        ? "A prefeitura recusou esta nota. Ela não tem PDF."
+        : "A prefeitura ainda está autorizando a nota. Tente baixar de novo em alguns segundos.");
+    }
+    return { id: idNota, pdf_url: atual.pdfUrl };
+  }
+
+  private async aguardarPdf(asaasId: string) {
+    let nota = await this.client().consultarNota(asaasId);
+    for (let tentativa = 0; tentativa < 4 && !nota.pdfUrl && nota.status !== "ERROR" && nota.status !== "CANCELED"; tentativa += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      nota = await this.client().consultarNota(asaasId);
+    }
+    return nota;
   }
 
   async cancelarNota(idNota: string) {

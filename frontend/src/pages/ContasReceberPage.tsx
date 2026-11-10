@@ -133,6 +133,11 @@ export function ContasReceberPage() {
       falha(error);
     }
   }
+  const baixarNota = useMutation({
+    mutationFn: (id: string) => api<{ pdf_url: string }>(`/api/v1/asaas/notas/${id}/pdf`, { method: "POST" }),
+    onSuccess: atualizar,
+    onError: falha,
+  });
   const emitir = useMutation({
     mutationFn: async () => {
       if (!nota) return;
@@ -316,7 +321,19 @@ export function ContasReceberPage() {
                     {row.situacao === "aberta" ? <button type="button" className="acao acao-cyan" onClick={() => setPagamento({ id: row.id, data: new Date().toISOString().slice(0, 10) })}>Baixar</button> : null}
                     {row.situacao === "aberta" ? <button type="button" className="acao acao-cyan" onClick={() => void abrirNota(row)}>Nota</button> : null}
                     {row.situacao === "aberta" ? <button type="button" className="acao acao-rose" onClick={() => excluir.mutate(row.id)}>Excluir</button> : null}
-                    {row.notas.map((item) => item.pdf_url ? <a key={item.id} className="acao acao-cyan" href={item.pdf_url} target="_blank" rel="noreferrer">PDF da nota</a> : <span key={item.id}>{item.status}</span>)}
+                    {row.notas.map((item) => item.pdf_url ? <a key={item.id} className="acao acao-cyan" href={item.pdf_url} target="_blank" rel="noreferrer">PDF da nota</a> : (
+                      <button key={item.id} type="button" className="acao acao-cyan" disabled={baixarNota.isPending} onClick={() => {
+                        const aba = window.open("about:blank", "_blank");
+                        baixarNota.mutate(item.id, {
+                          onSuccess: (resultado) => {
+                            const url = resultado.data.pdf_url;
+                            if (aba) aba.location.href = url;
+                            else window.location.assign(url);
+                          },
+                          onError: () => aba?.close(),
+                        });
+                      }}>PDF da nota</button>
+                    ))}
                   </div>
                 </td>
               </tr>
