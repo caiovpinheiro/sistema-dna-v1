@@ -20,6 +20,16 @@ const CLT: Omit<NotaSugerida, "valor"> = {
   descricao: "Recrutamento e Seleção",
 };
 
+/** Id do serviço no cadastro do Asaas. O código municipal sozinho (03158) a prefeitura rejeita. */
+const ID_SERVICO: Record<string, string> = {
+  "03158": "117",
+  "06475": "312",
+};
+
+export function idServicoMunicipal(codigo: string) {
+  return ID_SERVICO[codigo] ?? "";
+}
+
 function centavos(valor: number) {
   return Math.round(valor * 100);
 }

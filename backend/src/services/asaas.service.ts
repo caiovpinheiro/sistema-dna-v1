@@ -4,6 +4,7 @@ import type { AppConfig } from "../config.js";
 import { AsaasClient } from "../lib/asaas.js";
 import { enviarModelo, textoHtml } from "../lib/email-modelo.js";
 import { AppError } from "../lib/errors.js";
+import { idServicoMunicipal } from "../lib/nota-fiscal.js";
 import { onlyDigits, primeiroEmail } from "../lib/normalize.js";
 
 type EmpresaAsaas = {
@@ -272,6 +273,8 @@ export class AsaasService {
   async emitirNota(id: string, input: { tipo: string; valor: number; codigoServico: string; iss: number; descricao: string }) {
     const cobranca = await this.cobranca(id);
     const asaas = this.client();
+    const idServico = idServicoMunicipal(input.codigoServico);
+    if (!idServico) throw new AppError(422, "SERVICO_INVALIDO", "Código de serviço municipal não reconhecido.");
     const agendada = await asaas.agendarNota({
       customer: cobranca.asaas_customer_id,
       payment: cobranca.asaas_payment_id,
@@ -279,7 +282,9 @@ export class AsaasService {
       observations: "",
       value: input.valor,
       effectiveDate: new Date().toISOString().slice(0, 10),
+      municipalServiceId: idServico,
       municipalServiceCode: input.codigoServico,
+      municipalServiceName: input.descricao,
       taxes: { retainIss: false, cofins: 0, inss: 0, ir: 0, pis: 0, iss: input.iss },
     });
     const emitida = await asaas.emitirNota(agendada.id);
