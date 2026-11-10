@@ -4,7 +4,8 @@ import type { AppConfig } from "../config.js";
 import { textoHtml } from "../lib/email-modelo.js";
 import { enviarEmailMailjet } from "../lib/mailjet.js";
 import { AppError } from "../lib/errors.js";
-import { primeiroEmail } from "../lib/normalize.js";
+import { notasSugeridas } from "../lib/nota-fiscal.js";
+import { classifyRegime, primeiroEmail } from "../lib/normalize.js";
 
 type Pagina = { page: number; pageSize: number };
 
@@ -284,6 +285,17 @@ export class LegadoService {
       itens,
       total: itens.reduce((soma, item) => soma + item.valor, 0),
     };
+  }
+
+  async sugerirNotas(idEmpresa: string, mes: string, ano: string, valor: number) {
+    const relatorio = await this.relatorioEmpresa(idEmpresa, mes, ano);
+    const partes = { estagio: 0, clt: 0 };
+    for (const item of relatorio.itens) {
+      const regime = classifyRegime(item.modalidade);
+      if (regime === "clt") partes.clt += item.valor;
+      else if (regime === "estagio") partes.estagio += item.valor;
+    }
+    return notasSugeridas(valor, partes);
   }
 
   async enviarRelatorios(

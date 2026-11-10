@@ -322,6 +322,16 @@ export class AsaasService {
     return (result.rowCount ?? 0) > 0;
   }
 
+  async resumoNota(id: string) {
+    const result = await this.db.query<{ id_empresa: string; descricao: string; valor: number }>(`
+      SELECT id_empresa::text AS id_empresa, descricao, valor::float8 AS valor
+      FROM dna_work.cobranca_asaas WHERE id = $1
+    `, [id]);
+    const row = result.rows[0];
+    if (!row) throw new AppError(404, "NAO_ENCONTRADO", "Cobrança não encontrada.");
+    return { ...row, valor: Number(row.valor) };
+  }
+
   private async cobranca(id: string) {
     const result = await this.db.query<{ asaas_payment_id: string; asaas_customer_id: string; valor: number; status: string }>(`
       SELECT asaas_payment_id, asaas_customer_id, valor::float8 AS valor, status

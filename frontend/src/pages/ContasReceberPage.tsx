@@ -6,6 +6,8 @@ import { ApiError, api } from "@/lib/api";
 import { money } from "@/lib/format";
 
 type Nota = { id: string; tipo: string; valor: number; status: string; pdf_url: string | null };
+type ItemNota = { tipo: string; codigo: string; iss: string; descricao: string; valor: string };
+type SugestaoNota = { notas: Array<{ tipo: string; codigo: string; iss: number; descricao: string; valor: number }>; origem: "estagio" | "clt" | "misto" | "padrao" };
 type Cobranca = {
   id: string;
   id_empresa: string;
@@ -64,7 +66,7 @@ export function ContasReceberPage() {
   const [marcadas, setMarcadas] = useState<string[]>([]);
   const [progresso, setProgresso] = useState<{ feito: number; total: number } | null>(null);
   const [pagamento, setPagamento] = useState<{ id: string; data: string } | null>(null);
-  const [nota, setNota] = useState<{ id: string; valor: string; codigo: string; iss: string; descricao: string } | null>(null);
+  const [nota, setNota] = useState<{ id: string; origem: SugestaoNota["origem"] | "carregando"; itens: ItemNota[] } | null>(null);
   const [relatorio, setRelatorio] = useState<{ empresaId: string; mes: string; ano: string } | null>(null);
 
   const query = useQuery({
@@ -106,17 +108,59 @@ export function ContasReceberPage() {
     onError: falha,
   });
   const excluir = useMutation({ mutationFn: (id: string) => api(`/api/v1/asaas/cobrancas/${id}`, { method: "DELETE" }), onSuccess: atualizar, onError: falha });
+  async function abrirNota(row: Cobranca) {
+    setErro("");
+    setNota({ id: row.id, origem: "carregando", itens: [] });
+    try {
+      const resposta = await api<SugestaoNota>(`/api/v1/asaas/cobrancas/${row.id}/nota`);
+      setNota({
+        id: row.id,
+        origem: resposta.data.origem,
+        itens: resposta.data.notas.map((item) => ({
+          tipo: item.tipo,
+          codigo: item.codigo,
+          iss: String(item.iss),
+          descricao: item.descricao,
+          valor: String(item.valor),
+        })),
+      });
+    } catch (error) {
+      setNota({
+        id: row.id,
+        origem: "padrao",
+        itens: [{ tipo: "Recorrente", codigo: "03158", iss: "5", descricao: "Administração de estagiários", valor: String(row.valor) }],
+      });
+      falha(error);
+    }
+  }
   const emitir = useMutation({
-    mutationFn: () => api(`/api/v1/asaas/cobrancas/${nota?.id}/nota`, {
-      method: "POST",
-      body: JSON.stringify({
-        tipo: "Servico",
-        valor: Number(nota?.valor.replace(",", ".")),
-        codigo_servico: nota?.codigo,
-        iss: Number(nota?.iss.replace(",", ".")),
-        descricao: nota?.descricao,
-      }),
-    }),
+    mutationFn: async () => {
+      if (!nota) return;
+      const restantes = [...nota.itens];
+      try {
+        while (restantes.length > 0) {
+          const item = restantes[0];
+          if (!item) break;
+          await api(`/api/v1/asaas/cobrancas/${nota.id}/nota`, {
+            method: "POST",
+            body: JSON.stringify({
+              tipo: item.tipo,
+              valor: Number(item.valor.replace(",", ".")),
+              codigo_servico: item.codigo,
+              iss: Number(item.iss.replace(",", ".")),
+              descricao: item.descricao,
+            }),
+          });
+          restantes.shift();
+        }
+      } catch (error) {
+        if (restantes.length !== nota.itens.length) {
+          setNota({ ...nota, itens: restantes });
+          await atualizar();
+        }
+        throw error;
+      }
+    },
     onSuccess: async () => { setNota(null); await atualizar(); },
     onError: falha,
   });
@@ -270,7 +314,7 @@ export function ContasReceberPage() {
                     {podeEnviar ? <button type="button" className="acao acao-cyan" disabled={Boolean(progresso)} onClick={() => enviarPendentes([row.id])}>Enviar relatório</button> : null}
                     <button type="button" className="acao acao-cyan" onClick={() => sincronizar.mutate(row.id)}>Verificar</button>
                     {row.situacao === "aberta" ? <button type="button" className="acao acao-cyan" onClick={() => setPagamento({ id: row.id, data: new Date().toISOString().slice(0, 10) })}>Baixar</button> : null}
-                    {row.situacao === "aberta" ? <button type="button" className="acao acao-cyan" onClick={() => setNota({ id: row.id, valor: String(row.valor), codigo: "", iss: "0", descricao: row.descricao })}>Nota</button> : null}
+                    {row.situacao === "aberta" ? <button type="button" className="acao acao-cyan" onClick={() => void abrirNota(row)}>Nota</button> : null}
                     {row.situacao === "aberta" ? <button type="button" className="acao acao-rose" onClick={() => excluir.mutate(row.id)}>Excluir</button> : null}
                     {row.notas.map((item) => item.pdf_url ? <a key={item.id} className="acao acao-cyan" href={item.pdf_url} target="_blank" rel="noreferrer">PDF da nota</a> : <span key={item.id}>{item.status}</span>)}
                   </div>
@@ -299,13 +343,21 @@ export function ContasReceberPage() {
         <div className="fixed inset-0 z-50 grid place-items-center bg-navy-950/40 p-4">
           <Card className="motion-pop grid w-full max-w-lg gap-3">
             <h2 className="text-lg font-bold">Emitir nota fiscal</h2>
-            <Field label="Código do serviço municipal"><Input value={nota.codigo} onChange={(event) => setNota({ ...nota, codigo: event.target.value })} /></Field>
-            <Field label="ISS (%)"><Input value={nota.iss} onChange={(event) => setNota({ ...nota, iss: event.target.value })} /></Field>
-            <Field label="Valor"><Input value={nota.valor} onChange={(event) => setNota({ ...nota, valor: event.target.value })} /></Field>
-            <Field label="Descrição"><Input value={nota.descricao} onChange={(event) => setNota({ ...nota, descricao: event.target.value })} /></Field>
+            {nota.origem === "carregando" ? <p className="text-sm text-slate-500">Preparando a nota…</p> : null}
+            {nota.origem === "misto" ? <p className="text-sm text-slate-600">Esta cobrança tem estágio e CLT, então saem duas notas.</p> : null}
+            {nota.origem === "padrao" ? <p className="text-sm text-slate-600">Não encontrei os contratos deste mês. Confira o serviço antes de emitir.</p> : null}
+            {nota.itens.map((item, index) => (
+              <div key={`${item.tipo}-${index}`} className="grid gap-3">
+                {nota.itens.length > 1 ? <p className="text-sm font-semibold text-slate-700">{item.descricao}</p> : null}
+                <Field label="Código do serviço municipal"><Input value={item.codigo} onChange={(event) => setNota({ ...nota, itens: nota.itens.map((atual, i) => i === index ? { ...atual, codigo: event.target.value } : atual) })} /></Field>
+                <Field label="ISS (%)"><Input value={item.iss} onChange={(event) => setNota({ ...nota, itens: nota.itens.map((atual, i) => i === index ? { ...atual, iss: event.target.value } : atual) })} /></Field>
+                <Field label="Valor"><Input value={item.valor} onChange={(event) => setNota({ ...nota, itens: nota.itens.map((atual, i) => i === index ? { ...atual, valor: event.target.value } : atual) })} /></Field>
+                <Field label="Descrição"><Input value={item.descricao} onChange={(event) => setNota({ ...nota, itens: nota.itens.map((atual, i) => i === index ? { ...atual, descricao: event.target.value } : atual) })} /></Field>
+              </div>
+            ))}
             <div className="flex justify-end gap-2">
               <Button type="button" variant="secondary" onClick={() => setNota(null)}>Cancelar</Button>
-              <Button type="button" disabled={emitir.isPending || !nota.codigo} onClick={() => emitir.mutate()}>Emitir</Button>
+              <Button type="button" disabled={emitir.isPending || nota.itens.length === 0 || nota.itens.some((item) => !item.codigo)} onClick={() => emitir.mutate()}>{nota.itens.length > 1 ? "Emitir as duas" : "Emitir"}</Button>
             </div>
           </Card>
         </div>

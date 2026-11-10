@@ -15,6 +15,7 @@ import { vagaCreateSchema, vagaListSchema, vagaPatchSchema } from "../schemas/va
 import { empresaCadastroSchema, grupoCreateSchema, modeloVagaSchema, vagaCadastroSchema } from "../schemas/cadastro.js";
 import { documentoSchema } from "../schemas/documento-contrato.js";
 import { gerarDocumento } from "../lib/documento-contrato.js";
+import { notasSugeridas } from "../lib/nota-fiscal.js";
 import { buildRescisaoMedioPdf } from "../lib/rescisao-medio-pdf.js";
 import type { AsaasService } from "../services/asaas.service.js";
 import type { ReguaService } from "../services/regua.service.js";
@@ -616,6 +617,14 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
   api.post("/api/v1/faturamento/boletos", {
     schema: { tags: ["faturamento"], body: z.object({ mes: z.string().regex(/^\d{1,2}$/), ano: z.string().regex(/^\d{4}$/) }) },
   }, async (request) => ok(await services.asaas.boletosDoMes(request.body.mes, request.body.ano)));
+  api.get("/api/v1/asaas/cobrancas/:id/nota", {
+    schema: { tags: ["asaas"], params: z.object({ id: z.string().uuid() }) },
+  }, async (request) => {
+    const cobranca = await services.asaas.resumoNota(request.params.id);
+    const competencia = cobranca.descricao.match(/^Faturamento\s+(\d{1,2})\/(\d{4})$/);
+    if (!competencia?.[1] || !competencia[2]) return ok(notasSugeridas(cobranca.valor, { estagio: 0, clt: 0 }));
+    return ok(await legado.sugerirNotas(cobranca.id_empresa, competencia[1], competencia[2], cobranca.valor));
+  });
   api.get("/api/v1/faturamento/relatorio", {
     schema: { tags: ["faturamento"], querystring: z.object({ empresa: z.string().min(1), mes: z.string(), ano: z.string() }) },
   }, async (request) => ok(await legado.relatorioEmpresa(request.query.empresa, request.query.mes, request.query.ano)));
