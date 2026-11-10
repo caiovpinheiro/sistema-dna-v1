@@ -23,7 +23,7 @@ const DIAS = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domi
 const DIA = String.raw`(seg(?:unda)?|ter(?:[cç]a)?|qua(?:rta)?|qui(?:nta)?|sex(?:ta)?|s[aá]b(?:ado)?|dom(?:ingo|igo)?)(?:[\s-]*feira)?`;
 const HORA = String.raw`(\d{1,2})(?:[:h](\d{2}))?\s*h?`;
 const FAIXA_HORA = new RegExp(String.raw`${HORA}\s*(?:às|as|ás|a|até|-)\s*${HORA}`, "i");
-const TRECHO = new RegExp(String.raw`${DIA}\s*(?:(?:à|a|á|até)\s*${DIA})?[\s,:–-]*(?:das\s+)?${HORA}\s*(?:às|as|ás|a|até|-)\s*${HORA}`, "gi");
+const TRECHO = new RegExp(String.raw`${DIA}\s*(?:(?:à|a|á|até|e)\s*${DIA})?[\s,:–-]*(?:das\s+)?${HORA}\s*(?:às|as|ás|a|até|-)\s*${HORA}`, "gi");
 
 let cache: { em: number; vagas: Map<string, VagaNotion> } | null = null;
 let emAndamento: Promise<Map<string, VagaNotion>> | null = null;
@@ -35,6 +35,12 @@ function texto(rich: unknown): string {
 function indiceDoDia(raw: string): number {
   const norm = raw.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
   return ["seg", "ter", "qua", "qui", "sex", "sab", "dom"].findIndex((prefixo) => norm.startsWith(prefixo));
+}
+
+/** "Quarta e Quinta" e "Sexta e sábado" são dois dias seguidos; "e" entre dias não seguidos não vira intervalo. */
+function intervaloValido(texto: string, inicio: number, fim: number) {
+  if (!/\se\s/i.test(texto)) return true;
+  return (fim - inicio + 7) % 7 === 1;
 }
 
 function hora(h: string, m: string | undefined) {
@@ -56,7 +62,7 @@ export function fraseHorario(linha: string): string | null {
   const partes: string[] = [];
   for (const match of limpa.matchAll(TRECHO)) {
     const inicio = indiceDoDia(match[1]);
-    const fim = match[2] ? indiceDoDia(match[2]) : -1;
+    const fim = match[2] && intervaloValido(match[0], inicio, indiceDoDia(match[2])) ? indiceDoDia(match[2]) : -1;
     const entrada = hora(match[3], match[4]);
     const saida = hora(match[5], match[6]);
     if (inicio < 0 || !entrada || !saida) continue;
@@ -156,13 +162,35 @@ export type Grade = {
 /** Grade do Lightsail a partir da linha 🕐. Exige dois dias e duas horas; fora disso devolve null e nada é gravado. */
 export function gradeDe(linha: string): Grade | null {
   const limpa = linha.replace(/🕐/g, "").replace(/\s+/g, " ").trim();
-  const match = [...limpa.matchAll(TRECHO)].find((item) => item[2]);
-  if (!match) return null;
+  const trechos = [...limpa.matchAll(TRECHO)];
+  // Prefere o trecho de vários dias; se a linha tem só um dia ("Domingo das 11h30 às 20h30"), usa esse.
+  const match = trechos.find((item) => item[2]) ?? trechos[0];
+  return match ? gradeDoTrecho(limpa, match, (fraseHorario(limpa) ?? "").replace(/;/g, ",")) : null;
+}
+
+/**
+ * Todos os trechos da linha, um turno por trecho: "Quarta e Quinta: 16h às 00h00; Sexta e sábado das 16h00 às 01h30
+ * e Domingo das 11h30 às 20h30" vira três turnos. Linha com um trecho só é igual a gradeDe.
+ */
+export function gradesDe(linha: string): Grade[] {
+  const limpa = linha.replace(/🕐/g, "").replace(/\s+/g, " ").trim();
+  const trechos = [...limpa.matchAll(TRECHO)];
+  if (trechos.length <= 1) {
+    const unica = gradeDe(linha);
+    return unica ? [unica] : [];
+  }
+  return trechos
+    .map((match) => gradeDoTrecho(limpa, match, (fraseHorario(match[0]) ?? "").replace(/;/g, ",")))
+    .filter((grade): grade is Grade => grade !== null);
+}
+
+function gradeDoTrecho(limpa: string, match: RegExpMatchArray, texto: string): Grade | null {
   const inicioIndice = indiceDoDia(match[1]);
-  const fimIndice = indiceDoDia(match[2]);
+  const fimIndice = match[2] ? indiceDoDia(match[2]) : inicioIndice;
   const entrada = hora(match[3], match[4]);
   const saida = hora(match[5], match[6]);
   if (inicioIndice < 0 || fimIndice < 0 || !entrada || !saida) return null;
+  if (match[2] && !intervaloValido(match[0], inicioIndice, fimIndice)) return null;
   const inicio = numeroLightsail(inicioIndice);
   const fim = numeroLightsail(fimIndice);
   const dias = [1, 2, 3, 4, 5, 6, 7].filter((numero) => fim >= inicio ? numero >= inicio && numero <= fim : numero >= inicio || numero <= fim);
@@ -170,7 +198,6 @@ export function gradeDe(linha: string): Grade | null {
   const refeicao = minutos
     ? `${String(Math.floor(Number(minutos[1]) / 60)).padStart(2, "0")}:${String(Number(minutos[1]) % 60).padStart(2, "0")}`
     : null;
-  const texto = (fraseHorario(limpa) ?? "").replace(/;/g, ",");
   const diasTexto = inicioIndice === fimIndice ? DIAS[inicioIndice] : `${DIAS[inicioIndice]} a ${DIAS[fimIndice].toLowerCase()}`;
   return { semanasInicio: inicio, semanasFim: fim, entrada, saida, texto, refeicao, dias, diasTexto, folga: folgaDe(limpa) };
 }
@@ -185,17 +212,48 @@ export type Turnos = {
 };
 
 /** Junta os turnos das linhas 🕐. O Notion manda: o Lightsail não escolhe turno. Sem linha válida, devolve null. */
+/** "A, B e C": partes da mesma semana (dias diferentes, horários diferentes). */
+function juntarComE(partes: string[]) {
+  return partes.length > 1 ? `${partes.slice(0, -1).join(", ")} e ${partes[partes.length - 1]}` : partes[0] ?? "";
+}
+
 export function turnosDe(linhasHorario: string[]): Turnos | null {
-  const grades = linhasHorario.map(gradeDe).filter((item): item is Grade => item !== null);
+  // Cada linha 🕐 é um turno alternativo; cada trecho da linha é uma parte da semana desse turno.
+  const porLinha = linhasHorario.map(gradesDe).filter((grades) => grades.length > 0);
+  const grades = porLinha.flat();
   const turnos = [...new Map(grades.map((grade) => [`${grade.semanasInicio}-${grade.semanasFim}-${grade.entrada}-${grade.saida}`, grade])).values()];
   if (!turnos.length) return null;
   const refeicao = turnos.find((turno) => turno.refeicao)?.refeicao ?? null;
+  // Principal = a semana de referência: o primeiro intervalo de vários dias; se não houver, o primeiro.
+  const principal = turnos.find((turno) => turno.dias.length > 1) ?? turnos[0];
   if (turnos.length === 1) return { principal: turnos[0], turnos, texto: turnos[0].texto, refeicao };
-  const grupos = new Map<string, string[]>();
-  for (const turno of turnos) grupos.set(turno.diasTexto, [...(grupos.get(turno.diasTexto) ?? []), `${turno.entrada} às ${turno.saida}`]);
-  const corpo = [...grupos].map(([dias, faixas]) => `${dias}, ${faixas.join(" ou ")}`).join(" ou ");
+
+  const parte = (turno: Grade) => `${turno.diasTexto}, ${turno.entrada} às ${turno.saida}`;
+  const diasSeparados = turnos.every((turno, indice) => turnos.slice(indice + 1).every((outro) => !outro.dias.some((dia) => turno.dias.includes(dia))));
+  let corpo: string;
+  if (porLinha.length === 1 || (porLinha.every((linha) => linha.length === 1) && diasSeparados)) {
+    // Uma semana só, com horários diferentes por dia: "Quarta a quinta, …, Sexta a sábado, … e Domingo, …".
+    corpo = juntarComE(turnos.map(parte));
+  } else {
+    // Turnos alternativos: linhas de um trecho com os mesmos dias juntam as faixas ("Segunda a sábado, 08:30 às 14:00 ou 07:30 às 13:00");
+    // linha com vários trechos fica inteira ("Segunda a sexta, … e Sábado, …"). Entre turnos, "ou".
+    const segmentos: Array<{ dias: string | null; faixas: string[]; texto: string }> = [];
+    for (const linha of porLinha) {
+      if (linha.length > 1) {
+        segmentos.push({ dias: null, faixas: [], texto: juntarComE(linha.map(parte)) });
+        continue;
+      }
+      const [turno] = linha;
+      const faixa = `${turno.entrada} às ${turno.saida}`;
+      const existente = segmentos.find((segmento) => segmento.dias === turno.diasTexto);
+      if (existente) {
+        if (!existente.faixas.includes(faixa)) existente.faixas.push(faixa);
+      } else segmentos.push({ dias: turno.diasTexto, faixas: [faixa], texto: "" });
+    }
+    corpo = segmentos.map((segmento) => (segmento.dias ? `${segmento.dias}, ${segmento.faixas.join(" ou ")}` : segmento.texto)).join(" ou ");
+  }
   const folga = turnos.find((turno) => turno.folga)?.folga ?? "";
-  return { principal: turnos[0], turnos, texto: folga ? `${corpo} • ${folga}` : corpo, refeicao };
+  return { principal, turnos, texto: folga ? `${corpo} • ${folga}` : corpo, refeicao };
 }
 
 /** Uma linha da tabela Operacional: códigos, horários (🕐) e local (📍). */

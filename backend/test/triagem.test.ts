@@ -129,10 +129,10 @@ test("sync: dois turnos do Notion entram juntos, o primeiro vai para a grade", (
 
 test("sync: turnos em dias diferentes preenchem cada dia na grade", () => {
   const turnos = turnosDe(["🕐 Segunda a sexta, 08:00 às 17:00", "🕐 Sábado a sábado, 08:00 às 12:00"])!;
-  assert.equal(turnos.texto, "Segunda a sexta, 08:00 às 17:00 ou Sábado, 08:00 às 12:00");
+  assert.equal(turnos.texto, "Segunda a sexta, 08:00 às 17:00 e Sábado, 08:00 às 12:00");
   assert.equal(
     horarioEspelho(turnos, "00:00", null),
-    ";2-6;00:00;1=;2=08:00-17:00;3=08:00-17:00;4=08:00-17:00;5=08:00-17:00;6=08:00-17:00;7=08:00-12:00;texto=Segunda a sexta, 08:00 às 17:00 ou Sábado, 08:00 às 12:00",
+    ";2-6;00:00;1=;2=08:00-17:00;3=08:00-17:00;4=08:00-17:00;5=08:00-17:00;6=08:00-17:00;7=08:00-12:00;texto=Segunda a sexta, 08:00 às 17:00 e Sábado, 08:00 às 12:00",
   );
 });
 
@@ -194,4 +194,24 @@ test("vaga em home office não repete o home office no horário", async () => {
   assert.equal(semHomeOffice("Segunda a sexta, 13:00 às 22:00; sábado por escala, 4 horas. Home Office."), "Segunda a sexta, 13:00 às 22:00; sábado por escala, 4 horas.");
   assert.equal(semHomeOffice("Segunda a sexta, 09:00 às 18:00"), "Segunda a sexta, 09:00 às 18:00");
   assert.equal(horarioDoEspelho(";2-6;00:00;1=;2=09:00-19:00;3=09:00-19:00;4=09:00-19:00;5=09:00-19:00;6=09:00-19:00;7="), "Segunda a sexta, 09:00 às 19:00");
+});
+
+test("horário do Notion: dias ligados por 'e', dia único e vários trechos na mesma linha", () => {
+  assert.equal(
+    turnosDe(["🕐 Quarta e Quinta: 16h às 00h00; Sexta e sábado das 16h00 às 01h30 e Domingo das 11h30 às 20h30. "])?.texto,
+    "Quarta a quinta, 16:00 às 00:00, Sexta a sábado, 16:00 às 01:30 e Domingo, 11:30 às 20:30",
+  );
+  const tap = turnosDe(["🕐 Quarta e Quinta: 16h às 00h00; Sexta e sábado das 16h00 às 01h30 e Domingo das 11h30 às 20h30."])!;
+  assert.deepEqual(tap.turnos.flatMap((turno) => turno.dias).sort(), [1, 4, 5, 6, 7]);
+  assert.equal(
+    turnosDe([
+      "🕐 Segunda à sexta das 11h às 16h30  - Sábado: 7h30 às 13h, 30 minutos de pausa",
+      "🕐Segunda à Sábado das 08:30 às 14:00, 30 minutos de almoço",
+      "🕐Segunda à Sábado, das 7h30 às 13:00, 30 minutos de almoço",
+    ])?.texto,
+    "Segunda a sexta, 11:00 às 16:30 e Sábado, 07:30 às 13:00 ou Segunda a sábado, 08:30 às 14:00 ou 07:30 às 13:00",
+  );
+  assert.equal(turnosDe(["🕐 Segunda a sexta: 09h às 18h", "🕐 Segunda a sexta: 13h às 22h"])?.texto, "Segunda a sexta, 09:00 às 18:00 ou 13:00 às 22:00");
+  // "e" entre dias não seguidos não vira intervalo (pularia a terça).
+  assert.equal(gradeDe("🕐 Segunda e quarta: 09h às 18h"), null);
 });
