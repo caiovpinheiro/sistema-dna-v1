@@ -319,7 +319,7 @@ export function ContasReceberPage() {
                     {podeEnviar ? <button type="button" className="acao acao-cyan" disabled={Boolean(progresso)} onClick={() => enviarPendentes([row.id])}>Enviar relatório</button> : null}
                     <button type="button" className="acao acao-cyan" onClick={() => sincronizar.mutate(row.id)}>Verificar</button>
                     {row.situacao === "aberta" ? <button type="button" className="acao acao-cyan" onClick={() => setPagamento({ id: row.id, data: new Date().toISOString().slice(0, 10) })}>Baixar</button> : null}
-                    {row.situacao === "aberta" ? <button type="button" className="acao acao-cyan" onClick={() => void abrirNota(row)}>Nota</button> : null}
+                    {row.situacao !== "cancelada" ? <button type="button" className="acao acao-cyan" onClick={() => void abrirNota(row)}>Nota</button> : null}
                     {row.situacao === "aberta" ? <button type="button" className="acao acao-rose" onClick={() => excluir.mutate(row.id)}>Excluir</button> : null}
                     {row.notas.map((item) => item.pdf_url ? <a key={item.id} className="acao acao-cyan" href={item.pdf_url} target="_blank" rel="noreferrer">PDF da nota</a> : (
                       <button key={item.id} type="button" className="acao acao-cyan" disabled={baixarNota.isPending} onClick={() => {
