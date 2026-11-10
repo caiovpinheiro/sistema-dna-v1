@@ -298,4 +298,55 @@ test("pesquisa candidatos e empresas com filtro e paginação", async () => {
   const contracts = await call("GET", "/api/v1/contratacoes?regime=clt&page=1&pageSize=20");
   assert.equal(contracts.statusCode, 200);
   assert.ok(contracts.json().meta.total >= 5);
+  assert.equal(companies.json().data[0].acesso_portal, false);
+});
+
+test("gera acesso ao portal e mostra e-mail e senha na empresa", async () => {
+  await db.query(`
+    create table if not exists dna_work.usuario_empresa (
+      id_u varchar(40) primary key,
+      nome_u varchar(255),
+      email_u varchar(255),
+      senha_u varchar(40),
+      senha_hash text,
+      telefone_u varchar(20),
+      empresa_u varchar(40),
+      status integer,
+      tipo integer,
+      data_senha varchar(20),
+      atualiza_senha integer
+    )
+  `);
+  await db.query(`create table if not exists dna_work.vinculo_empresa_usuario (id_usuario varchar(40), id_empresa varchar(40))`);
+  await db.query(`create table if not exists dna_work.paginas_usuario_empresa (id_usuario varchar(42), menu text, sub1 text, sub2 text, paginas text)`);
+  const created = await call("POST", "/api/v1/empresas", {
+    razao_social: "Empresa Portal Ltda",
+    nome_fantasia: "Portal",
+    cnpj: cnpj(880),
+    email: "portal@example.com",
+    responsavel: "Marina Portal",
+  });
+  assert.equal(created.statusCode, 201);
+  const id = created.json().data.id_empresa as string;
+  const sem = await call("GET", `/api/v1/empresas/${id}`);
+  assert.equal(sem.json().data.acesso_portal, false);
+  const invalido = await call("POST", `/api/v1/empresas/${id}/acesso-portal`, { email: "sem-arroba" });
+  assert.equal(invalido.statusCode, 422);
+  const gerado = await call("POST", `/api/v1/empresas/${id}/acesso-portal`, {});
+  assert.equal(gerado.statusCode, 200);
+  assert.equal(gerado.json().data.email, "portal@example.com");
+  assert.equal(gerado.json().data.criado, true);
+  assert.equal(String(gerado.json().data.senha).length, 12);
+  const ficha = await call("GET", `/api/v1/empresas/${id}`);
+  assert.equal(ficha.json().data.portal.email, "portal@example.com");
+  assert.equal(ficha.json().data.portal.senha, gerado.json().data.senha);
+  const lista = await call("GET", "/api/v1/empresas?q=Empresa%20Portal&page=1&pageSize=5");
+  assert.equal(lista.json().data.find((item: { id_empresa: string }) => item.id_empresa === id).acesso_portal, true);
+  const repetido = await call("POST", `/api/v1/empresas/${id}/acesso-portal`, {});
+  assert.equal(repetido.statusCode, 409);
+  const nova = await call("POST", `/api/v1/empresas/${id}/acesso-portal`, { redefinir: true });
+  assert.equal(nova.statusCode, 200);
+  assert.notEqual(nova.json().data.senha, gerado.json().data.senha);
+  const atualizada = await call("GET", `/api/v1/empresas/${id}`);
+  assert.equal(atualizada.json().data.portal.senha, nova.json().data.senha);
 });

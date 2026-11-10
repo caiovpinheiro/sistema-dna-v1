@@ -7,7 +7,7 @@ import { Button, Badge, Card, Empty, Input, Select, Skeleton } from "@/component
 import { api } from "@/lib/api";
 import { formatCnpj, formatPhone } from "@/lib/format";
 
-type Row = { id_empresa: string; razao_social: string; nome_fantasia: string | null; cnpj: string; cidade: string | null; uf: string | null; status: number | null };
+type Row = { id_empresa: string; razao_social: string; nome_fantasia: string | null; cnpj: string; cidade: string | null; uf: string | null; status: number | null; acesso_portal?: boolean };
 type Detail = Row & { email: string | null; telefone: string | null; celular: string | null; responsavel: string | null; bairro: string | null };
 
 export function EmpresasPage() {
@@ -62,7 +62,7 @@ export function EmpresasPage() {
       {result.isLoading ? <Skeleton className="h-64" /> : result.isError ? <p className="text-rose-600">Erro ao pesquisar empresas.</p> : lista && (lista.data.length || Number(lista.meta?.total ?? 0) > 0) ? (
         <Card className="overflow-x-auto p-0">
           <table className="w-full text-left text-sm">
-            <thead className="text-slate-500"><tr className="border-b"><th className="px-4 py-3">Razão social</th><th>Fantasia</th><th>CNPJ</th><th>Cidade</th><th>Status</th></tr></thead>
+            <thead className="text-slate-500"><tr className="border-b"><th className="px-4 py-3">Razão social</th><th>Fantasia</th><th>CNPJ</th><th>Cidade</th><th>Portal</th><th>Status</th></tr></thead>
             <tbody>
               {lista.data.map((item) => (
                 <tr key={item.id_empresa} className="border-b border-slate-100 last:border-0 hover:bg-slate-50" onMouseEnter={(event) => preview.mostrar(item.id_empresa, event)} onMouseLeave={preview.esconder}>
@@ -70,6 +70,7 @@ export function EmpresasPage() {
                   <td>{item.nome_fantasia || "—"}</td>
                   <td>{formatCnpj(item.cnpj)}</td>
                   <td>{[item.cidade, item.uf].filter(Boolean).join(" / ") || "—"}</td>
+                  <td><Badge value={item.acesso_portal ? "ativa" : "encerrada"}>{item.acesso_portal ? "Com acesso" : "Sem acesso"}</Badge></td>
                   <td><Badge value={item.status === 1 ? "ativa" : "encerrada"}>{item.status === 1 ? "Ativo" : item.status === 0 ? "Inativo" : "—"}</Badge></td>
                 </tr>
               ))}
@@ -91,6 +92,7 @@ export function EmpresasPage() {
                   ficha?.celular ? formatPhone(ficha.celular) : null,
                   [ficha?.bairro, aberto.cidade, aberto.uf].filter(Boolean).join(" / ") || null,
                   ficha?.responsavel ? `Responsável ${ficha.responsavel}` : null,
+                  aberto.acesso_portal ? "Com acesso ao portal" : "Sem acesso ao portal",
                   aberto.status === 1 ? "Ativo" : "Inativo",
                 ]}
               />
