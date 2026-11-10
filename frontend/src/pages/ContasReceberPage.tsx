@@ -26,6 +26,17 @@ type Cobranca = {
 };
 type Empresa = { id_empresa: string; razao_social: string | null; nome_fantasia: string | null; cnpj: string | null };
 
+/** Alguns nomes vêm do Lightsail com entidades HTML ("Freire &amp; Pinho"). */
+function semEntidades(texto: string) {
+  return texto.replace(/&amp;/gi, "&").replace(/&quot;/gi, '"').replace(/&#0?39;|&apos;/gi, "'").replace(/&lt;/gi, "<").replace(/&gt;/gi, ">");
+}
+
+/** "1.500,00", "1500,5" ou "1500.50" viram número. */
+function valorEmNumero(texto: string) {
+  const limpo = texto.replace(/[^\d.,]/g, "");
+  return Number(limpo.includes(",") ? limpo.replace(/\./g, "").replace(",", ".") : limpo);
+}
+
 const situacaoLabel: Record<string, string> = { aberta: "A pagar", paga: "Paga", cancelada: "Cancelada" };
 
 function dataEnvio(valor: string) {
@@ -78,7 +89,15 @@ export function ContasReceberPage() {
     queryFn: () => api<Empresa[]>(`/api/v1/empresas?q=${encodeURIComponent(busca)}&pageSize=8`),
     enabled: busca.trim().length >= 2,
   });
-  const rows = query.data?.data ?? [];
+  // A busca de empresa também filtra a tabela: escolhida, só ela; digitando, as que batem com o nome ou o CNPJ.
+  const termo = semEntidades(busca).trim().toLowerCase();
+  const termoCnpj = busca.replace(/\D/g, "");
+  const rows = (query.data?.data ?? []).filter((row) => {
+    if (empresaId) return row.id_empresa === empresaId;
+    if (termo.length < 2) return true;
+    const nomes = semEntidades(`${row.empresa_fantasia ?? ""} ${row.empresa_razao ?? ""}`).toLowerCase();
+    return nomes.includes(termo) || (termoCnpj.length >= 3 && (row.empresa_cnpj ?? "").replace(/\D/g, "").includes(termoCnpj));
+  });
   const pendentes = rows.filter((row) => row.situacao === "aberta" && !row.envio);
   const total = rows.filter((row) => row.situacao === "aberta").reduce((sum, row) => sum + Number(row.valor), 0);
 
@@ -89,10 +108,14 @@ export function ContasReceberPage() {
     await client.invalidateQueries({ queryKey: ["cobrancas"] });
   }
   const criar = useMutation({
-    mutationFn: () => api<{ emailEnviado?: boolean }>("/api/v1/asaas/cobrancas", {
-      method: "POST",
-      body: JSON.stringify({ id_empresa: empresaId, valor: Number(valor.replace(",", ".")), vencimento, descricao, forma }),
-    }),
+    mutationFn: () => {
+      const numero = valorEmNumero(valor);
+      if (!(numero > 0)) throw new ApiError(400, "VALOR_INVALIDO", "Informe o valor da cobrança.");
+      return api<{ emailEnviado?: boolean }>("/api/v1/asaas/cobrancas", {
+        method: "POST",
+        body: JSON.stringify({ id_empresa: empresaId, valor: numero, vencimento, descricao, forma }),
+      });
+    },
     onSuccess: async (resultado) => {
       setValor("");
       setDescricao("");
@@ -226,14 +249,22 @@ export function ContasReceberPage() {
           <Field label="Empresa">
             <Input value={busca} placeholder="Razão social, fantasia ou CNPJ" onChange={(event) => { setBusca(event.target.value); setEmpresaId(""); }} />
           </Field>
-          {empresas.data?.data.length ? (
+          {/* Depois de escolher, a lista fecha: aberta, ela cobria o botão "Gerar cobrança". */}
+          {!empresaId && empresas.data?.data.length ? (
             <div className="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-xl border border-slate-200 bg-white shadow-lg">
               {empresas.data.data.map((empresa) => (
-                <button key={empresa.id_empresa} type="button" className="block w-full px-3 py-2 text-left text-sm transition duration-150 hover:bg-cyan-50 active:bg-cyan-100" onClick={() => { setEmpresaId(empresa.id_empresa); setBusca(empresa.nome_fantasia || empresa.razao_social || ""); }}>
-                  {empresa.razao_social} · {empresa.cnpj}
+                <button key={empresa.id_empresa} type="button" className="block w-full px-3 py-2 text-left text-sm transition duration-150 hover:bg-cyan-50 active:bg-cyan-100" onClick={() => { setEmpresaId(empresa.id_empresa); setBusca(semEntidades(empresa.nome_fantasia || empresa.razao_social || "")); setErro(""); }}>
+                  <span className="font-medium">{semEntidades(empresa.nome_fantasia || empresa.razao_social || "")}</span>
+                  <span className="block text-xs text-slate-500">{semEntidades(empresa.razao_social || "")} · {empresa.cnpj}</span>
                 </button>
               ))}
             </div>
+          ) : null}
+          {empresaId || busca ? (
+            <p className="mt-1 text-xs text-slate-500">
+              {empresaId ? <span className="text-emerald-700">Empresa selecionada. A lista abaixo mostra só ela. </span> : null}
+              <button type="button" className="font-semibold text-cyan-700 hover:underline" onClick={() => { setBusca(""); setEmpresaId(""); }}>Limpar e ver todas</button>
+            </p>
           ) : null}
         </div>
         <Field label="Valor"><Input inputMode="decimal" value={valor} onChange={(event) => setValor(event.target.value)} /></Field>
