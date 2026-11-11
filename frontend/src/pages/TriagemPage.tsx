@@ -223,7 +223,7 @@ export function TriagemPage() {
                       </div>
                     </div>
                     <p className="text-sm text-slate-600">📍 {vaga.location || "Local não informado"}</p>
-                    {vaga.schedules.map((horario) => <p key={horario} className="text-sm text-slate-600">🕒 {horario}</p>)}
+                    {vaga.schedules.map((horario) => <p key={horario} className="whitespace-pre-line text-sm text-slate-600">🕒 {horario}</p>)}
                     {vaga.homeOffice ? <p className="text-sm text-slate-600">🏠 Home office</p> : null}
                     <p className="text-sm text-slate-600">💰 {vaga.salaryLabel}{vaga.hasBenefits ? " + benefícios" : ""}</p>
                   </div>
