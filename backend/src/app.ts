@@ -179,7 +179,6 @@ export async function buildApp(context: AppContext): Promise<FastifyInstance> {
         baseUrl: context.config.LMS_API_URL,
         name: ficha.nome ?? "",
         email: ficha.email ?? "",
-        trails: request.body.trails,
         password: request.body.password,
         resetPassword: request.body.resetPassword,
       }),

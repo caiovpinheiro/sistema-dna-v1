@@ -31,13 +31,13 @@ test("sem token não chama o LMS", async () => {
   assert.equal(chamou, false);
 });
 
-test("envia nome, e-mail e trilha sem gravar senha quando ela não foi informada", async () => {
+test("envia só nome e e-mail: o aluno entra em todos os cursos, sem escolher trilha", async () => {
   const { fetchImpl, chamadas } = fetchQue(200, { created: true });
-  const resultado = await criarAcessoLms({ ...pedido, trails: ["primeiro-emprego"], fetchImpl });
+  const resultado = await criarAcessoLms({ ...pedido, fetchImpl });
   const enviada = JSON.parse(String(chamadas[0]?.init.body));
   assert.equal(chamadas[0]?.url, "https://cursos.exemplo/api/integracao/acessos");
   assert.equal(new Headers(chamadas[0]?.init.headers).get("authorization"), "Bearer token-de-teste");
-  assert.deepEqual(enviada, { name: "Ana Souza", email: "ana@email.com", trails: ["primeiro-emprego"] });
+  assert.deepEqual(enviada, { name: "Ana Souza", email: "ana@email.com" });
   assert.equal(resultado.password, null);
   assert.equal(resultado.contaNova, true);
   assert.equal(resultado.loginUrl, "https://cursos.dnawork.ai/login");
@@ -49,16 +49,26 @@ test("devolve a senha só quando o LMS a definiu nesta chamada", async () => {
   assert.equal(resultado.password, "segredo-1");
 });
 
-test("omite a trilha quando o operador só quer criar o aluno", async () => {
-  const { fetchImpl, chamadas } = fetchQue(200, {});
-  await criarAcessoLms({ ...pedido, trails: ["  "], fetchImpl });
-  assert.deepEqual(JSON.parse(String(chamadas[0]?.init.body)), { name: "Ana Souza", email: "ana@email.com" });
+test("se o host público devolve a página do proxy, tenta o host direto do LMS", async () => {
+  const urls: string[] = [];
+  const fetchImpl: typeof fetch = async (url, init) => {
+    urls.push(String(url));
+    if (urls.length === 1) {
+      return new Response("<html>Service is not reachable</html>", { status: 502, headers: { "Content-Type": "text/html" } });
+    }
+    assert.equal(JSON.parse(String(init?.body)).email, "ana@email.com");
+    return new Response(JSON.stringify({ created: true, password: "segredo-1" }), { status: 200 });
+  };
+  const resultado = await criarAcessoLms({ ...pedido, fetchImpl });
+  assert.equal(urls[1], "https://outros-lms-web.ca31ey.easypanel.host/api/integracao/acessos");
+  assert.equal(resultado.password, "segredo-1");
 });
 
-test("traduz 401, 422 e 503 do LMS sem repassar o corpo", async () => {
+test("traduz 401, 404, 422 e 503 do LMS sem repassar o corpo", async () => {
   const casos: Array<[number, number, string]> = [
     [401, 502, "LMS_CREDENCIAL"],
-    [422, 422, "TRILHA_INEXISTENTE"],
+    [404, 502, "LMS_SEM_ROTA"],
+    [422, 422, "LMS_RECUSOU"],
     [503, 503, "LMS_INDISPONIVEL"],
   ];
   for (const [status, esperado, code] of casos) {

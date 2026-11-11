@@ -1,6 +1,9 @@
 import { AppError } from "./errors.js";
 
 const LOGIN_URL = "https://cursos.dnawork.ai/login";
+// O painel e o LMS estão em servidores diferentes. Se o DNS interno do painel
+// engolir cursos.dnawork.ai, o proxy responde "Service is not reachable".
+const LMS_DIRETO = "https://outros-lms-web.ca31ey.easypanel.host";
 const CHAVES_SENHA = ["password", "senha", "plainPassword", "temporaryPassword", "generatedPassword"];
 
 export type AcessoLmsInput = {
@@ -8,7 +11,6 @@ export type AcessoLmsInput = {
   baseUrl?: string;
   name: string;
   email: string;
-  trails?: string[];
   password?: string;
   resetPassword?: boolean;
   fetchImpl?: typeof fetch;
@@ -17,7 +19,6 @@ export type AcessoLmsInput = {
 export type AcessoLms = {
   name: string;
   email: string;
-  trails: string[];
   password: string | null;
   contaNova: boolean | null;
   loginUrl: string;
@@ -30,10 +31,6 @@ export async function criarAcessoLms(input: AcessoLmsInput): Promise<AcessoLms> 
   if (!name) throw new AppError(422, "NOME_AUSENTE", "O candidato precisa ter nome para criar o acesso.");
   if (!email.includes("@")) throw new AppError(422, "EMAIL_AUSENTE", "O candidato precisa ter e-mail para criar o acesso.");
 
-  const trails = [...new Set((input.trails ?? []).map((item) => item.trim()).filter(Boolean))];
-  if (trails.some((item) => item.length > 80)) {
-    throw new AppError(422, "TRILHA_INVALIDA", "Cada trilha pode ter no máximo 80 caracteres.");
-  }
   const password = input.password?.trim() || undefined;
   if (password && password.length < 8) {
     throw new AppError(422, "SENHA_CURTA", "A senha precisa ter pelo menos 8 caracteres.");
@@ -45,14 +42,33 @@ export async function criarAcessoLms(input: AcessoLmsInput): Promise<AcessoLms> 
   }
 
   const body: Record<string, unknown> = { name, email };
-  if (trails.length) body.trails = trails;
   if (password) body.password = password;
   if (input.resetPassword) body.resetPassword = true;
 
   const base = (input.baseUrl || "https://cursos.dnawork.ai").replace(/\/$/, "");
-  let response: Response;
+  const response = await chamarLms(input.fetchImpl ?? fetch, base, token, body);
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) throw erroDoLms(response.status);
+  return {
+    name,
+    email,
+    password: senhaDaResposta(payload),
+    contaNova: contaNova(payload),
+    loginUrl: LOGIN_URL,
+  };
+}
+
+async function chamarLms(fetchImpl: typeof fetch, base: string, token: string, body: Record<string, unknown>): Promise<Response> {
+  const primeiro = await pedir(fetchImpl, base, token, body);
+  const texto = await primeiro.clone().text().catch(() => "");
+  const proxyCego = primeiro.status === 502 && texto.includes("Service is not reachable");
+  if (!proxyCego || base === LMS_DIRETO) return primeiro;
+  return pedir(fetchImpl, LMS_DIRETO, token, body);
+}
+
+async function pedir(fetchImpl: typeof fetch, base: string, token: string, body: Record<string, unknown>): Promise<Response> {
   try {
-    response = await (input.fetchImpl ?? fetch)(`${base}/api/integracao/acessos`, {
+    return await fetchImpl(`${base}/api/integracao/acessos`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -65,22 +81,12 @@ export async function criarAcessoLms(input: AcessoLmsInput): Promise<AcessoLms> 
   } catch {
     throw new AppError(502, "LMS_INDISPONIVEL", "Não foi possível falar com o LMS.");
   }
-
-  const payload = await response.json().catch(() => null);
-  if (!response.ok) throw erroDoLms(response.status);
-  return {
-    name,
-    email,
-    trails,
-    password: senhaDaResposta(payload),
-    contaNova: contaNova(payload),
-    loginUrl: LOGIN_URL,
-  };
 }
 
 function erroDoLms(status: number): AppError {
   if (status === 401) return new AppError(502, "LMS_CREDENCIAL", "A credencial do LMS foi recusada.");
-  if (status === 422) return new AppError(422, "TRILHA_INEXISTENTE", "A trilha informada não existe no LMS.");
+  if (status === 404) return new AppError(502, "LMS_SEM_ROTA", "O LMS não tem a rota de criação de acesso.");
+  if (status === 422) return new AppError(422, "LMS_RECUSOU", "O LMS recusou os dados do acesso.");
   if (status === 503) return new AppError(503, "LMS_INDISPONIVEL", "O LMS não está configurado.");
   return new AppError(502, "LMS_INDISPONIVEL", "O LMS não concluiu a criação do acesso.");
 }
