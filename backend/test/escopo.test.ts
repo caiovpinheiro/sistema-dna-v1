@@ -342,6 +342,19 @@ test("gera acesso ao portal e mostra e-mail e senha na empresa", async () => {
   assert.equal(ficha.json().data.portal.senha, gerado.json().data.senha);
   const lista = await call("GET", "/api/v1/empresas?q=Empresa%20Portal&page=1&pageSize=5");
   assert.equal(lista.json().data.find((item: { id_empresa: string }) => item.id_empresa === id).acesso_portal, true);
+  const nunca = await call("GET", "/api/v1/empresas?q=Empresa%20Portal&acesso=nunca&page=1&pageSize=5");
+  assert.equal(nunca.json().data.some((item: { id_empresa: string }) => item.id_empresa === id), true);
+  await db.query(`
+    insert into dna_work.portal_empresa_acesso (id_empresa, id_usuario, email, primeiro_login, ultimo_login, ultimo_uso, logins)
+    values ($1, 'usuario-portal', 'portal@example.com', now(), now(), now(), 2)
+  `, [id]);
+  const acessou = await call("GET", "/api/v1/empresas?q=Empresa%20Portal&acesso=acessou&page=1&pageSize=5");
+  const encontrada = acessou.json().data.find((item: { id_empresa: string }) => item.id_empresa === id);
+  assert.equal(encontrada.uso_portal.logins, 2);
+  const semUso = await call("GET", "/api/v1/empresas?q=Empresa%20Portal&acesso=nunca&page=1&pageSize=5");
+  assert.equal(semUso.json().data.some((item: { id_empresa: string }) => item.id_empresa === id), false);
+  const fichaUso = await call("GET", `/api/v1/empresas/${id}`);
+  assert.equal(fichaUso.json().data.uso_portal.logins, 2);
   const repetido = await call("POST", `/api/v1/empresas/${id}/acesso-portal`, {});
   assert.equal(repetido.statusCode, 409);
   const nova = await call("POST", `/api/v1/empresas/${id}/acesso-portal`, { redefinir: true });

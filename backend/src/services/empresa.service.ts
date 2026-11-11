@@ -17,6 +17,13 @@ export type AcessoPortal = {
   nome: string | null;
 };
 
+export type UsoPortal = {
+  ultimo_login: string | null;
+  ultimo_uso: string | null;
+  logins: number;
+  email: string | null;
+};
+
 const PATCHABLE = new Set([
   "razao_social", "nome_fantasia", "cnpj", "email", "telefone", "celular", "cep", "logradouro",
   "numero", "complemento", "bairro", "cidade", "uf", "status", "responsavel", "tipo_empresa",
@@ -76,14 +83,21 @@ export class EmpresaService {
   async get(id: string) {
     const row = await this.repo.findById(this.db, id);
     if (!row) throw new AppError(404, "EMPRESA_NAO_ENCONTRADA", "Empresa não encontrada.");
-    return { ...presentEmpresa(row), ...(await this.portalDe(id)) };
+    return { ...presentEmpresa(row), ...(await this.portalDe(id)), uso_portal: await this.usoDe(id) };
   }
 
   async list(query: EmpresaListQuery) {
+    await this.garantirTabelaAcesso();
     const result = await this.repo.list(this.db, query);
-    const comAcesso = await this.idsComAcesso(result.rows.map((row) => row.id_empresa));
+    const ids = result.rows.map((row) => row.id_empresa);
+    const comAcesso = await this.idsComAcesso(ids);
+    const uso = await this.usosDe(ids);
     return {
-      data: result.rows.map((row) => ({ ...presentEmpresa(row), acesso_portal: comAcesso.has(row.id_empresa) })),
+      data: result.rows.map((row) => ({
+        ...presentEmpresa(row),
+        acesso_portal: comAcesso.has(row.id_empresa),
+        uso_portal: uso.get(row.id_empresa) ?? null,
+      })),
       meta: { page: query.page, pageSize: query.pageSize, total: result.total },
     };
   }
@@ -245,6 +259,44 @@ export class EmpresaService {
   private async garantirSenhaEnvio(): Promise<void> {
     await this.db.query("alter table dna_work.usuario_empresa add column if not exists senha_envio text");
   }
+
+  private async garantirTabelaAcesso(): Promise<void> {
+    await this.db.query(`
+      create table if not exists dna_work.portal_empresa_acesso (
+        id_empresa varchar(40) primary key,
+        id_usuario varchar(40),
+        email varchar(255),
+        primeiro_login timestamptz,
+        ultimo_login timestamptz,
+        ultimo_uso timestamptz,
+        logins integer not null default 0
+      )
+    `);
+  }
+
+  private async usosDe(ids: string[]): Promise<Map<string, UsoPortal>> {
+    const uso = new Map<string, UsoPortal>();
+    if (!ids.length) return uso;
+    const rows = await this.db.query<{ id_empresa: string; ultimo_login: Date | null; ultimo_uso: Date | null; logins: number; email: string | null }>(`
+      select id_empresa, ultimo_login, ultimo_uso, logins, email
+      from dna_work.portal_empresa_acesso
+      where id_empresa = any($1::varchar[])
+    `, [ids]);
+    for (const row of rows.rows) {
+      uso.set(row.id_empresa, {
+        ultimo_login: iso(row.ultimo_login),
+        ultimo_uso: iso(row.ultimo_uso),
+        logins: Number(row.logins) || 0,
+        email: row.email,
+      });
+    }
+    return uso;
+  }
+
+  private async usoDe(id: string): Promise<UsoPortal | null> {
+    await this.garantirTabelaAcesso();
+    return (await this.usosDe([id])).get(id) ?? null;
+  }
 }
 
 function nomePortal(responsavel: string | null, fantasia: string | null, razao: string | null): string {
@@ -272,4 +324,10 @@ function senhaInicial(): string {
 
 function codigoPg(error: unknown): string | undefined {
   return (error as { code?: string }).code;
+}
+
+function iso(value: Date | string | null): string | null {
+  if (!value) return null;
+  const data = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(data.getTime()) ? null : data.toISOString();
 }

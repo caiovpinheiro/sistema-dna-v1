@@ -40,6 +40,7 @@ export const empresaListSchema = z.object({
   uf: z.string().trim().optional(),
   status: z.coerce.number().int().optional(),
   q: z.string().trim().optional(),
+  acesso: z.enum(["acessou", "nunca", "sem"]).optional(),
 });
 
 export type EmpresaCreate = z.infer<typeof empresaCreateSchema>;

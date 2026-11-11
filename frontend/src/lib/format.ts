@@ -33,6 +33,20 @@ export function dateBr(value: string | null | undefined): string {
   return `${day}/${month}/${year}`;
 }
 
+export function dataHoraBr(value: string | null | undefined): string {
+  if (!value) return "—";
+  const data = new Date(value);
+  if (Number.isNaN(data.getTime())) return dateBr(value);
+  return new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(data);
+}
+
 export const regimeLabel: Record<string, string> = { clt: "CLT", estagio: "Estágio", outro: "Outro" };
 export const origemLabel: Record<string, string> = { dnawork: "Captado pela DNAWORK", empresa: "Enviado pela empresa" };
 export const etapaLabel: Record<string, string> = {

@@ -4,7 +4,7 @@ import { Link, useParams } from "react-router-dom";
 import { CobrancaEmpresa, type ValorEmpresa } from "@/components/cobranca-empresa";
 import { Badge, Button, Card, Input, Skeleton } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
-import { dateBr, formatCnpj, formatPhone, regimeLabel, situacaoLabel } from "@/lib/format";
+import { dataHoraBr, dateBr, formatCnpj, formatPhone, regimeLabel, situacaoLabel } from "@/lib/format";
 
 type Company = {
   id_empresa: string; razao_social: string; nome_fantasia: string | null; cnpj: string; email: string | null;
@@ -13,6 +13,7 @@ type Company = {
   matriz: string | null; ie: string | null; site: string | null; obs: string | null; status: number | null;
   acesso_portal?: boolean;
   portal?: { ativo: boolean; email: string | null; senha: string | null; nome: string | null };
+  uso_portal?: { ultimo_login: string | null; ultimo_uso: string | null; logins: number; email: string | null } | null;
 };
 type Job = { id_vaga: string; cargo: string; regime: string; situacao: string; quantidade_posicoes: number | null; ocupadas: number; disponiveis: number | null; codigo: string | null; dataabertura: string | null };
 
@@ -62,7 +63,7 @@ export function EmpresaDetailPage() {
         <Card><p className="text-xs text-slate-500">Cadastro</p><p className="font-semibold">{data.matriz || "Sem matriz"}</p><p className="text-sm text-slate-500">{[data.ie ? `IE ${data.ie}` : "", data.site || ""].filter(Boolean).join(" · ") || "IE e site não informados"}</p></Card>
       </div>
       {cobranca.data?.data ? <CobrancaEmpresa valor={cobranca.data.data} aberto titulo={false} /> : null}
-      <AcessoPortal empresaId={data.id_empresa} emailEmpresa={data.email} portal={data.portal} />
+      <AcessoPortal empresaId={data.id_empresa} emailEmpresa={data.email} portal={data.portal} uso={data.uso_portal} />
       {data.obs ? <Card><h2 className="mb-2 font-bold">Observações</h2><p className="whitespace-pre-line text-sm text-slate-600">{data.obs}</p></Card> : null}
       <Card>
         <h2 className="mb-3 font-bold">Vagas</h2>
@@ -91,7 +92,15 @@ export function EmpresaDetailPage() {
   );
 }
 
-function AcessoPortal({ empresaId, emailEmpresa, portal }: { empresaId: string; emailEmpresa: string | null; portal?: Company["portal"] }) {
+function resumoUso(uso: Company["uso_portal"]) {
+  if (!uso?.ultimo_login) return "Ainda não entrou no portal.";
+  const maisRecente = uso.ultimo_uso && uso.ultimo_uso > uso.ultimo_login ? uso.ultimo_uso : uso.ultimo_login;
+  const acao = maisRecente === uso.ultimo_login ? "Última entrada" : "Último uso";
+  const entradas = uso.logins === 1 ? "1 entrada" : `${uso.logins} entradas`;
+  return `${acao} em ${dataHoraBr(maisRecente)} · ${entradas}.`;
+}
+
+function AcessoPortal({ empresaId, emailEmpresa, portal, uso }: { empresaId: string; emailEmpresa: string | null; portal?: Company["portal"]; uso?: Company["uso_portal"] }) {
   const queryClient = useQueryClient();
   const [email, setEmail] = useState(emailEmpresa ?? "");
   const [erro, setErro] = useState("");
@@ -120,6 +129,7 @@ function AcessoPortal({ empresaId, emailEmpresa, portal }: { empresaId: string; 
         <h2 className="font-bold">Portal de empresas</h2>
         <Badge value={acesso.ativo ? "ativa" : "encerrada"}>{acesso.ativo ? "Com acesso" : "Sem acesso"}</Badge>
       </div>
+      <p className="mb-3 text-sm text-slate-600">{resumoUso(uso)}</p>
       {acesso.ativo ? (
         <div className="grid gap-3 md:grid-cols-2">
           <div>

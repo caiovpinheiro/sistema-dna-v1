@@ -32,6 +32,26 @@ const COLUMNS = `
   numero, complemento, bairro, cidade, uf, status, responsavel, tipo_empresa, matriz, ie, site, obs, data_adicao
 `;
 
+const TEM_LOGIN = `
+  exists (
+    select 1 from dna_work.usuario_empresa u
+    where u.status = 1 and (
+      u.empresa_u = dna_work.empresa.id_empresa
+      or exists (
+        select 1 from dna_work.vinculo_empresa_usuario v
+        where v.id_usuario = u.id_u and v.id_empresa = dna_work.empresa.id_empresa
+      )
+    )
+  )
+`;
+
+const ACESSOU = `
+  exists (
+    select 1 from dna_work.portal_empresa_acesso a
+    where a.id_empresa = dna_work.empresa.id_empresa and a.ultimo_login is not null
+  )
+`;
+
 const SORTS: Record<string, string> = {
   razao_social: "razao_social",
   nome_fantasia: "nome_fantasia",
@@ -110,6 +130,9 @@ export class EmpresaRepository {
     if (query.cidade) add("cidade ILIKE $#", `%${query.cidade}%`);
     if (query.uf) add("upper(uf) = $#", query.uf.toUpperCase());
     if (query.status !== undefined) add("status = $#", query.status);
+    if (query.acesso === "acessou") where.push(ACESSOU);
+    if (query.acesso === "nunca") where.push(`(${TEM_LOGIN} and not ${ACESSOU})`);
+    if (query.acesso === "sem") where.push(`not ${TEM_LOGIN}`);
     const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
     const order = sortClause(query.sort, query.order, SORTS, "razao_social");
     const totalRow = await one<{ total: number }>(db, `SELECT count(*)::int AS total FROM dna_work.empresa ${clause}`, params);
