@@ -44,6 +44,8 @@ import { SyncCicloService } from "./services/sync-ciclo.service.js";
 import { CargosSyncService } from "./services/cargos-sync.service.js";
 import { agendarPorSlot } from "./lib/agenda-sync.js";
 import { usarBancoTracker } from "./origem/tracker-db.js";
+import { criarAcessoLms } from "./lib/lms-acesso.js";
+import { z } from "zod";
 
 export type AppContext = {
   config: AppConfig;
@@ -158,6 +160,32 @@ export async function buildApp(context: AppContext): Promise<FastifyInstance> {
   });
 
   await registerRoutes(app, context.config, services, context.db);
+  app.withTypeProvider<ZodTypeProvider>().post("/api/v1/candidatos/:id/acesso-lms", {
+    schema: {
+      tags: ["candidatos"],
+      params: z.object({ id: z.string().min(1) }),
+      body: z.object({
+        trails: z.array(z.string().trim().min(1).max(80)).max(20).optional(),
+        password: z.string().trim().max(72).optional(),
+        resetPassword: z.boolean().optional(),
+      }),
+    },
+  }, async (request) => {
+    const ficha = await services.candidatos.get(request.params.id);
+    return {
+      success: true as const,
+      data: await criarAcessoLms({
+        token: context.config.LMS_ACCESS_TOKEN,
+        baseUrl: context.config.LMS_API_URL,
+        name: ficha.nome ?? "",
+        email: ficha.email ?? "",
+        trails: request.body.trails,
+        password: request.body.password,
+        resetPassword: request.body.resetPassword,
+      }),
+      meta: {},
+    };
+  });
   const agendaRegua = iniciarAgendaRegua({
     ativo: context.config.REGUA_AGENDA === "1",
     envioReal: context.config.REGUA_ENVIO_REAL === "1",
