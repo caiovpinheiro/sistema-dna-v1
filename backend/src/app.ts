@@ -58,7 +58,7 @@ export async function buildApp(context: AppContext): Promise<FastifyInstance> {
   const app = Fastify({
     logger: process.env.NODE_ENV === "test" ? false : {
       level: "info",
-      redact: ["req.headers.authorization", "req.headers.cookie", "req.body.password", "req.body.cpf", "req.body.chave_pix", "req.body.cnpj"],
+      redact: ["req.headers.authorization", "req.headers.cookie", "req.body.password", "req.body.cpf", "req.body.chave_pix", "req.body.cnpj", "res.body.data.password"],
     },
   }).withTypeProvider<ZodTypeProvider>();
   app.setValidatorCompiler(validatorCompiler);
