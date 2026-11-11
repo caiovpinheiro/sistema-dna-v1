@@ -8,7 +8,6 @@ import { legacyToday } from "../lib/dates.js";
 import { AppError } from "../lib/errors.js";
 import { faixaDaSemana, horarioDe } from "./vagas-abertas-sync.service.js";
 import { formatMoneyLegacy, moneyToNumber, parseMoney } from "../lib/money.js";
-import { supabaseRest } from "../lib/supabase-rest.js";
 import type { CargoService } from "./cargo.service.js";
 import { chaveCargo } from "../lib/cargo.js";
 import { reagruparVagaIds } from "../lib/vaga-id.js";
@@ -366,13 +365,6 @@ export class CadastroService {
     private readonly cargos: CargoService,
   ) {}
 
-  private rest() {
-    if (!this.config.SUPABASE_URL || !this.config.SUPABASE_SERVICE_ROLE_KEY) {
-      throw new AppError(503, "SUPABASE_NAO_CONFIGURADO", "Defina SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY.");
-    }
-    return supabaseRest({ url: this.config.SUPABASE_URL, key: this.config.SUPABASE_SERVICE_ROLE_KEY });
-  }
-
   private mysqlPool() {
     if (!this.mysql) throw new AppError(503, "MYSQL_NAO_CONFIGURADO", "Defina as credenciais DNA_WORK_DB.");
     return this.mysql;
@@ -395,26 +387,35 @@ export class CadastroService {
 
   async listarGrupos() {
     await this.ensureMirror();
-    const rows = await this.rest().get<GrupoRow[]>("grupo?select=id,nome,email,telefone,criado_em&order=nome.asc&limit=500");
+    const { rows } = await this.db.query<GrupoRow>(
+      "SELECT id::text AS id, nome, email, telefone, criado_em FROM public.grupo ORDER BY nome LIMIT 500",
+    );
     return rows;
   }
 
   async obterGrupo(id: string) {
     await this.ensureMirror();
-    const grupos = await this.rest().get<GrupoRow[]>(`grupo?id=eq.${id}&select=id,nome,email,telefone,criado_em`);
-    const grupo = grupos[0];
-    if (!grupo) throw new AppError(404, "GRUPO_NAO_ENCONTRADO", "Grupo não encontrado.");
-    const empresas = await this.rest().get<EmpresaRow[]>(
-      `empresa?grupo_id=eq.${id}&select=id,grupo_id,cnpj,razao_social,nome_fantasia,email,telefone,cep,logradouro,numero,complemento,local&order=nome_fantasia.asc`,
+    const grupos = await this.db.query<GrupoRow>(
+      "SELECT id::text AS id, nome, email, telefone, criado_em FROM public.grupo WHERE id::text = $1",
+      [id],
     );
-    return { ...grupo, empresas };
+    const grupo = grupos.rows[0];
+    if (!grupo) throw new AppError(404, "GRUPO_NAO_ENCONTRADO", "Grupo não encontrado.");
+    const empresas = await this.db.query<EmpresaRow>(
+      `SELECT id::text AS id, grupo_id::text AS grupo_id, cnpj, razao_social, nome_fantasia, email, telefone, cep, logradouro, numero, complemento, local
+       FROM public.empresa WHERE grupo_id::text = $1 ORDER BY nome_fantasia`,
+      [id],
+    );
+    return { ...grupo, empresas: empresas.rows };
   }
 
   async listarEmpresas() {
     await this.ensureMirror();
-    return this.rest().get<EmpresaRow[]>(
-      "empresa?select=id,grupo_id,cnpj,razao_social,nome_fantasia,email,telefone,local&order=nome_fantasia.asc&limit=500",
+    const { rows } = await this.db.query<EmpresaRow>(
+      `SELECT id::text AS id, grupo_id::text AS grupo_id, cnpj, razao_social, nome_fantasia, email, telefone, local
+       FROM public.empresa ORDER BY nome_fantasia LIMIT 500`,
     );
+    return rows;
   }
 
   /** Modelos globais: um por cargo e modalidade, para qualquer empresa. */
@@ -454,15 +455,12 @@ export class CadastroService {
     await this.ensureMirror();
     const id = randomUUID();
     const row = { id, nome: input.nome, email: input.email ?? null, telefone: input.telefone ?? null };
-    const sb = this.rest();
-    await sb.insert("grupo", row);
     try {
       await this.db.query(
         "INSERT INTO public.grupo (id, nome, email, telefone) VALUES ($1, $2, $3, $4)",
         [id, row.nome, row.email, row.telefone],
       );
     } catch (error) {
-      await sb.remove(`grupo?id=eq.${id}`);
       throw this.falhaGravacao(error, "Não foi possível gravar o grupo no Postgres.");
     }
     return row;
@@ -470,18 +468,11 @@ export class CadastroService {
 
   async criarEmpresa(input: EmpresaCadastro) {
     await this.ensureMirror();
-    const sb = this.rest();
-    const grupos = await sb.get<Array<{ id: string }>>(`grupo?id=eq.${input.grupo_id}&select=id`);
-    if (!grupos[0]) throw new AppError(422, "GRUPO_OBRIGATORIO", "Escolha um grupo cadastrado nesta tela.");
+    const grupos = await this.db.query("SELECT 1 FROM public.grupo WHERE id::text = $1", [input.grupo_id]);
+    if (!grupos.rowCount) throw new AppError(422, "GRUPO_OBRIGATORIO", "Escolha um grupo cadastrado nesta tela.");
 
     const digits = input.cnpj;
     const masked = maskCnpj(digits);
-    const jaNoSupabase = await sb.get<Array<{ id: string }>>(
-      `empresa?or=(cnpj.eq.${encodeURIComponent(digits)},cnpj.eq.${encodeURIComponent(masked)})&select=id&limit=1`,
-    );
-    if (jaNoSupabase.length) {
-      throw new AppError(409, "CNPJ_JA_CADASTRADO", "Este CNPJ já está no Supabase. O cadastro não foi duplicado.");
-    }
     const jaNoPostgres = await this.db.query<{ id: string }>(
       "SELECT id FROM public.empresa WHERE regexp_replace(cnpj, '\\D', '', 'g') = $1 LIMIT 1",
       [digits],
@@ -532,7 +523,6 @@ export class CadastroService {
       [id],
     );
     const conn = await mysql.getConnection();
-    let supabaseOk = false;
     let postgresOk = false;
     try {
       await conn.beginTransaction();
@@ -566,13 +556,6 @@ export class CadastroService {
         );
       }
 
-      await sb.insert("empresa", {
-        id, grupo_id: payload.grupo_id, cnpj: digits, razao_social: payload.razao_social, nome_fantasia: payload.nome_fantasia,
-        email: payload.email, telefone: payload.telefone, cep: payload.cep, logradouro: payload.logradouro,
-        numero: payload.numero, complemento: payload.complemento, local, latitude: payload.latitude, longitude: payload.longitude,
-      });
-      supabaseOk = true;
-
       const pg = await this.db.connect();
       try {
         await pg.query("BEGIN");
@@ -598,10 +581,9 @@ export class CadastroService {
       await conn.commit();
     } catch (error) {
       await conn.rollback().catch(() => undefined);
-      if (supabaseOk) await sb.remove(`empresa?id=eq.${id}`).catch(() => undefined);
       if (postgresOk) await this.reverterEmpresaPostgres(id, previa.rows[0] ?? null);
       if (error instanceof AppError) throw error;
-      throw this.falhaGravacao(error, "Não foi possível gravar a empresa nos três bancos.");
+      throw this.falhaGravacao(error, "Não foi possível gravar a empresa no Lightsail e no Postgres.");
     } finally {
       conn.release();
     }
@@ -611,9 +593,13 @@ export class CadastroService {
 
   async criarVaga(input: VagaCadastro, usuario: string) {
     await this.ensureMirror();
-    const sb = this.rest();
-    const empresas = await sb.get<EmpresaRow[]>(`empresa?id=eq.${input.empresa_id}&select=id,grupo_id,cep,latitude,longitude,logradouro,numero,complemento,local,cnpj,razao_social,nome_fantasia,email,telefone`);
-    const empresa = empresas[0];
+    const empresas = await this.db.query<EmpresaRow>(
+      `SELECT id::text AS id, grupo_id::text AS grupo_id, cep, latitude, longitude, logradouro, numero, complemento, local,
+              cnpj, razao_social, nome_fantasia, email, telefone
+       FROM public.empresa WHERE id::text = $1`,
+      [input.empresa_id],
+    );
+    const empresa = empresas.rows[0];
     if (!empresa) throw new AppError(422, "EMPRESA_FORA_DA_TELA", "A vaga só abre para uma empresa cadastrada nesta tela.");
 
     // Cargo da lista ou cargo novo: a vaga recebe o nome padronizado, a descrição e os requisitos do cargo.
@@ -642,7 +628,7 @@ export class CadastroService {
       domindo_entrada: horas.domingo_entrada, domindo_saida: horas.domingo_saida,
     };
     const faixa = faixaDaSemana(colunasGrade);
-    // O espelho (Supabase e public.vaga) recebe a grade "turno;início-fim;intervalo;1=..;…;texto=…", igual ao sync de vagas abertas.
+    // public.vaga recebe a grade "turno;início-fim;intervalo;1=..;…;texto=…", igual ao sync de vagas abertas.
     const horario = horarioDe({ ...colunasGrade, semanas_inicio: faixa?.inicio ?? null, semanas_fim: faixa?.fim ?? null });
     // As vagas abertas juntas são iguais e da mesma empresa: mesmo vaga_id. Depois de gravar, o vaga_id é recalculado
     // para juntar com as vagas iguais que a empresa já tinha (empresa ou detalhe diferente, vaga_id diferente).
@@ -682,7 +668,6 @@ export class CadastroService {
 
     const mysql = this.mysqlPool();
     const conn = await mysql.getConnection();
-    let supabaseOk = false;
     let postgresOk = false;
     try {
       await conn.beginTransaction();
@@ -740,14 +725,9 @@ export class CadastroService {
         ],
       );
 
-      await sb.insert("vaga", linhas);
-      supabaseOk = true;
-
       const pg = await this.db.connect();
       try {
         await pg.query("BEGIN");
-        // O cargo pode existir só no Supabase (criado direto lá ou espelho que falhou): a chave estrangeira do Postgres exige a linha.
-        const cargoPostgres = await this.cargos.idNoPostgres(pg, cargo);
         for (const linha of linhas) {
           await pg.query(
             `INSERT INTO public.vaga (
@@ -757,7 +737,7 @@ export class CadastroService {
             [
               linha.id, linha.vaga_id, linha.grupo_id, linha.empresa_id, linha.tipo_vaga, linha.cargo, linha.salario,
               linha.carga_horaria, linha.sexo, linha.idade, linha.idade_ate, linha.km, linha.atividades, linha.horario,
-              linha.cep, linha.latitude, linha.longitude, cargoPostgres, linha.descricao, linha.requisitos, linha.beneficios,
+              linha.cep, linha.latitude, linha.longitude, linha.cargo_id, linha.descricao, linha.requisitos, linha.beneficios,
             ],
           );
         }
@@ -828,10 +808,9 @@ export class CadastroService {
       await conn.commit();
     } catch (error) {
       await conn.rollback().catch(() => undefined);
-      if (supabaseOk) await sb.remove(`vaga?id=in.(${ids.join(",")})`).catch(() => undefined);
       if (postgresOk) await this.apagarVagaPostgres(ids, codigo, comparador);
       if (error instanceof AppError) throw error;
-      throw this.falhaGravacao(error, "Não foi possível abrir a vaga nos três bancos. Nada ficou gravado.");
+      throw this.falhaGravacao(error, "Não foi possível abrir a vaga no Lightsail e no Postgres. Nada ficou gravado.");
     } finally {
       conn.release();
     }
@@ -1025,25 +1004,22 @@ export class CadastroService {
     throw new AppError(409, "MODELO_JA_EXISTE", `Já existe um modelo de ${cargo} (${TIPO_MODELO[tipo] ?? tipo}). Edite esse modelo em vez de criar outro.`);
   }
 
-  /** Cria o modelo global no Supabase e no Postgres. Se o Postgres falhar, desfaz o Supabase. */
+  /** Cria o modelo global em public.vaga_repetida. */
   async criarModelo(input: ModeloVaga) {
     await this.ensureMirror();
     const { cargo, linha } = await this.linhaDoModelo(input);
     if (await this.modeloDoCargo(cargo.nome, linha.tipo_vaga)) this.modeloRepetido(cargo.nome, linha.tipo_vaga);
     const id = randomUUID();
     const modelo = { id, vaga_id: id, grupo_id: null, empresa_id: null, cep: null, latitude: null, longitude: null, ...linha };
-    const sb = this.rest();
-    await sb.insert("vaga_repetida", modelo);
     try {
       const pg = await this.db.connect();
       try {
-        const cargoPostgres = await this.cargos.idNoPostgres(pg, cargo);
         await pg.query(
           `INSERT INTO public.vaga_repetida (
             id, vaga_id, tipo_vaga, cargo, cargo_id, descricao, requisitos, salario, carga_horaria, sexo, idade, idade_ate, km, atividades, horario, beneficios
           ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
           [
-            id, id, linha.tipo_vaga, linha.cargo, cargoPostgres, linha.descricao, linha.requisitos, linha.salario, linha.carga_horaria,
+            modelo.id, modelo.vaga_id, linha.tipo_vaga, linha.cargo, cargo.id, linha.descricao, linha.requisitos, linha.salario, linha.carga_horaria,
             linha.sexo, linha.idade, linha.idade_ate, linha.km, linha.atividades, linha.horario, linha.beneficios,
           ],
         );
@@ -1051,8 +1027,7 @@ export class CadastroService {
         pg.release();
       }
     } catch (error) {
-      await sb.remove(`vaga_repetida?id=eq.${id}`).catch(() => undefined);
-      throw this.falhaGravacao(error, "Não foi possível gravar o modelo no Supabase e no Postgres.");
+      throw this.falhaGravacao(error, "Não foi possível gravar o modelo no Postgres.");
     }
     return { vagaId: id, cargo: cargo.nome };
   }
@@ -1064,18 +1039,15 @@ export class CadastroService {
     if (!anterior) throw new AppError(404, "MODELO_NAO_ENCONTRADO", "Modelo não encontrado.");
     const { cargo, linha } = await this.linhaDoModelo(input);
     if (await this.modeloDoCargo(cargo.nome, linha.tipo_vaga, vagaId)) this.modeloRepetido(cargo.nome, linha.tipo_vaga);
-    const sb = this.rest();
-    await sb.update(`vaga_repetida?vaga_id=eq.${vagaId}`, linha);
     try {
       const pg = await this.db.connect();
       try {
-        const cargoPostgres = await this.cargos.idNoPostgres(pg, cargo);
         await pg.query(
           `UPDATE public.vaga_repetida SET tipo_vaga=$2, cargo=$3, cargo_id=$4, descricao=$5, requisitos=$6, salario=$7, carga_horaria=$8,
              sexo=$9, idade=$10, idade_ate=$11, km=$12, atividades=$13, horario=$14, beneficios=$15
            WHERE vaga_id = $1`,
           [
-            vagaId, linha.tipo_vaga, linha.cargo, cargoPostgres, linha.descricao, linha.requisitos, linha.salario, linha.carga_horaria,
+            vagaId, linha.tipo_vaga, linha.cargo, cargo.id, linha.descricao, linha.requisitos, linha.salario, linha.carga_horaria,
             linha.sexo, linha.idade, linha.idade_ate, linha.km, linha.atividades, linha.horario, linha.beneficios,
           ],
         );
@@ -1083,9 +1055,7 @@ export class CadastroService {
         pg.release();
       }
     } catch (error) {
-      const { empresa_nome: _nome, id: _id, vaga_id: _vagaId, empresa_id: _empresa, grupo_id: _grupo, ...volta } = anterior;
-      await sb.update(`vaga_repetida?vaga_id=eq.${vagaId}`, volta).catch(() => undefined);
-      throw this.falhaGravacao(error, "Não foi possível gravar o modelo no Supabase e no Postgres.");
+      throw this.falhaGravacao(error, "Não foi possível gravar o modelo no Postgres.");
     }
     return { vagaId, cargo: cargo.nome };
   }
@@ -1093,7 +1063,6 @@ export class CadastroService {
   /** Apaga só o modelo: as vagas já abertas continuam como estão. */
   async apagarModelo(vagaId: string) {
     await this.ensureMirror();
-    await this.rest().remove(`vaga_repetida?vaga_id=eq.${vagaId}`);
     await this.db.query("DELETE FROM public.vaga_repetida WHERE vaga_id = $1", [vagaId]);
     return { vagaId };
   }

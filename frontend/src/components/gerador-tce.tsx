@@ -266,7 +266,7 @@ export function GeradorTce({ editarId }: { editarId?: string }) {
       {editarId && dados.isError ? <p className="text-sm text-rose-600">Este termo não tem dados para editar. Ele foi gerado sem o formulário do TCE.</p> : null}
       <section className="grid gap-3 md:grid-cols-2">
         <h2 className="font-bold md:col-span-2">Empresa concedente</h2>
-        {empresas.isError ? <p className="text-sm text-rose-600 md:col-span-2">Não foi possível carregar as empresas. Confira SUPABASE_URL e a chave no ambiente.</p> : null}
+        {empresas.isError ? <p className="text-sm text-rose-600 md:col-span-2">Não foi possível carregar as empresas. Tente de novo em instantes.</p> : null}
         <div className="relative md:col-span-2">
           <Field label="Pesquisar empresa">
             <Input value={busca} autoComplete="off" placeholder="Razão social, nome fantasia ou CNPJ" onChange={(event) => { setBusca(event.target.value); setAberta(true); }} onFocus={() => setAberta(true)} />

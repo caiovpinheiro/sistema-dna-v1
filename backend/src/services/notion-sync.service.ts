@@ -2,7 +2,6 @@ import type { RowDataPacket } from "mysql2";
 import type { Pool } from "pg";
 import type { AppConfig } from "../config.js";
 import type { MysqlPool } from "../db/mysql.js";
-import { supabaseRest } from "../lib/supabase-rest.js";
 import { formatarLocal, lerNotion, normalizarUf, turnosDe, type LocalPartes, type Turnos, type VagaNotion } from "../lib/triagem-notion.js";
 
 export type Logger = {
@@ -40,7 +39,7 @@ export type MudancaVaga = {
   id_empresa: string;
   antes: CamposHorario;
   depois: CamposHorario;
-  horario_espelho: { antes_supabase: string | null; antes_postgres: string | null; depois: string };
+  horario_espelho: { antes_postgres: string | null; depois: string };
 };
 
 export type MudancaEmpresa = { id_empresa: string; codigo: string; antes: LocalPartes; depois: LocalPartes; local: string };
@@ -168,8 +167,8 @@ export class NotionSyncService {
       return resultado;
     }
 
-    const { supabase, postgres } = await this.vagasDoSistema();
-    const ids = [...new Set([...supabase.keys(), ...postgres.keys()])];
+    const postgres = await this.vagasDoSistema();
+    const ids = [...postgres.keys()];
     if (!ids.length) return this.fim(resultado);
 
     const [linhas] = await this.mysql.query<VagaLightsail[]>(
@@ -192,7 +191,7 @@ export class NotionSyncService {
         continue;
       }
       try {
-        const mudou = await this.aplicarVaga(vaga, codigo, turnos, supabase.get(vaga.id_vaga) ?? null, postgres.get(vaga.id_vaga) ?? null, dry, resultado);
+        const mudou = await this.aplicarVaga(vaga, codigo, turnos, postgres.get(vaga.id_vaga) ?? null, dry, resultado);
         if (doNotion.localPartes && !empresasVistas.has(vaga.id_empresa)) {
           empresasVistas.add(vaga.id_empresa);
           await this.aplicarEmpresa(vaga, codigo, doNotion.localPartes, dry, resultado);
@@ -214,42 +213,31 @@ export class NotionSyncService {
   }
 
   private async vagasDoSistema() {
-    const supabase = new Map<string, VagaEspelho>();
     const postgres = new Map<string, VagaEspelho>();
-    if (this.config.SUPABASE_URL && this.config.SUPABASE_SERVICE_ROLE_KEY) {
-      const rest = supabaseRest({ url: this.config.SUPABASE_URL, key: this.config.SUPABASE_SERVICE_ROLE_KEY });
-      for (let offset = 0; ; offset += 1000) {
-        const pagina = await rest.get<VagaEspelho[]>(`vaga?select=id,vaga_id,empresa_id,horario&order=id&limit=1000&offset=${offset}`);
-        for (const row of pagina) supabase.set(row.id, row);
-        if (pagina.length < 1000) break;
-      }
-    }
     const { rows } = await this.db.query<VagaEspelho>("SELECT id::text AS id, vaga_id::text AS vaga_id, empresa_id::text AS empresa_id, horario FROM public.vaga")
       .catch(() => ({ rows: [] as VagaEspelho[] }));
     for (const row of rows) postgres.set(row.id, row);
-    return { supabase, postgres };
+    return postgres;
   }
 
   private async aplicarVaga(
     vaga: VagaLightsail,
     codigo: string,
     turnos: Turnos,
-    supabase: VagaEspelho | null,
     postgres: VagaEspelho | null,
     dry: boolean,
     resultado: ResultadoSync,
   ) {
     const antes = camposAtuais(vaga);
     const depois = camposNovos(turnos, antes);
-    const novoHorario = horarioEspelho(turnos, String(depois.tempo_refeicao), supabase?.horario ?? postgres?.horario ?? null);
+    const novoHorario = horarioEspelho(turnos, String(depois.tempo_refeicao), postgres?.horario ?? null);
     const lightsailIgual = iguais(antes, depois);
-    const supabaseIgual = !supabase || supabase.horario === novoHorario;
     const postgresIgual = !postgres || postgres.horario === novoHorario;
-    if (lightsailIgual && supabaseIgual && postgresIgual) return false;
+    if (lightsailIgual && postgresIgual) return false;
 
     const mudanca: MudancaVaga = {
       codigo, id_vaga: vaga.id_vaga, id_empresa: vaga.id_empresa, antes, depois,
-      horario_espelho: { antes_supabase: supabase?.horario ?? null, antes_postgres: postgres?.horario ?? null, depois: novoHorario },
+      horario_espelho: { antes_postgres: postgres?.horario ?? null, depois: novoHorario },
     };
     resultado.vagas.push(mudanca);
     this.log.info({
@@ -265,17 +253,13 @@ export class NotionSyncService {
         `UPDATE vaga SET ${campos.map((campo) => `${campo} = ?`).join(", ")} WHERE id_vaga = ? AND status = 0`,
         [...campos.map((campo) => depois[campo]), vaga.id_vaga],
       );
-      // A cópia do Postgres é a referência do espelho no sync de vagas abertas: recebe o mesmo horário.
+      // dna_work.vaga é a referência de public.vaga no sync de vagas abertas: recebe o mesmo horário.
       await this.db.query(
         `UPDATE dna_work.vaga SET ${campos.map((campo, indice) => `${campo} = $${indice + 2}`).join(", ")} WHERE id_vaga = $1`,
         [vaga.id_vaga, ...campos.map((campo) => depois[campo])],
       );
     }
-    if (supabase && !supabaseIgual) {
-      const rest = supabaseRest({ url: this.config.SUPABASE_URL, key: this.config.SUPABASE_SERVICE_ROLE_KEY });
-      // Só a vaga: o modelo é global (um por cargo) e não muda pelo horário de uma empresa.
-      await rest.update(`vaga?id=eq.${vaga.id_vaga}`, { horario: novoHorario });
-    }
+    // Só a vaga: o modelo é global (um por cargo) e não muda pelo horário de uma empresa.
     if (postgres && !postgresIgual) {
       await this.db.query("UPDATE public.vaga SET horario = $1 WHERE id = $2", [novoHorario, vaga.id_vaga]);
     }
@@ -297,11 +281,6 @@ export class NotionSyncService {
     this.log.info({ dry, codigo, id_vaga: vaga.id_vaga, id_empresa: vaga.id_empresa, antes, depois }, "sync notion: bairro da empresa");
     if (dry) return;
     await this.mysql!.query("UPDATE empresa SET bairro = ?, cidade = ?, uf = ? WHERE id_empresa = ?", [depois.bairro, depois.cidade, depois.uf, vaga.id_empresa]);
-    if (this.config.SUPABASE_URL && this.config.SUPABASE_SERVICE_ROLE_KEY) {
-      await supabaseRest({ url: this.config.SUPABASE_URL, key: this.config.SUPABASE_SERVICE_ROLE_KEY })
-        .update(`empresa?id=eq.${vaga.id_empresa}`, { local })
-        .catch((error: unknown) => this.log.error({ codigo, id_empresa: vaga.id_empresa, erro: error instanceof Error ? error.message : String(error) }, "sync notion: falha no local do Supabase"));
-    }
     await this.db.query("UPDATE public.empresa SET local = $1 WHERE id = $2", [local, vaga.id_empresa])
       .catch((error: unknown) => this.log.error({ codigo, id_empresa: vaga.id_empresa, erro: error instanceof Error ? error.message : String(error) }, "sync notion: falha no local do Postgres"));
   }

@@ -11,13 +11,12 @@ import { EmpresaRepository } from "../repositories/empresa.repository.js";
 import { one } from "../repositories/sql.js";
 import { VagaRepository } from "../repositories/vaga.repository.js";
 import type { VagaCreate, VagaListQuery, VagaPatch } from "../schemas/vaga.js";
-import { supabaseRest } from "../lib/supabase-rest.js";
 import { reagruparVagaIds } from "../lib/vaga-id.js";
 import { presentVaga } from "./presenters.js";
 import { mensagemDaVaga } from "../lib/mensagem-vaga.js";
 import { DIAS_ESCALA, textoDoHorario } from "../lib/horario-escala.js";
 
-/** Campos do horário da vaga: quando algum muda na edição, a grade do espelho é refeita. */
+/** Campos do horário da vaga: quando algum muda na edição, a grade de public.vaga é refeita. */
 const CAMPOS_HORARIO = [
   "horabase", "hora_saida_base", "segunda_entrada", "segunda_saida", "terca_entrada", "terca_saida", "quarta_entrada", "quarta_saida",
   "quinta_entrada", "quinta_saida", "sexta_entrada", "sexta_saida", "sab_entrada", "sab_saida", "domindo_entrada", "domindo_saida", "texto_carga",
@@ -97,7 +96,7 @@ export class VagaService {
         dados.status = codigo;
       }
     }
-    // Cargo, salário e horário: Postgres e o espelho (Supabase e public.vaga). O Lightsail não recebe a edição.
+    // Cargo, salário e horário: dna_work.vaga e public.vaga. O Lightsail não recebe a edição.
     const espelhar = await this.dadosDoEspelho(id, dados, salario);
     await this.repo.update(this.db, id, dados, salario);
     if (espelhar.faixa) {
@@ -133,23 +132,18 @@ export class VagaService {
     return { campos, grade, faixa };
   }
 
-  /** Espelho (Supabase e public.vaga): mesma grade de horário do sync de vagas abertas e os campos editados. */
+  /** public.vaga: mesma grade de horário do sync de vagas abertas e os campos editados. */
   private async alinharEspelho(id: string, campos: Record<string, unknown>, grade: Record<string, unknown> | null) {
     const mudar: Record<string, unknown> = { ...campos };
     if (grade) {
-      const rest = this.rest();
-      const atual = rest
-        ? (await rest.get<Array<{ horario: string | null }>>(`vaga?id=eq.${encodeURIComponent(id)}&select=horario`))[0]?.horario ?? null
-        : (await one<{ horario: string | null }>(this.db, "SELECT horario FROM public.vaga WHERE id::text = $1", [id]))?.horario ?? null;
+      const atual = (await one<{ horario: string | null }>(this.db, "SELECT horario FROM public.vaga WHERE id::text = $1", [id]))?.horario ?? null;
       const novo = horarioDe(grade);
-      // O texto novo vale; o do espelho só fica quando é o mesmo texto (emoji que o Lightsail troca por "?").
+      // O texto novo vale; o de public.vaga só fica quando é o mesmo texto (emoji que o Lightsail troca por "?").
       mudar.horario = horarioAlinhado(atual, novo) ?? atual ?? novo;
     }
     const nomes = Object.keys(mudar);
     if (!nomes.length) return;
     await this.db.query(`UPDATE public.vaga SET ${nomes.map((nome, indice) => `${nome} = $${indice + 2}`).join(", ")} WHERE id::text = $1`, [id, ...nomes.map((nome) => mudar[nome])]);
-    const rest = this.rest();
-    if (rest) await rest.update(`vaga?id=eq.${encodeURIComponent(id)}`, mudar);
   }
 
   async sugeridos(id: string) {
@@ -187,22 +181,10 @@ export class VagaService {
     return { bairro: daEmpresa?.bairro ?? null, cidade: daEmpresa?.cidade ?? null };
   }
 
-  private rest() {
-    if (!this.config.SUPABASE_URL || !this.config.SUPABASE_SERVICE_ROLE_KEY) return null;
-    return supabaseRest({ url: this.config.SUPABASE_URL, key: this.config.SUPABASE_SERVICE_ROLE_KEY });
-  }
-
   private async lerBeneficios(id: string) {
-    const rest = this.rest();
-    if (rest) {
-      const rows = await rest.get<Array<{ beneficios: string | null }>>(`vaga?id=eq.${encodeURIComponent(id)}&select=beneficios`);
-      const publicado = rows[0]?.beneficios?.trim();
-      if (publicado) return publicado;
-    } else {
-      const publicada = await one<{ beneficios: string | null }>(this.db, "SELECT beneficios FROM public.vaga WHERE id::text = $1", [id]);
-      const publicado = publicada?.beneficios?.trim();
-      if (publicado) return publicado;
-    }
+    const publicada = await one<{ beneficios: string | null }>(this.db, "SELECT beneficios FROM public.vaga WHERE id::text = $1", [id]);
+    const publicado = publicada?.beneficios?.trim();
+    if (publicado) return publicado;
     const local = await one<{ beneficios_texto: string | null }>(this.db, "SELECT beneficios_texto FROM dna_work.vaga WHERE id_vaga = $1", [id]);
     return local?.beneficios_texto ?? "";
   }
@@ -211,8 +193,6 @@ export class VagaService {
     const texto = beneficios.trim() || null;
     await this.db.query("UPDATE dna_work.vaga SET beneficios_texto = $2 WHERE id_vaga = $1", [id, texto]);
     await this.db.query("UPDATE public.vaga SET beneficios = $2 WHERE id::text = $1", [id, texto]);
-    const rest = this.rest();
-    if (rest) await rest.update(`vaga?id=eq.${encodeURIComponent(id)}`, { beneficios: texto });
   }
 
   opcoesFiltro() {

@@ -2,7 +2,6 @@ import type { RowDataPacket } from "mysql2";
 import type { AppConfig } from "../config.js";
 import type { MysqlPool } from "../db/mysql.js";
 import { AppError } from "../lib/errors.js";
-import { supabaseRest } from "../lib/supabase-rest.js";
 import { distanciaKm, geocodeCepServidor, rotuloDoCep, type Ponto } from "../lib/triagem-geo.js";
 import type { Pool } from "pg";
 import { DIAS_ESCALA, textoDoHorario } from "../lib/horario-escala.js";
@@ -54,8 +53,6 @@ type VagaPostgres = {
   local: string | null;
 };
 
-const PAGINA = 1000;
-
 const moeda = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
 function digits(value: string | null | undefined) {
@@ -106,23 +103,6 @@ export class TriagemService {
     private readonly mysql: MysqlPool | null,
     private readonly config: AppConfig,
   ) {}
-
-  private rest() {
-    if (!this.config.SUPABASE_URL || !this.config.SUPABASE_SERVICE_ROLE_KEY) {
-      throw new AppError(503, "SUPABASE_NAO_CONFIGURADO", "Defina SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY.");
-    }
-    return supabaseRest({ url: this.config.SUPABASE_URL, key: this.config.SUPABASE_SERVICE_ROLE_KEY });
-  }
-
-  private async todasAsLinhas<T>(caminho: string): Promise<T[]> {
-    const rest = this.rest();
-    const linhas: T[] = [];
-    for (let offset = 0; ; offset += PAGINA) {
-      const pagina = await rest.get<T[]>(`${caminho}&limit=${PAGINA}&offset=${offset}`);
-      linhas.push(...pagina);
-      if (pagina.length < PAGINA) return linhas;
-    }
-  }
 
   /** Vagas abertas do Postgres (public.vaga) com a empresa: só as dos tipos pedidos e com coordenada. */
   private async vagasAbertas(tipos: TipoVaga[]) {
@@ -191,7 +171,7 @@ export class TriagemService {
     return { originLabel, jobs: [...unicas.values()] };
   }
 
-  /** Empresas do agente (sede 10) com vaga aberta no Lightsail que ainda não estão no Supabase. */
+  /** Empresas do agente (sede 10) com vaga aberta no Lightsail que ainda não estão em public.empresa. */
   async empresasPendentes(): Promise<EmpresaPendente[]> {
     if (!this.mysql) return [];
     const [rows] = await this.mysql.query<RowDataPacket[]>(`
@@ -204,7 +184,7 @@ export class TriagemService {
     `);
     if (!rows.length) return [];
     const cadastradas = new Set(
-      (await this.todasAsLinhas<{ cnpj: string | null }>("empresa?select=cnpj&order=id")).map((row) => digits(row.cnpj)).filter(Boolean),
+      (await this.db.query<{ cnpj: string | null }>("SELECT cnpj FROM public.empresa")).rows.map((row) => digits(row.cnpj)).filter(Boolean),
     );
     return rows
       .filter((row) => !cadastradas.has(digits(String(row.cnpj ?? ""))))

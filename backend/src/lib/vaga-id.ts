@@ -27,7 +27,7 @@ export function assinaturaDaVaga(linha: Record<string, unknown>) {
 export type MudancaVagaId = { id: string; de: string | null; para: string };
 
 /**
- * Recalcula o vaga_id de todas as vagas de `public.vaga` pela regra acima. Grava só no Postgres: o Supabase não muda.
+ * Recalcula o vaga_id de todas as vagas de `public.vaga` pela regra acima.
  * Cada grupo de vagas iguais fica com o vaga_id que a maioria já tinha (desde que outro grupo maior não o use);
  * sem um disponível, recebe um novo. Assim os vaga_id já enviados aos candidatos mudam o mínimo possível.
  */

@@ -1,36 +1,38 @@
-import { supabaseRest } from "../lib/supabase-rest.js";
+import type { Pool } from "pg";
 
 /**
- * Tabelas tracker_leads e tracker_ganhos: só no Supabase (o Postgres não tem cópia).
- * Mesmas leituras e gravações do app candidaturas (src/lib/supabase-server.ts), pela API REST.
+ * Tabelas public.tracker_leads e public.tracker_ganhos, no Postgres da DNA Work.
+ * O Pool é o mesmo do sistema: o app chama usarBancoTracker(db) ao subir.
  */
-function rest() {
-  const url = process.env.SUPABASE_URL || "";
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
-  if (!url || !key) throw new Error("SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY não configurados.");
-  return supabaseRest({ url, key });
+let banco: Pool | null = null;
+
+export function usarBancoTracker(db: Pool) {
+  banco = db;
 }
 
-const enc = encodeURIComponent;
+function db(): Pool {
+  if (!banco) throw new Error("Banco do tracker não configurado.");
+  return banco;
+}
 
 /** Brasília: o período é de 00:00 do dia inicial a 23:59:59.999 do final, em -03:00. */
-function filtroPeriodo(coluna: string, range?: { from?: string | null; to?: string | null }) {
+function filtroPeriodo(coluna: string, range: { from?: string | null; to?: string | null } | undefined, valores: unknown[]) {
   const partes: string[] = [];
-  if (range?.from) partes.push(`${coluna}=gte.${enc(`${range.from}T00:00:00.000-03:00`)}`);
-  if (range?.to) partes.push(`${coluna}=lte.${enc(`${range.to}T23:59:59.999-03:00`)}`);
-  return partes.length ? `&${partes.join("&")}` : "";
+  if (range?.from) {
+    valores.push(`${range.from}T00:00:00.000-03:00`);
+    partes.push(`${coluna} >= $${valores.length}::timestamptz`);
+  }
+  if (range?.to) {
+    valores.push(`${range.to}T23:59:59.999-03:00`);
+    partes.push(`${coluna} <= $${valores.length}::timestamptz`);
+  }
+  return partes.length ? ` AND ${partes.join(" AND ")}` : "";
 }
 
-/** Lê todas as páginas (1000 por vez). */
-async function todas<T>(caminho: string): Promise<T[]> {
-  const linhas: T[] = [];
-  for (let offset = 0; ; offset += 1000) {
-    const pagina = await rest().get<T[]>(`${caminho}&limit=1000&offset=${offset}`);
-    if (!pagina?.length) break;
-    linhas.push(...pagina);
-    if (pagina.length < 1000) break;
-  }
-  return linhas;
+/** Datas no mesmo formato texto (ISO) que a API do banco antigo devolvia. */
+function iso(valor: unknown): string {
+  if (valor instanceof Date) return valor.toISOString();
+  return valor == null ? "" : String(valor);
 }
 
 export interface TrackerLeadRecord {
@@ -47,15 +49,12 @@ export interface TrackerLeadRecord {
 }
 
 export async function getTrackerLeadByPhone(telefoneNormalizado: string): Promise<TrackerLeadRecord | null> {
-  const linhas = await rest().get<TrackerLeadRecord[]>(
-    `tracker_leads?select=id,telefone,telefone_normalizado,origem,campanha,headline,ctwa_clid,fbclid,gclid,referrer&telefone_normalizado=eq.${enc(telefoneNormalizado)}&limit=1`,
+  const { rows } = await db().query<TrackerLeadRecord>(
+    `SELECT id::text AS id, telefone, telefone_normalizado, origem, campanha, headline, ctwa_clid, fbclid, gclid, referrer
+     FROM public.tracker_leads WHERE telefone_normalizado = $1 LIMIT 1`,
+    [telefoneNormalizado],
   );
-  return linhas[0] ?? null;
-}
-
-async function idDoLead(telefoneNormalizado: string): Promise<string | null> {
-  const linhas = await rest().get<Array<{ id: string }>>(`tracker_leads?select=id&telefone_normalizado=eq.${enc(telefoneNormalizado)}&limit=1`);
-  return linhas[0]?.id ?? null;
+  return rows[0] ?? null;
 }
 
 export async function upsertTrackerLead(input: {
@@ -70,24 +69,30 @@ export async function upsertTrackerLead(input: {
   referrer: string | null;
   ad_id?: string | null;
 }): Promise<void> {
-  const payload = {
-    telefone: input.telefone,
-    telefone_normalizado: input.telefone_normalizado,
-    origem: input.origem,
-    campanha: input.campanha,
-    headline: input.headline,
-    ctwa_clid: input.ctwa_clid,
-    fbclid: input.fbclid,
-    gclid: input.gclid,
-    referrer: input.referrer,
-    ...(input.ad_id ? { ad_id: input.ad_id } : {}),
-  };
-  const id = await idDoLead(input.telefone_normalizado);
+  const valores = [
+    input.telefone, input.telefone_normalizado, input.origem, input.campanha, input.headline,
+    input.ctwa_clid, input.fbclid, input.gclid, input.referrer,
+  ];
+  const { rows } = await db().query<{ id: string }>(
+    "SELECT id::text AS id FROM public.tracker_leads WHERE telefone_normalizado = $1 LIMIT 1",
+    [input.telefone_normalizado],
+  );
+  const id = rows[0]?.id;
   if (id) {
-    await rest().update(`tracker_leads?id=eq.${enc(id)}`, payload);
+    // Sem ad_id novo, mantém o que já estava gravado.
+    await db().query(
+      `UPDATE public.tracker_leads SET telefone = $2, telefone_normalizado = $3, origem = $4, campanha = $5, headline = $6,
+         ctwa_clid = $7, fbclid = $8, gclid = $9, referrer = $10, ad_id = COALESCE($11, ad_id), updated_at = now()
+       WHERE id = $1::uuid`,
+      [id, ...valores, input.ad_id || null],
+    );
     return;
   }
-  await rest().insert("tracker_leads", payload);
+  await db().query(
+    `INSERT INTO public.tracker_leads (telefone, telefone_normalizado, origem, campanha, headline, ctwa_clid, fbclid, gclid, referrer, ad_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+    [...valores, input.ad_id || null],
+  );
 }
 
 export interface TrackerLeadRow {
@@ -103,7 +108,10 @@ export interface TrackerLeadRow {
 }
 
 export async function updateTrackerLeadCampaign(telefoneNormalizado: string, campanha: string): Promise<void> {
-  await rest().update(`tracker_leads?telefone_normalizado=eq.${enc(telefoneNormalizado)}`, { campanha });
+  await db().query(
+    "UPDATE public.tracker_leads SET campanha = $2, updated_at = now() WHERE telefone_normalizado = $1",
+    [telefoneNormalizado, campanha],
+  );
 }
 
 export interface PassagemEnviadaRow {
@@ -119,16 +127,23 @@ async function listPassagens(
   passagem: "seletivo" | "ganho" | "atendimento",
   range?: { from?: string | null; to?: string | null },
 ): Promise<PassagemEnviadaRow[]> {
-  const linhas = await todas<{
-    id: string; telefone_normalizado: string | null; origem: string | null; campanha: string | null; tipo_vaga: string | null; ganho_em: string;
-  }>(`tracker_ganhos?select=id,telefone_normalizado,origem,campanha,tipo_vaga,ganho_em&passagem=eq.${passagem}&order=ganho_em.desc${filtroPeriodo("ganho_em", range)}`);
-  return linhas.map((row) => ({
+  const valores: unknown[] = [passagem];
+  const filtro = filtroPeriodo("ganho_em", range, valores);
+  const { rows } = await db().query<{
+    id: string; telefone_normalizado: string | null; origem: string | null; campanha: string | null; tipo_vaga: string | null; ganho_em: Date | string | null;
+  }>(
+    `SELECT id::text AS id, telefone_normalizado, origem, campanha, tipo_vaga, ganho_em
+     FROM public.tracker_ganhos WHERE passagem = $1${filtro}
+     ORDER BY ganho_em DESC NULLS LAST`,
+    valores,
+  );
+  return rows.map((row) => ({
     id: row.id,
     telefone_normalizado: row.telefone_normalizado,
     origem: row.origem,
     campanha: row.campanha,
     tipo_vaga: row.tipo_vaga,
-    entrou_em: row.ganho_em,
+    entrou_em: iso(row.ganho_em),
   }));
 }
 
@@ -159,43 +174,62 @@ export async function salvarPassagemEnviada(input: {
   entrou_em: string;
 }): Promise<{ id: string; ganho_em: string }> {
   const dealKey = `${input.deal_id}:${input.entrou_em}`;
-  const existentes = await rest().get<Array<{ id: string; ganho_em: string | null }>>(`tracker_ganhos?select=id,ganho_em&deal_id=eq.${enc(dealKey)}&limit=1`);
-  const existente = existentes[0];
-  if (existente?.id) return { id: existente.id, ganho_em: existente.ganho_em || input.entrou_em };
-  const criadas = await rest().insert<Array<{ id: string; ganho_em: string }>>("tracker_ganhos", {
-    deal_id: dealKey,
-    contact_id: input.contact_id,
-    telefone: input.telefone,
-    telefone_normalizado: input.telefone_normalizado,
-    origem: input.origem,
-    campanha: input.campanha,
-    tipo_vaga: input.tipo_vaga,
-    ad_id: input.ad_id,
-    passagem: input.passagem,
-    ganho_em: input.entrou_em,
-  });
-  const criada = criadas[0];
-  return { id: criada.id, ganho_em: criada.ganho_em };
+  const existentes = await db().query<{ id: string; ganho_em: Date | string | null }>(
+    "SELECT id::text AS id, ganho_em FROM public.tracker_ganhos WHERE deal_id = $1 LIMIT 1",
+    [dealKey],
+  );
+  const existente = existentes.rows[0];
+  if (existente?.id) return { id: existente.id, ganho_em: iso(existente.ganho_em) || input.entrou_em };
+  const criadas = await db().query<{ id: string; ganho_em: Date | string | null }>(
+    `INSERT INTO public.tracker_ganhos (deal_id, contact_id, telefone, telefone_normalizado, origem, campanha, tipo_vaga, ad_id, passagem, ganho_em)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::timestamptz)
+     RETURNING id::text AS id, ganho_em`,
+    [dealKey, input.contact_id, input.telefone, input.telefone_normalizado, input.origem, input.campanha, input.tipo_vaga, input.ad_id, input.passagem, input.entrou_em],
+  );
+  const criada = criadas.rows[0];
+  return { id: criada.id, ganho_em: iso(criada.ganho_em) };
 }
 
 export async function atualizarTipoVagaLead(telefoneNormalizado: string, tipo: "clt" | "estagio"): Promise<void> {
-  await rest().update(`tracker_leads?telefone_normalizado=eq.${enc(telefoneNormalizado)}`, { tipo_vaga: tipo });
+  await db().query(
+    "UPDATE public.tracker_leads SET tipo_vaga = $2, updated_at = now() WHERE telefone_normalizado = $1",
+    [telefoneNormalizado, tipo],
+  );
 }
 
 export async function listTrackerRedes(
   phones: string[],
 ): Promise<Array<{ telefone_normalizado: string; origem: string | null; referrer: string | null }>> {
   const unicos = [...new Set(phones.filter(Boolean))];
-  const linhas: Array<{ telefone_normalizado: string; origem: string | null; referrer: string | null }> = [];
-  for (let indice = 0; indice < unicos.length; indice += 100) {
-    const lote = unicos.slice(indice, indice + 100).map((telefone) => `"${telefone}"`).join(",");
-    linhas.push(...await rest().get<typeof linhas>(`tracker_leads?select=telefone_normalizado,origem,referrer&telefone_normalizado=in.(${enc(lote)})`));
-  }
-  return linhas;
+  if (!unicos.length) return [];
+  const { rows } = await db().query<{ telefone_normalizado: string; origem: string | null; referrer: string | null }>(
+    "SELECT telefone_normalizado, origem, referrer FROM public.tracker_leads WHERE telefone_normalizado = ANY($1::text[])",
+    [unicos],
+  );
+  return rows;
 }
 
-export function listTrackerLeads(range?: { from?: string | null; to?: string | null }): Promise<TrackerLeadRow[]> {
-  return todas<TrackerLeadRow>(
-    `tracker_leads?select=id,telefone,telefone_normalizado,origem,campanha,headline,referrer,tipo_vaga,created_at&order=created_at.desc${filtroPeriodo("created_at", range)}`,
+/** Leads salvos pelos telefones, para as contratações (ganhos-contratacoes). */
+export async function listTrackerLeadsPorTelefone(
+  telefones: string[],
+): Promise<Array<{ telefone_normalizado: string; origem: string | null; campanha: string | null; headline: string | null; referrer: string | null }>> {
+  const unicos = [...new Set(telefones.filter(Boolean))];
+  if (!unicos.length) return [];
+  const { rows } = await db().query<{ telefone_normalizado: string; origem: string | null; campanha: string | null; headline: string | null; referrer: string | null }>(
+    "SELECT telefone_normalizado, origem, campanha, headline, referrer FROM public.tracker_leads WHERE telefone_normalizado = ANY($1::text[])",
+    [unicos],
   );
+  return rows;
+}
+
+export async function listTrackerLeads(range?: { from?: string | null; to?: string | null }): Promise<TrackerLeadRow[]> {
+  const valores: unknown[] = [];
+  const filtro = filtroPeriodo("created_at", range, valores);
+  const { rows } = await db().query<Omit<TrackerLeadRow, "created_at"> & { created_at: Date | string }>(
+    `SELECT id::text AS id, telefone, telefone_normalizado, origem, campanha, headline, referrer, tipo_vaga, created_at
+     FROM public.tracker_leads WHERE true${filtro}
+     ORDER BY created_at DESC`,
+    valores,
+  );
+  return rows.map((row) => ({ ...row, created_at: iso(row.created_at) }));
 }

@@ -15,6 +15,22 @@ Consulta somente leitura em 21/10/2026. Nenhum `INSERT`, `UPDATE`, `DELETE`, `AL
 
 Não há foreign keys no schema `dna_work` (0 constraints `FOREIGN KEY`). Não há triggers nessas tabelas. A aplicação precisa validar os vínculos.
 
+## Tabelas que só existem no Postgres (schema `public`)
+
+Desde 11/11/2026 o sistema não usa mais o Supabase. Estas tabelas ficam só no Postgres; o Supabase continua ligado, mas parado.
+
+| Tabela | Papel | Quem grava |
+| --- | --- | --- |
+| `public.tracker_leads` | Origem de cada lead (telefone, campanha, cliques). 18.918 linhas copiadas do Supabase com os mesmos ids. Tem `updated_at`. Sem UNIQUE em `telefone_normalizado` (há telefone repetido). | Webhook `lead-criado` |
+| `public.tracker_ganhos` | Uma linha por passagem do negócio (atendimento, seletivo, ganho). 7.298 linhas copiadas. `deal_id` = `<idDoNegocio>:<entrou_em>`, sem UNIQUE. | Webhook `ganho` |
+| `public.vaga` | Vagas abertas mostradas no site, na triagem e no n8n. `vaga_id` recalculado em `lib/vaga-id.ts`. | Cadastro, edição de vaga, syncs de vagas abertas, Notion e cargos |
+| `public.empresa` | Empresas das vagas (endereço, `local`, coordenadas). | Cadastro e sync do Notion (`local`) |
+| `public.cargo` | Cargos com descrição e requisitos. Chave única `cargo_chave_unica` em `chave`. | Cadastro e sync de cargos |
+| `public.grupo` | Grupos de empresas. | Cadastro |
+| `public.vaga_repetida` | Modelos globais de vaga (um por cargo e modalidade). | Cadastro |
+
+A cópia do tracker é feita por `scripts/copiar-tracker-supabase.mjs` (pode rodar várias vezes; `--corte` traz o que entrou no Supabase durante a troca sem sobrescrever o que o sistema já mudou no Postgres).
+
 ## Modalidades confirmadas
 
 | id | descricao | Uso na V1 |

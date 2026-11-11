@@ -7,7 +7,7 @@ import type { Pool } from "pg";
 import type { AppConfig } from "../config.js";
 import { AppError } from "../lib/errors.js";
 import { getEscola, mensagemEscola, searchEscolas } from "../lib/escolas.js";
-import { getEmpresaCadastro, listEmpresasCadastro } from "../lib/supabase-empresas.js";
+import { getEmpresaCadastro, listEmpresasCadastro } from "../lib/empresas-cadastro.js";
 import { fillTceTemplate } from "../lib/tce-pdf.js";
 import { APOLICE_SEGURO, CAMPOS_DATA, dataParaPdf, emptyManual, ESCOLA_KEYS, type Concedente, type ManualData } from "../lib/tce-fields.js";
 import { preenchimentoDoCandidato, type CandidatoTce } from "../lib/tce-candidato.js";
@@ -33,7 +33,7 @@ export class TceService {
   ) {}
 
   listarEmpresas() {
-    return listEmpresasCadastro(this.config.SUPABASE_URL, this.config.SUPABASE_SERVICE_ROLE_KEY);
+    return listEmpresasCadastro(this.db);
   }
 
   async buscarEscolas(termo: string) {
@@ -129,7 +129,7 @@ export class TceService {
   }
 
   async gerar(input: GerarTceInput) {
-    const empresa = await getEmpresaCadastro(this.config.SUPABASE_URL, this.config.SUPABASE_SERVICE_ROLE_KEY, input.empresaId);
+    const empresa = await getEmpresaCadastro(this.db, input.empresaId);
     if (!empresa) throw new AppError(404, "NAO_ENCONTRADO", "Empresa não encontrada.");
     const montado = await this.montar(input, empresa);
 

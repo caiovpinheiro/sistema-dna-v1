@@ -2,7 +2,7 @@ import type { Pool } from "pg";
 import { DATA_LEGADO } from "../lib/dashboard-periodo.js";
 import { getContactTrackingByPhone } from "./crm-tracking.js";
 import { normalizePhone } from "./phone.js";
-import { supabaseRest } from "../lib/supabase-rest.js";
+import { listTrackerLeadsPorTelefone } from "./tracker-db.js";
 
 /** Uma contratação do período com a origem achada (tracker_leads, CRM ou "Só contrato"). */
 export interface ContaContratacao {
@@ -22,16 +22,8 @@ const espera = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 type LeadSalvo = { telefone_normalizado: string; origem: string | null; campanha: string | null; headline: string | null; referrer: string | null };
 
 async function leadsPorTelefone(telefones: string[]): Promise<Map<string, LeadSalvo>> {
-  const url = process.env.SUPABASE_URL || "";
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
   const mapa = new Map<string, LeadSalvo>();
-  if (!url || !key || !telefones.length) return mapa;
-  const rest = supabaseRest({ url, key });
-  for (let indice = 0; indice < telefones.length; indice += 100) {
-    const lote = telefones.slice(indice, indice + 100).map((telefone) => `"${telefone}"`).join(",");
-    const linhas = await rest.get<LeadSalvo[]>(`tracker_leads?select=telefone_normalizado,origem,campanha,headline,referrer&telefone_normalizado=in.(${encodeURIComponent(lote)})`);
-    for (const linha of linhas) mapa.set(linha.telefone_normalizado, linha);
-  }
+  for (const linha of await listTrackerLeadsPorTelefone(telefones)) mapa.set(linha.telefone_normalizado, linha);
   return mapa;
 }
 

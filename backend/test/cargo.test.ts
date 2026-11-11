@@ -25,75 +25,79 @@ test("nome padronizado", () => {
 
 type Linha = { id: string; nome: string; chave: string; descricao: string | null; requisitos: string | null };
 
-function supabaseFalso(iniciais: Linha[] = [], opcoes: { duplicarNoInsert?: Linha } = {}) {
+/**
+ * Postgres falso só com public.cargo: entende as consultas do CargoService (por chave, por id, lista)
+ * e o INSERT … ON CONFLICT (chave) DO NOTHING, como a chave única cargo_chave_unica do banco.
+ */
+function pgFalso(iniciais: Linha[] = [], opcoes: { corridaNoInsert?: Linha } = {}) {
   const linhas = [...iniciais];
-  return {
-    linhas,
-    rest: () => ({
-      async get<T>(path: string) {
-        const chave = decodeURIComponent(path.match(/chave=eq\.([^&]+)/)?.[1] ?? "");
-        return (chave ? linhas.filter((l) => l.chave === chave) : linhas) as T;
-      },
-      async insert<T>(_tabela: string, body: Linha) {
-        if (opcoes.duplicarNoInsert) {
-          linhas.push(opcoes.duplicarNoInsert);
-          throw new AppError(502, "SUPABASE", 'duplicate key value violates unique constraint "cargo_chave_unica"');
-        }
-        linhas.push(body);
-        return [body] as T;
-      },
-      async update() {},
-      async remove() {},
-    }),
-  };
-}
-
-function dbFalso() {
   const queries: Array<{ sql: string; params: unknown[] }> = [];
-  return { queries, db: { query: async (sql: string, params: unknown[] = []) => { queries.push({ sql, params }); return { rows: [], rowCount: 1 }; } } };
+  const db = {
+    async query(sql: string, params: unknown[] = []) {
+      queries.push({ sql, params });
+      if (/^INSERT INTO public\.cargo/.test(sql)) {
+        // Outra criação gravou a mesma chave entre a busca e o INSERT.
+        if (opcoes.corridaNoInsert) linhas.push(opcoes.corridaNoInsert);
+        const [id, nome, chave, descricao, requisitos] = params as string[];
+        if (linhas.some((linha) => linha.chave === chave)) return { rows: [], rowCount: 0 };
+        linhas.push({ id, nome, chave, descricao, requisitos });
+        return { rows: [], rowCount: 1 };
+      }
+      if (/FROM public\.cargo WHERE chave = \$1/.test(sql)) return { rows: linhas.filter((l) => l.chave === params[0]), rowCount: 0 };
+      if (/FROM public\.cargo WHERE id = \$1/.test(sql)) return { rows: linhas.filter((l) => l.id === params[0]), rowCount: 0 };
+      if (/FROM public\.cargo/.test(sql)) return { rows: [...linhas], rowCount: linhas.length };
+      return { rows: [], rowCount: 0 };
+    },
+  };
+  return { linhas, queries, db };
 }
 
-const configFalsa = { SUPABASE_URL: "x", SUPABASE_SERVICE_ROLE_KEY: "y" } as never;
 const operador: Linha = { id: "11111111-1111-1111-1111-111111111111", nome: "Operador de Loja", chave: "operador de loja", descricao: "Desc", requisitos: "Req" };
 
 test("cargo novo com nome que já existe reaproveita o existente sem mudar os textos", async () => {
-  const sb = supabaseFalso([operador]);
-  const { db } = dbFalso();
-  const r = await new CargoService(db as never, configFalsa, sb.rest as never).resolverNovo({ nome: "operador de loja", descricao: "Outra", requisitos: "Outro" });
+  const pg = pgFalso([operador]);
+  const r = await new CargoService(pg.db as never).resolverNovo({ nome: "operador de loja", descricao: "Outra", requisitos: "Outro" });
   assert.equal(r.reaproveitado, true);
   assert.equal(r.cargo.id, operador.id);
   assert.equal(r.cargo.descricao, "Desc");
-  assert.equal(sb.linhas.length, 1);
+  assert.equal(pg.linhas.length, 1);
 });
 
-test("cargo novo é criado com nome padronizado e espelhado no Postgres com o mesmo id", async () => {
-  const sb = supabaseFalso([operador]);
-  const { db, queries } = dbFalso();
-  const r = await new CargoService(db as never, configFalsa, sb.rest as never).resolverNovo({ nome: "telemarketing", descricao: "Atende", requisitos: "Fala bem" });
+test("cargo novo é criado em public.cargo com nome padronizado", async () => {
+  const pg = pgFalso([operador]);
+  const r = await new CargoService(pg.db as never).resolverNovo({ nome: "telemarketing", descricao: "Atende", requisitos: "Fala bem" });
   assert.equal(r.reaproveitado, false);
   assert.equal(r.cargo.nome, "Telemarketing");
   assert.equal(r.cargo.chave, "telemarketing");
   assert.equal(r.cargo.descricao, "Atende");
-  const insertPg = queries.find((q) => /INSERT INTO public\.cargo/.test(q.sql));
-  assert.ok(insertPg);
-  assert.equal(insertPg.params[0], r.cargo.id);
+  const insert = pg.queries.find((q) => /INSERT INTO public\.cargo[\s\S]*ON CONFLICT \(chave\) DO NOTHING/.test(q.sql));
+  assert.ok(insert);
+  assert.equal(insert.params[0], r.cargo.id);
+  assert.equal(pg.linhas.length, 2);
 });
 
-test("criação concorrente: chave repetida no Supabase devolve o cargo que já existe", async () => {
+test("criação concorrente: chave repetida no Postgres devolve o cargo que já existe", async () => {
   const outro: Linha = { id: "22222222-2222-2222-2222-222222222222", nome: "Telemarketing", chave: "telemarketing", descricao: "Primeiro", requisitos: "Primeiro" };
-  const sb = supabaseFalso([], { duplicarNoInsert: outro });
-  const { db } = dbFalso();
-  const r = await new CargoService(db as never, configFalsa, sb.rest as never).resolverNovo({ nome: "Telemarketing", descricao: "Segundo", requisitos: "Segundo" });
+  const pg = pgFalso([], { corridaNoInsert: outro });
+  const r = await new CargoService(pg.db as never).resolverNovo({ nome: "Telemarketing", descricao: "Segundo", requisitos: "Segundo" });
   assert.equal(r.cargo.id, outro.id);
   assert.equal(r.reaproveitado, true);
+  assert.equal(pg.linhas.length, 1);
 });
 
 test("nome que vira chave vazia é recusado com 422", async () => {
-  const { db } = dbFalso();
   await assert.rejects(
-    new CargoService(db as never, configFalsa, supabaseFalso().rest as never).resolverNovo({ nome: "—:", descricao: "abc", requisitos: "abc" }),
+    new CargoService(pgFalso().db as never).resolverNovo({ nome: "—:", descricao: "abc", requisitos: "abc" }),
     (error: unknown) => error instanceof AppError && error.statusCode === 422,
   );
+});
+
+test("cargo da lista: id inexistente ou inválido dá 422", async () => {
+  const servico = new CargoService(pgFalso([operador]).db as never);
+  assert.equal((await servico.obter(operador.id)).nome, "Operador de Loja");
+  for (const id of ["33333333-3333-3333-3333-333333333333", "abc"]) {
+    await assert.rejects(servico.obter(id), (error: unknown) => error instanceof AppError && error.statusCode === 422);
+  }
 });
 
 const vagaBase = {
@@ -138,33 +142,27 @@ test("sync de cargos: vincula, aponta cargo faltando e completa só texto vazio"
   assert.deepEqual(porId.get("v4")?.campos, { cargo_id: vazio.id });
 });
 
-test("#1 cargo ausente no Postgres: é espelhado antes da vaga; com chave em outro id, a vaga vai sem cargo_id no Postgres", async () => {
-  const consultas: string[] = [];
-  const presente = { query: async (sql: string) => { consultas.push(sql); return { rows: /SELECT id/.test(sql) ? [{ id: operador.id }] : [], rowCount: 1 }; } };
-  const servico = new CargoService(presente as never, configFalsa, supabaseFalso([operador]).rest as never);
-  assert.equal(await servico.idNoPostgres(presente as never, operador), operador.id);
-  assert.ok(consultas.some((sql) => /INSERT INTO public\.cargo[\s\S]*ON CONFLICT DO NOTHING/.test(sql)));
-  const ausente = { query: async () => ({ rows: [], rowCount: 0 }) };
-  assert.equal(await servico.idNoPostgres(ausente as never, operador), null);
-});
-
 test("#8 cargo_id vazio dá a mensagem amigável", () => {
   const r = vagaCadastroSchema.safeParse({ ...vagaBase, cargo_id: "" });
   assert.equal(r.success, false);
   assert.equal(r.error?.issues[0]?.message, "Escolha um cargo da lista ou cadastre um novo.");
 });
 
-test("#2 #9 sync grava o Postgres antes do Supabase, com guarda de texto vazio; falha no Postgres não toca o Supabase", async () => {
-  const patches: string[] = [];
-  const sb = supabaseFalso([operador]);
-  const linhasVaga = [{ id: "v1", cargo: "Operador de Loja", cargo_id: null, descricao: null, requisitos: null }];
-  const rest = () => ({ ...sb.rest(), get: async (path: string) => (path.startsWith("vaga?") ? linhasVaga : path.startsWith("vaga_repetida?") ? [] : sb.rest().get(path)), update: async (path: string) => { patches.push(path); } });
+test("sync de cargos lê e grava só no Postgres, com guarda de texto vazio; falha numa vaga conta como erro", async () => {
+  const pg = pgFalso([operador]);
   const sqls: string[] = [];
-  const db = { query: async (sql: string) => { sqls.push(sql); if (/^UPDATE public\.vaga/.test(sql)) throw new Error("fk"); return { rows: [{ id: operador.id }], rowCount: 1 }; } };
+  const db = {
+    async query(sql: string, params: unknown[] = []) {
+      sqls.push(sql);
+      if (/FROM public\.vaga_repetida/.test(sql)) return { rows: [], rowCount: 0 };
+      if (/FROM public\.vaga /.test(sql)) return { rows: [{ id: "v1", cargo: "Operador de Loja", cargo_id: null, descricao: null, requisitos: null }], rowCount: 1 };
+      if (/^UPDATE public\.vaga/.test(sql)) throw new Error("fk");
+      return pg.db.query(sql, params);
+    },
+  };
   const log = { info() {}, warn() {}, error() {} };
-  const r = await new CargosSyncService(db as never, configFalsa, new CargoService(db as never, configFalsa, rest as never), log, rest as never).executar(false, "t");
+  const r = await new CargosSyncService(db as never, {} as never, new CargoService(db as never), log).executar(false, "t");
   assert.equal(r.erros, 1);
-  assert.equal(patches.length, 0);
   const update = sqls.find((sql) => /^UPDATE public\.vaga/.test(sql))!;
   assert.match(update, /descricao IS NULL OR btrim\(descricao\) = ''/);
   assert.match(update, /COALESCE\(cargo_id/);

@@ -111,7 +111,7 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
     return ok({ encerrada: true });
   });
 
-  // Origem dos candidatos: só lê tracker_leads/tracker_ganhos (Supabase) e o CRM; quem grava são os webhooks abaixo.
+  // Origem dos candidatos: só lê tracker_leads/tracker_ganhos (Postgres) e o CRM; quem grava são os webhooks abaixo.
   api.get("/api/v1/dashboard/origem", {
     schema: { tags: ["dashboard"], querystring: z.object({ from: z.string().optional(), to: z.string().optional() }) },
   }, async (request, reply) => {

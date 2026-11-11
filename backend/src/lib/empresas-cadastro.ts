@@ -1,5 +1,6 @@
-import { AppError } from "./errors.js";
+import type { Pool } from "pg";
 
+/** Empresas cadastradas (public.empresa) no formato que o gerador de TCE usa. */
 export type EmpresaCadastro = {
   id: string;
   razao_social: string;
@@ -25,7 +26,7 @@ type EmpresaRow = {
   complemento: string | null;
 };
 
-const COLUMNS = "id,razao_social,nome_fantasia,cnpj,email,cep,logradouro,numero,complemento";
+const COLUNAS = "id::text AS id, razao_social, nome_fantasia, cnpj, email, cep, logradouro, numero, complemento";
 
 function digits(value: string) {
   return value.replace(/\D/g, "");
@@ -59,27 +60,13 @@ function mapRow(row: EmpresaRow): EmpresaCadastro {
   };
 }
 
-async function supabaseGet<T>(baseUrl: string, key: string, path: string): Promise<T> {
-  const response = await fetch(`${baseUrl.replace(/\/$/, "")}/rest/v1/${path}`, {
-    headers: {
-      apikey: key,
-      Authorization: `Bearer ${key}`,
-      Accept: "application/json",
-    },
-  });
-  if (!response.ok) throw new AppError(502, "CADASTRO_INDISPONIVEL", "Não foi possível consultar as empresas.");
-  return response.json() as Promise<T>;
-}
-
-export async function listEmpresasCadastro(url: string, key: string): Promise<EmpresaCadastro[]> {
-  if (!url || !key) throw new AppError(503, "CADASTRO_NAO_CONFIGURADO", "Defina SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY no ambiente.");
-  const rows = await supabaseGet<EmpresaRow[]>(url, key, `empresa?select=${COLUMNS}&order=razao_social.asc`);
+export async function listEmpresasCadastro(db: Pick<Pool, "query">): Promise<EmpresaCadastro[]> {
+  const { rows } = await db.query<EmpresaRow>(`SELECT ${COLUNAS} FROM public.empresa ORDER BY razao_social`);
   return rows.map(mapRow);
 }
 
-export async function getEmpresaCadastro(url: string, key: string, id: string): Promise<EmpresaCadastro | null> {
+export async function getEmpresaCadastro(db: Pick<Pool, "query">, id: string): Promise<EmpresaCadastro | null> {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return null;
-  if (!url || !key) throw new AppError(503, "CADASTRO_NAO_CONFIGURADO", "Defina SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY no ambiente.");
-  const rows = await supabaseGet<EmpresaRow[]>(url, key, `empresa?id=eq.${id}&select=${COLUMNS}`);
+  const { rows } = await db.query<EmpresaRow>(`SELECT ${COLUNAS} FROM public.empresa WHERE id = $1`, [id]);
   return rows[0] ? mapRow(rows[0]) : null;
 }

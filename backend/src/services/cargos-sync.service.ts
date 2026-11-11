@@ -1,7 +1,6 @@
 import type { Pool } from "pg";
 import type { AppConfig } from "../config.js";
 import { chaveCargo } from "../lib/cargo.js";
-import { supabaseRest } from "../lib/supabase-rest.js";
 import type { Cargo, CargoService } from "./cargo.service.js";
 import type { Logger } from "./notion-sync.service.js";
 
@@ -60,17 +59,9 @@ export class CargosSyncService {
     private readonly config: AppConfig,
     private readonly cargos: CargoService,
     private readonly log: Logger,
-    private readonly restFalso?: () => ReturnType<typeof supabaseRest>,
   ) {}
 
-  private rest() {
-    return this.restFalso?.() ?? supabaseRest({ url: this.config.SUPABASE_URL, key: this.config.SUPABASE_SERVICE_ROLE_KEY });
-  }
-
-  /**
-   * Postgres primeiro: se ele falhar, o Supabase continua vazio e o próximo ciclo tenta de novo.
-   * Nos dois bancos a gravação só preenche o que está vazio, mesmo que a leitura tenha ficado velha.
-   */
+  /** Só preenche o que está vazio, mesmo que a leitura tenha ficado velha. */
   private async aplicar(atualizacao: AtualizacaoCargo) {
     const { tabela, id, campos } = atualizacao;
     const sets: string[] = [];
@@ -86,28 +77,17 @@ export class CargosSyncService {
     }
     valores.push(id);
     await this.db.query(`UPDATE public.${tabela} SET ${sets.join(", ")} WHERE id = $${valores.length}`, valores);
-    const rest = this.rest();
-    if (campos.cargo_id) await rest.update(`${tabela}?id=eq.${id}&cargo_id=is.null`, { cargo_id: campos.cargo_id });
-    for (const coluna of ["descricao", "requisitos"] as const) {
-      if (campos[coluna]) await rest.update(`${tabela}?id=eq.${id}&or=(${coluna}.is.null,${coluna}.eq.)`, { [coluna]: campos[coluna] });
-    }
   }
 
   private async linhas(tabela: Tabela): Promise<LinhaCargo[]> {
-    const linhas: LinhaCargo[] = [];
-    for (let offset = 0; ; offset += 1000) {
-      const pagina = await this.rest().get<Omit<LinhaCargo, "tabela">[]>(`${tabela}?select=id,cargo,cargo_id,descricao,requisitos&order=id&limit=1000&offset=${offset}`);
-      linhas.push(...pagina.map((linha) => ({ ...linha, tabela })));
-      if (pagina.length < 1000) return linhas;
-    }
+    const { rows } = await this.db.query<Omit<LinhaCargo, "tabela">>(
+      `SELECT id::text AS id, cargo, cargo_id::text AS cargo_id, descricao, requisitos FROM public.${tabela} ORDER BY id`,
+    );
+    return rows.map((linha) => ({ ...linha, tabela }));
   }
 
   async executar(dry: boolean, slot: string): Promise<ResultadoCargos> {
     const resultado: ResultadoCargos = { dry, cargosCriados: 0, vagasVinculadas: 0, descricoesCompletadas: 0, requisitosCompletados: 0, erros: 0 };
-    if (!this.config.SUPABASE_URL || !this.config.SUPABASE_SERVICE_ROLE_KEY) {
-      this.log.error({ slot }, "sync cargos: Supabase não configurado");
-      return resultado;
-    }
     const linhas = [...await this.linhas("vaga"), ...await this.linhas("vaga_repetida")];
     const cargos = await this.cargos.porChave();
 
@@ -128,14 +108,6 @@ export class CargosSyncService {
         resultado.erros += 1;
         this.log.error({ slot, cargo: nome, erro: error instanceof Error ? error.message : String(error) }, "sync cargos: falha ao criar cargo");
       }
-    }
-
-    // Antes das vagas: public.vaga.cargo_id aponta para public.cargo no Postgres.
-    if (!dry) {
-      await this.cargos.garantirEspelho([...cargos.values()]).catch((error: unknown) => {
-        resultado.erros += 1;
-        this.log.error({ slot, erro: error instanceof Error ? error.message : String(error) }, "sync cargos: falha no espelho do Postgres");
-      });
     }
 
     for (const atualizacao of planoDeCargos(linhas, cargos).atualizacoes) {

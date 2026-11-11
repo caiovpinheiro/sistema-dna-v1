@@ -43,6 +43,7 @@ import { VagasAbertasSyncService } from "./services/vagas-abertas-sync.service.j
 import { SyncCicloService } from "./services/sync-ciclo.service.js";
 import { CargosSyncService } from "./services/cargos-sync.service.js";
 import { agendarPorSlot } from "./lib/agenda-sync.js";
+import { usarBancoTracker } from "./origem/tracker-db.js";
 
 export type AppContext = {
   config: AppConfig;
@@ -107,6 +108,7 @@ export async function buildApp(context: AppContext): Promise<FastifyInstance> {
   await app.register(swaggerUi, { routePrefix: "/docs" });
   await registerAuth(app, context.config);
 
+  usarBancoTracker(context.db);
   const candidatos = new CandidatoRepository(context.config.CONTRATACAO_STATUS_ATIVO, context.config.CONTRATACAO_STATUS_ENCERRADO);
   const empresas = new EmpresaRepository();
   const vagas = new VagaRepository(context.config.CONTRATACAO_STATUS_ATIVO, context.config.vagaStatusBloqueadas);
