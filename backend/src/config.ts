@@ -63,6 +63,8 @@ const envSchema = z.object({
     .string()
     .optional()
     .transform((value) => value === "1" || value === "true"),
+  LMS_ACCESS_TOKEN: z.string().optional().default(""),
+  LMS_API_URL: z.string().optional().default("https://cursos.dnawork.ai"),
 });
 
 export type AppConfig = z.infer<typeof envSchema> & {
@@ -88,4 +90,3 @@ export function loadConfig(): AppConfig {
     vagaStatusBloqueadas,
   };
 }
-
