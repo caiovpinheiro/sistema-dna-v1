@@ -47,6 +47,23 @@ export function dataHoraBr(value: string | null | undefined): string {
   }).format(data);
 }
 
+/** Dias de calendário entre a abertura e hoje. Null se a data não existir ou estiver no futuro. */
+export function diasEmAberto(value: string | null | undefined, hoje = new Date()): number | null {
+  if (!value) return null;
+  const [year, month, day] = value.slice(0, 10).replaceAll("/", "-").split("-").map(Number);
+  if (!year || !month || !day || year < 1000) return null;
+  const inicio = new Date(year, month - 1, day);
+  const atual = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
+  const dias = Math.round((atual.getTime() - inicio.getTime()) / 86_400_000);
+  return Number.isNaN(dias) || dias < 0 ? null : dias;
+}
+
+export function textoDiasEmAberto(dias: number): string {
+  if (dias === 0) return "hoje";
+  if (dias === 1) return "há 1 dia";
+  return `há ${dias} dias`;
+}
+
 export const regimeLabel: Record<string, string> = { clt: "CLT", estagio: "Estágio", outro: "Outro" };
 export const origemLabel: Record<string, string> = { dnawork: "Captado pela DNAWORK", empresa: "Enviado pela empresa" };
 export const etapaLabel: Record<string, string> = {

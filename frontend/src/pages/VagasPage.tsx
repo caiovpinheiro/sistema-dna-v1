@@ -5,9 +5,9 @@ import { BuscaOpcao } from "@/components/busca-opcao";
 import { Paginacao, numeroPagina } from "@/components/paginacao";
 import { Badge, Button, Card, Empty, Select, Skeleton } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
-import { STATUS_VAGA, money, regimeLabel, situacaoLabel } from "@/lib/format";
+import { STATUS_VAGA, dateBr, diasEmAberto, money, regimeLabel, situacaoLabel, textoDiasEmAberto } from "@/lib/format";
 
-type Row = { id_vaga: string; cargo: string; empresa: string | null; grupo: string | null; regime: string; situacao: string; quantidade_posicoes: number | null; ocupadas: number; disponiveis: number | null; salario: number | null };
+type Row = { id_vaga: string; cargo: string; empresa: string | null; grupo: string | null; regime: string; situacao: string; quantidade_posicoes: number | null; ocupadas: number; disponiveis: number | null; salario: number | null; dataabertura: string | null };
 type Filtros = { empresas: Array<{ id: string; nome: string; grupo_id: string | null; grupo: string | null }>; grupos: Array<{ id: string; nome: string }>; cargos: Array<{ chave: string; nome: string }> };
 type Mode = { id: number; descricao: string };
 
@@ -74,7 +74,10 @@ export function VagasPage() {
                 <h2 className="font-bold">{item.cargo}</h2>
                 <p className="text-sm text-slate-500">{item.empresa ?? "Sem empresa"}{item.grupo ? ` · ${item.grupo}` : ""} · {money(item.salario)}</p>
                 <p className="mt-3 text-sm font-semibold text-navy-900">{item.quantidade_posicoes ?? "—"} posições · {item.ocupadas} preenchidas · {item.disponiveis ?? "—"} disponíveis</p>
-                <p className="text-xs text-slate-500">{regimeLabel[item.regime]}</p>
+                <p className="text-xs text-slate-500">
+                  {regimeLabel[item.regime]}
+                  <TempoAberto situacao={item.situacao} abertura={item.dataabertura} />
+                </p>
               </Link>
               <StatusEditavel vaga={item} />
             </div>
@@ -86,6 +89,18 @@ export function VagasPage() {
         </div>
       ) : <Empty title="Nenhuma vaga" text="Crie uma vaga vinculada a uma empresa existente." />}
     </div>
+  );
+}
+
+function TempoAberto({ situacao, abertura }: { situacao: string; abertura: string | null }) {
+  if (situacao !== "aberta") return null;
+  const dias = diasEmAberto(abertura);
+  if (dias == null) return null;
+  const cor = dias >= 60 ? "text-rose-700" : dias >= 30 ? "text-amber-700" : "text-slate-600";
+  return (
+    <span className={`font-semibold ${cor}`} title={`Desde ${dateBr(abertura)}`}>
+      {" · "}em aberto {textoDiasEmAberto(dias)}
+    </span>
   );
 }
 
