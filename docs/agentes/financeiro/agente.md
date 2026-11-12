@@ -1,6 +1,6 @@
 # Agente — Financeiro
 
-> Última revisão: 2026-11-12 (commit "Repagina a régua de cobrança")
+> Última revisão: 2026-11-12 (commit "Alinha as colunas dos grupos da régua de cobrança")
 
 ## Para que serve
 

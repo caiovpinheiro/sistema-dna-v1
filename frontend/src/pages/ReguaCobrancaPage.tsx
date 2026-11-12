@@ -247,9 +247,9 @@ export function ReguaCobrancaPage() {
           return (
             <section key={grupo.id} className={cn("overflow-hidden rounded-xl border bg-white", aberto ? "border-cyan-500/40" : "border-slate-200")}>
               <button type="button" aria-expanded={aberto} onClick={() => setGrupoAberto(aberto ? null : grupo.id)}
-                className="grid w-full gap-3 px-4 py-4 text-left hover:bg-slate-50 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1.6fr)_auto_auto] md:items-center">
+                className="grid w-full gap-3 px-4 py-4 text-left hover:bg-slate-50 md:grid-cols-[minmax(0,1fr)_9rem_14rem_12rem_7rem] md:items-center lg:grid-cols-[minmax(0,1fr)_10rem_18rem_13rem_7rem]">
                 <div className="min-w-0">
-                  <p className="truncate text-[15px] font-bold text-navy-900">{grupo.empresa}</p>
+                  <p className="truncate text-[15px] font-bold text-navy-900" title={grupo.empresa}>{grupo.empresa}</p>
                   <p className="flex items-center gap-1.5 text-xs text-slate-500">
                     <Building2 size={12} /> {grupo.unidades.length} {grupo.unidades.length === 1 ? "unidade" : "unidades"}{grupo.cnpj ? `, ${grupo.cnpj}` : ""}
                   </p>
@@ -262,11 +262,11 @@ export function ReguaCobrancaPage() {
                   <p className="text-xs text-slate-500">Próxima ação</p>
                   <p className="flex items-center gap-1.5 truncate text-sm font-semibold text-slate-700"><CalendarClock size={14} className="shrink-0 text-slate-400" /> {grupo.proxima_acao ?? "Régua encerrada"}</p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <Badge value={badgeStatus(grupo.status)}>{statusPagamento[grupo.status] ?? grupo.status}</Badge>
                   {grupo.pendencias ? <span className="text-xs font-semibold text-amber-800">{grupo.pendencias} {grupo.pendencias === 1 ? "pendência" : "pendências"}</span> : null}
                 </div>
-                <span className="flex items-center gap-1 text-sm font-semibold text-cyan-700">
+                <span className="flex items-center gap-1 text-sm font-semibold text-cyan-700 md:justify-end">
                   {aberto ? "Fechar" : "Ver faturas"} <ChevronDown size={16} className={cn("transition", aberto ? "rotate-180" : "")} />
                 </span>
               </button>
