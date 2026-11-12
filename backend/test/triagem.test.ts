@@ -215,3 +215,26 @@ test("horário do Notion: dias ligados por 'e', dia único e vários trechos na 
   // "e" entre dias não seguidos não vira intervalo (pularia a terça).
   assert.equal(gradeDe("🕐 Segunda e quarta: 09h às 18h"), null);
 });
+
+test("vaga no mesmo CEP da pessoa fica a 0 km, mesmo com o ponto da empresa longe do centro do CEP", async () => {
+  const { distanciaDaVaga } = await import("../src/services/triagem.service.js");
+  const origem = { lat: -23.52272, lng: -46.835 };
+  assert.equal(distanciaDaVaga(origem, "06386590", { cep: "06386-590", latitude: -23.5313, longitude: -46.8369 }), 0);
+  assert.equal(distanciaDaVaga(origem, "06386590", { cep: "06386-590", latitude: null, longitude: null }), 0);
+  assert.ok(distanciaDaVaga(origem, "06386590", { cep: "06010-000", latitude: -23.5313, longitude: -46.8369 }) > 0.5);
+  assert.ok(Number.isNaN(distanciaDaVaga(origem, "06386590", { cep: "06010-000", latitude: null, longitude: null })));
+});
+
+test("endereço da ficha diferente do da triagem pede coordenada nova", async () => {
+  const { enderecoMudou, localDaEmpresa } = await import("../src/lib/empresa-endereco.js");
+  const triagem = { cep: "06280-000", logradouro: "Av. dos Autonomistas", numero: "100" };
+  const ficha = { cep: "06386-590", logradouro: "Rua Ana Maria", numero: "1186", cidade: "Carapicuíba" };
+  assert.equal(enderecoMudou(triagem, ficha), true);
+  // Só formatação diferente (máscara, acento, caixa, espaços) não conta como mudança.
+  assert.equal(enderecoMudou({ cep: "06386590", logradouro: "RUA  ANA MARIA", numero: "1186" }, ficha), false);
+  // Ficha incompleta não sobrescreve a triagem.
+  assert.equal(enderecoMudou(triagem, { ...ficha, cep: "" }), false);
+  assert.equal(enderecoMudou(triagem, { ...ficha, logradouro: null }), false);
+  assert.equal(localDaEmpresa("Jardim Ana Maria", "Carapicuíba", "sp"), "Jardim Ana Maria - Carapicuíba / SP");
+  assert.equal(localDaEmpresa("", "Carapicuíba", "SP"), "Carapicuíba / SP");
+});
