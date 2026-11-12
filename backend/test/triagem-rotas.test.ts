@@ -116,3 +116,14 @@ test("compatibilidade: sem JEV devolve vagas como indisponíveis, sem score", as
   const semVagas = await app.inject({ method: "POST", url: "/api/v1/triagem/compatibilidade", headers: { cookie: admin() }, payload: { perfil: {}, vagaIds: [] } });
   assert.equal(semVagas.statusCode, 422);
 });
+
+test("gerador de dossiês exige login e a página triagem", async () => {
+  assert.equal((await app.inject({ method: "GET", url: "/api/v1/triagem/dossie/vagas" })).statusCode, 401);
+  const negado = await app.inject({ method: "GET", url: "/api/v1/triagem/dossie/vagas", headers: { cookie: cookie("sem-triagem", "op@dna.local") } });
+  assert.equal(negado.statusCode, 403);
+  const liberado = await app.inject({ method: "GET", url: "/api/v1/triagem/dossie/vagas", headers: { cookie: cookie("com-triagem", "op@dna.local") } });
+  assert.equal(liberado.statusCode, 200);
+  assert.equal(liberado.json().data[0].cargo, "Atendente");
+  const semIa = await app.inject({ method: "POST", url: "/api/v1/triagem/dossie", headers: { cookie: admin() }, payload: { vagaId: "v1", manual: { nome: "Ana" }, texto: "Experiência de dois anos como atendente de loja." } });
+  assert.equal(semIa.statusCode, 503);
+});

@@ -40,6 +40,7 @@ import type { CadastroService } from "../services/cadastro.service.js";
 import type { TriagemService } from "../services/triagem.service.js";
 import type { CurriculoService } from "../services/curriculo.service.js";
 import type { TriagemMatchingService } from "../services/triagem-matching.service.js";
+import type { DossieService } from "../services/dossie.service.js";
 import { prepararCurriculo } from "../lib/curriculo/arquivo.js";
 import type { CargoService } from "../services/cargo.service.js";
 import type { SyncCicloService } from "../services/sync-ciclo.service.js";
@@ -64,6 +65,7 @@ type Services = {
   triagem: TriagemService;
   curriculo: CurriculoService;
   matching: TriagemMatchingService;
+  dossie: DossieService;
   cargos: CargoService;
   sync: SyncCicloService;
 };
@@ -829,6 +831,51 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
       }),
     },
   }, async (request) => ok(await services.matching.avaliar(request.body)));
+
+  // Gerador de dossiês (Triagem). Lê vagas, candidatos_dados e o CRM; só grava no CRM quando o operador salva a nota.
+  api.get("/api/v1/triagem/dossie/vagas", { schema: { tags: ["triagem"] } }, async () => ok(await services.dossie.listarVagas()));
+  api.get("/api/v1/triagem/dossie/status", { schema: { tags: ["triagem"] } }, async () => ok({ configurada: services.dossie.configurada, modelo: services.dossie.modelo }));
+  api.get("/api/v1/triagem/dossie/candidato", {
+    config: { rateLimit: { max: 60, timeWindow: "1 minute" } },
+    schema: {
+      tags: ["triagem"],
+      querystring: z.object({
+        telefone: z.string().trim().max(40).optional(),
+        dealId: z.string().trim().max(64).optional(),
+      }).refine((query) => Boolean(query.telefone || query.dealId), "Informe o telefone ou o id do negócio."),
+    },
+  }, async (request) => ok(await services.dossie.buscarCandidato(request.query)));
+  api.post("/api/v1/triagem/dossie", {
+    bodyLimit: 8 * 1024 * 1024,
+    config: { rateLimit: { max: 20, timeWindow: "1 minute" } },
+    schema: {
+      tags: ["triagem"],
+      body: z.object({
+        vagaId: z.string().trim().min(1, "Escolha a vaga.").max(64),
+        dealId: z.string().trim().max(64).optional(),
+        manual: z.object({
+          nome: z.string().trim().max(200).optional(),
+          idade: z.string().trim().max(10).optional(),
+          escolaridade: z.string().trim().max(200).optional(),
+          turno: z.string().trim().max(60).optional(),
+          bairroCidade: z.string().trim().max(200).optional(),
+        }).optional(),
+        arquivo: z.object({ nome: z.string().trim().min(1).max(200), base64: z.string().min(1).max(7_200_000) }).optional(),
+        texto: z.string().trim().min(30, "Cole um texto com pelo menos 30 caracteres.").max(30_000).optional(),
+      }).refine((body) => !(body.arquivo && body.texto), "Envie um arquivo ou um texto, não os dois."),
+    },
+  }, async (request) => {
+    const { arquivo, texto, ...resto } = request.body;
+    const curriculo = arquivo ? await prepararCurriculo(arquivo) : texto ? { tipo: "texto" as const, texto } : undefined;
+    return ok(await services.dossie.gerar({ ...resto, dealId: resto.dealId || undefined, curriculo }));
+  });
+  api.post("/api/v1/triagem/dossie/nota", {
+    config: { rateLimit: { max: 20, timeWindow: "1 minute" } },
+    schema: {
+      tags: ["triagem"],
+      body: z.object({ dealId: z.string().trim().min(1).max(64), conteudo: z.string().trim().min(1).max(20_000) }),
+    },
+  }, async (request) => ok(await services.dossie.salvarNota(request.body.dealId, request.body.conteudo)));
 
   api.post("/api/v1/zapsign/webhook", async (request) => {
     const payload = request.body && typeof request.body === "object" ? request.body as Record<string, unknown> : {};

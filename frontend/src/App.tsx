@@ -10,6 +10,7 @@ import { ConfiguracoesPage } from "@/pages/ConfiguracoesPage";
 import { ContratacaoDetailPage } from "@/pages/ContratacaoDetailPage";
 import { ContratacoesPage } from "@/pages/ContratacoesPage";
 import { DashboardPage } from "@/pages/DashboardPage";
+import { DossiePage } from "@/pages/DossiePage";
 import { EmailsPage } from "@/pages/EmailsPage";
 import { EmpresaDetailPage } from "@/pages/EmpresaDetailPage";
 import { EmpresaFormPage } from "@/pages/EmpresaFormPage";
@@ -63,6 +64,7 @@ export function App() {
           <Route element={<Protected />}>
             <Route path="/" element={<DashboardPage />} />
             <Route path="/triagem" element={<TriagemPage />} />
+            <Route path="/triagem/dossie" element={<DossiePage />} />
             <Route path="/candidatos" element={<CandidatosPage />} />
             <Route path="/candidatos/novo" element={<CandidatoFormPage />} />
             <Route path="/candidatos/:id" element={<CandidatoDetailPage />} />
