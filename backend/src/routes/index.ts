@@ -38,6 +38,9 @@ import type { VagaService } from "../services/vaga.service.js";
 import { LegadoService } from "../services/legado.service.js";
 import type { CadastroService } from "../services/cadastro.service.js";
 import type { TriagemService } from "../services/triagem.service.js";
+import type { CurriculoService } from "../services/curriculo.service.js";
+import type { TriagemMatchingService } from "../services/triagem-matching.service.js";
+import { prepararCurriculo } from "../lib/curriculo/arquivo.js";
 import type { CargoService } from "../services/cargo.service.js";
 import type { SyncCicloService } from "../services/sync-ciclo.service.js";
 import { sessionCookie } from "../plugins/auth.js";
@@ -59,6 +62,8 @@ type Services = {
   acesso: AcessoService;
   cadastro: CadastroService;
   triagem: TriagemService;
+  curriculo: CurriculoService;
+  matching: TriagemMatchingService;
   cargos: CargoService;
   sync: SyncCicloService;
 };
@@ -777,6 +782,52 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
     },
   }, async (request) => ok(await services.triagem.buscar(request.body)));
   api.get("/api/v1/triagem/empresas-pendentes", { schema: { tags: ["triagem"] } }, async () => ok(await services.triagem.empresasPendentes()));
+
+  // Triagem inteligente. Rotas separadas da busca rápida; nenhuma grava candidato, mexe no CRM ou envia mensagem.
+  api.get("/api/v1/triagem/ia/status", {
+    schema: { tags: ["triagem"], querystring: z.object({ verificar: z.enum(["0", "1"]).optional() }) },
+  }, async (request) => ok({
+    luna: {
+      configurada: services.curriculo.configurada,
+      modelo: services.curriculo.modelo,
+      ...(request.query.verificar === "1" ? await services.curriculo.verificarModelo() : {}),
+    },
+    jev: services.matching.estadoJev(),
+  }));
+  api.post("/api/v1/triagem/curriculo", {
+    bodyLimit: 8 * 1024 * 1024,
+    config: { rateLimit: { max: 20, timeWindow: "1 minute" } },
+    schema: {
+      tags: ["triagem"],
+      body: z.object({
+        arquivo: z.object({ nome: z.string().trim().min(1).max(200), base64: z.string().min(1).max(7_200_000) }).optional(),
+        texto: z.string().trim().min(30, "Cole um texto com pelo menos 30 caracteres.").max(30_000).optional(),
+      }).refine((body) => Boolean(body.arquivo) !== Boolean(body.texto), "Envie um arquivo ou um texto."),
+    },
+  }, async (request) => {
+    const preparado = request.body.arquivo ? await prepararCurriculo(request.body.arquivo) : { tipo: "texto" as const, texto: request.body.texto! };
+    return ok(await services.curriculo.analisar(preparado));
+  });
+  const campoPerfil = z.string().max(4000).optional().default("");
+  api.post("/api/v1/triagem/compatibilidade", {
+    config: { rateLimit: { max: 30, timeWindow: "1 minute" } },
+    schema: {
+      tags: ["triagem"],
+      body: z.object({
+        perfil: z.object({
+          resumo: campoPerfil,
+          escolaridade: campoPerfil,
+          ultimoCargo: campoPerfil,
+          experiencias: campoPerfil,
+          tempoExperiencia: campoPerfil,
+          habilidades: campoPerfil,
+          cursos: campoPerfil,
+          objetivo: campoPerfil,
+        }),
+        vagaIds: z.array(z.string().trim().min(1).max(64)).min(1).max(30),
+      }),
+    },
+  }, async (request) => ok(await services.matching.avaliar(request.body)));
 
   api.post("/api/v1/zapsign/webhook", async (request) => {
     const payload = request.body && typeof request.body === "object" ? request.body as Record<string, unknown> : {};

@@ -65,6 +65,18 @@ const envSchema = z.object({
     .transform((value) => value === "1" || value === "true"),
   LMS_ACCESS_TOKEN: z.string().optional().default(""),
   LMS_API_URL: z.string().optional().default("https://cursos.dnawork.ai"),
+  // Triagem inteligente: resumo de currículo pela OpenAI (Luna). Sem chave, a análise responde 503 e a busca rápida segue igual.
+  OPENAI_API_KEY: z.string().optional().default(""),
+  OPENAI_API_URL: z.string().optional().default("https://api.openai.com/v1"),
+  LUNA_MODEL: z.string().optional().default("gpt-6-luna"),
+  LUNA_TIMEOUT_MS: z.coerce.number().int().min(5_000).max(300_000).default(90_000),
+  // Triagem inteligente: score profissional pelo JEV (TypeSafe). Sem URL e chave, as vagas aparecem como "avaliação indisponível".
+  JEV_API_URL: z.string().optional().default(""),
+  JEV_API_KEY: z.string().optional().default(""),
+  JEV_MODEL: z.string().optional().default("jev-latest"),
+  JEV_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(120_000).default(30_000),
+  JEV_CONCORRENCIA: z.coerce.number().int().min(1).max(10).default(3),
+  JEV_LOTE: z.coerce.number().int().min(1).max(30).default(10),
 });
 
 export type AppConfig = z.infer<typeof envSchema> & {

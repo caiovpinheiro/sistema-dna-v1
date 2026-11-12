@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "concurrently -n api,web -c blue,cyan \"npm run dev -w backend\" \"npm run dev -w frontend\"",
     "build": "npm run build -w backend && npm run build -w frontend",
-    "test": "npm run test -w backend",
+    "test": "npm run test -w backend && npm run test -w frontend",
     "lint": "npm run lint -w backend && npm run lint -w frontend",
     "db:local": "npm run db:local -w backend",
     "db:migrate": "prisma migrate deploy",

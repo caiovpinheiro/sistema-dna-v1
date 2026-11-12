@@ -1,27 +1,34 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { AlertTriangle, Check, Copy, MapPin, Search } from "lucide-react";
-import { useMemo, useState, type FormEvent } from "react";
+import { AlertTriangle, Check, Copy, MapPin, RotateCcw, Search, Sparkles } from "lucide-react";
+import { useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { AnaliseDaVaga, PerfilCandidato, useStatusIa } from "@/components/triagem-inteligente";
 import { Badge, Button, Card, Empty, Field, Input, Select, Skeleton, Textarea, cn } from "@/components/ui";
 import { api } from "@/lib/api";
 import { geocodeCep } from "@/lib/triagem-geo";
+import {
+  PERFIL_VAZIO,
+  idsParaRepetir,
+  mesclarAvaliacoes,
+  ordemDeExibicao,
+  organizarVagas,
+  perfilPreenchido,
+  proximoLote,
+  selecaoValida,
+  selecionadasNaOrdem,
+  textoParaCandidato,
+  type AvaliacaoVaga,
+  type Avaliacoes,
+  type PerfilProfissional,
+  type Tipo,
+  type Vaga,
+} from "@/lib/triagem-matching";
 
-type Tipo = "CLT" | "Estágio";
-type Vaga = {
-  id: string;
-  title: string;
-  company: string;
-  location: string;
-  contractType: string;
-  salaryLabel: string;
-  hasBenefits: boolean;
-  homeOffice?: boolean;
-  schedule: string | null;
-  schedules: string[];
-  distanceKm: number;
-};
+export { textoParaCandidato };
+
+type Compatibilidade = { avaliacoes: AvaliacaoVaga[] };
 type Resultado = { originLabel: string; jobs: Vaga[] };
 type EmpresaPendente = { nome: string; cnpj: string; vagas: number };
-type Busca = { cep: string; raioKm: number; tipos: Tipo[]; sexo?: "M" | "F"; idade?: number };
+type Busca = { cep: string; raioKm: number; tipos: Tipo[]; sexo?: "M" | "F"; idade?: number; inteligente?: boolean };
 
 const RAIOS = [5, 10, 15, 20, 30, 50];
 
@@ -32,25 +39,6 @@ function mascaraCep(value: string) {
 
 function nomeDoTipo(tipo: string) {
   return tipo.toLowerCase().startsWith("est") ? "estágio" : "CLT";
-}
-
-export function textoParaCandidato(vagas: Vaga[]) {
-  if (!vagas.length) return "";
-  const tipos = [...new Set(vagas.map((vaga) => nomeDoTipo(vaga.contractType)))];
-  const deTipo = tipos.length === 1 ? ` de ${tipos[0]}` : "";
-  const abertura = vagas.length === 1
-    ? `✨ Encontrei esta vaga${deTipo} próxima de você:`
-    : `✨ Encontrei estas vagas${deTipo} próximas de você:`;
-  const linhas = vagas.map((vaga, indice) => {
-    const partes = [`${indice + 1}. ${vaga.title}`];
-    if (vaga.location) partes.push(`📍 ${vaga.location}`);
-    for (const horario of vaga.schedules) partes.push(`🕒 ${horario}`);
-    if (vaga.homeOffice) partes.push("🏠 Home office");
-    partes.push(`💰 ${vaga.salaryLabel}${vaga.hasBenefits ? " + benefícios" : ""}`);
-    return partes.join("\n");
-  });
-  const fechamento = vagas.length === 1 ? "Possui interesse?" : "Possui interesse? Se sim, nos informe o número da vaga.";
-  return [abertura, ...linhas, fechamento].join("\n\n");
 }
 
 function AvisoEmpresasPendentes() {
@@ -83,6 +71,47 @@ function AvisoEmpresasPendentes() {
   );
 }
 
+type Modo = "rapida" | "inteligente";
+
+/** Cartão da vaga. Na busca rápida é idêntico ao de antes; na inteligente ganha a análise embaixo. */
+function CartaoVaga({ vaga, marcada, onAlternar, turno, children }: { vaga: Vaga; marcada: boolean; onAlternar: () => void; turno?: string; children?: ReactNode }) {
+  return (
+    <label className={cn("flex cursor-pointer gap-3 rounded-xl border bg-white p-4 transition", marcada ? "border-cyan-500 ring-1 ring-cyan-500/40" : "border-slate-200 hover:border-cyan-200")}>
+      <input type="checkbox" className="mt-1 h-4 w-4 shrink-0 accent-cyan-700" checked={marcada} onChange={onAlternar} />
+      <div className="grid min-w-0 flex-1 gap-1">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="font-semibold text-navy-900">{vaga.title}</p>
+            <p className="text-sm text-slate-500">{vaga.company}</p>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <Badge value={nomeDoTipo(vaga.contractType) === "CLT" ? "clt" : "estagio"}>{vaga.contractType}</Badge>
+            <span className="text-sm font-semibold text-slate-700">{vaga.distanceKm.toLocaleString("pt-BR")} km</span>
+          </div>
+        </div>
+        <p className="text-sm text-slate-600">📍 {vaga.location || "Local não informado"}</p>
+        {vaga.schedules.map((horario) => <p key={horario} className="whitespace-pre-line text-sm text-slate-600">🕒 {horario}</p>)}
+        {turno ? <p className="text-xs text-slate-500">Turno informado pela pessoa: {turno}</p> : null}
+        {vaga.homeOffice ? <p className="text-sm text-slate-600">🏠 Home office</p> : null}
+        <p className="text-sm text-slate-600">💰 {vaga.salaryLabel}{vaga.hasBenefits ? " + benefícios" : ""}</p>
+        {children}
+      </div>
+    </label>
+  );
+}
+
+function Secao({ titulo, texto, children }: { titulo: string; texto?: string; children: ReactNode }) {
+  return (
+    <div className="grid gap-3">
+      <div>
+        <p className="text-sm font-semibold text-navy-900">{titulo}</p>
+        {texto ? <p className="text-xs text-slate-500">{texto}</p> : null}
+      </div>
+      {children}
+    </div>
+  );
+}
+
 export function TriagemPage() {
   const [cep, setCep] = useState("");
   const [tipos, setTipos] = useState<Tipo[]>(["CLT", "Estágio"]);
@@ -92,19 +121,57 @@ export function TriagemPage() {
   const [erro, setErro] = useState("");
   const [marcadas, setMarcadas] = useState<string[]>([]);
   const [copiado, setCopiado] = useState(false);
+  const [modo, setModo] = useState<Modo>("rapida");
+  const [perfil, setPerfil] = useState<PerfilProfissional>(PERFIL_VAZIO);
+  const [turno, setTurno] = useState("");
+  const [avaliacoes, setAvaliacoes] = useState<Avaliacoes>({});
+  const [emAnalise, setEmAnalise] = useState<string[]>([]);
+  const [erroAnalise, setErroAnalise] = useState("");
+
+  const inteligente = modo === "inteligente";
+  const status = useStatusIa(inteligente);
+  const statusIa = status.data?.data;
+  const lote = statusIa?.jev.lote ?? 10;
+
+  const compatibilidade = useMutation({
+    mutationFn: (vagaIds: string[]) =>
+      api<Compatibilidade>("/api/v1/triagem/compatibilidade", { method: "POST", body: JSON.stringify({ perfil, vagaIds }) }),
+    onMutate: (vagaIds) => {
+      setErroAnalise("");
+      setEmAnalise(vagaIds);
+    },
+    onSuccess: (resposta) => setAvaliacoes((atuais) => mesclarAvaliacoes(atuais, resposta.data.avaliacoes)),
+    // Falha da chamada inteira não some com as vagas: elas continuam na lista, como "ainda não analisadas".
+    onError: (error) => setErroAnalise(error.message),
+    onSettled: () => setEmAnalise([]),
+  });
 
   const busca = useMutation({
-    mutationFn: async (dados: Busca) => {
+    mutationFn: async ({ inteligente: _modo, ...dados }: Busca) => {
       const geo = await geocodeCep(dados.cep);
       const body = geo.ponto ? { ...dados, lat: geo.ponto.lat, lng: geo.ponto.lng } : dados;
       return api<Resultado>("/api/v1/triagem/vagas", { method: "POST", body: JSON.stringify(body) });
     },
-    onSuccess: () => setMarcadas([]),
+    onSuccess: (resposta, dados) => {
+      setMarcadas([]);
+      setAvaliacoes({});
+      setErroAnalise("");
+      // Busca inteligente: avalia o primeiro lote logo depois da busca geográfica. A busca rápida nunca chama IA nem JEV.
+      if (dados.inteligente && perfilPreenchido(perfil) && resposta.data.jobs.length) {
+        compatibilidade.mutate(proximoLote(resposta.data.jobs, {}, lote));
+      }
+    },
   });
 
   const vagas = busca.data?.data.jobs ?? [];
-  const selecionadas = useMemo(() => vagas.filter((vaga) => marcadas.includes(vaga.id)), [vagas, marcadas]);
+  const analisouAlgo = busca.data != null && (Object.keys(avaliacoes).length > 0 || compatibilidade.isPending);
+  const organizado = useMemo(() => organizarVagas(vagas, avaliacoes), [vagas, avaliacoes]);
+  const ordem = useMemo(() => (analisouAlgo ? ordemDeExibicao(organizado) : vagas), [analisouAlgo, organizado, vagas]);
+  const marcadasValidas = useMemo(() => selecaoValida(marcadas, vagas), [marcadas, vagas]);
+  const selecionadas = useMemo(() => selecionadasNaOrdem(ordem, marcadasValidas), [ordem, marcadasValidas]);
   const texto = textoParaCandidato(selecionadas);
+  const pendentes = organizado.pendentes.length;
+  const paraRepetir = idsParaRepetir(avaliacoes);
 
   function alternarTipo(tipo: Tipo) {
     setTipos((atual) => atual.includes(tipo) ? atual.filter((item) => item !== tipo) : [...atual, tipo]);
@@ -121,6 +188,7 @@ export function TriagemPage() {
     if (!tipos.length) return setErro("Escolha CLT, Estágio ou os dois.");
     const idadeNumero = idade ? Number(idade) : undefined;
     if (idadeNumero != null && (!Number.isInteger(idadeNumero) || idadeNumero < 1 || idadeNumero > 120)) return setErro("Informe uma idade entre 1 e 120.");
+    if (inteligente && !perfilPreenchido(perfil)) return setErro("Na busca inteligente, preencha o resumo, as experiências ou as habilidades (pelo menos 30 caracteres), ou volte para a busca rápida.");
     setErro("");
     busca.mutate({
       cep: digitos,
@@ -128,7 +196,13 @@ export function TriagemPage() {
       tipos,
       ...(sexo === "M" || sexo === "F" ? { sexo } : {}),
       ...(idadeNumero != null ? { idade: idadeNumero } : {}),
+      inteligente,
     });
+  }
+
+  function analisarMais() {
+    const ids = proximoLote(vagas, avaliacoes, lote);
+    if (ids.length) compatibilidade.mutate(ids);
   }
 
   async function copiar() {
@@ -137,6 +211,12 @@ export function TriagemPage() {
     setCopiado(true);
     setTimeout(() => setCopiado(false), 2000);
   }
+
+  const cartao = (vaga: Vaga & { avaliacao?: AvaliacaoVaga | null }) => (
+    <CartaoVaga key={vaga.id} vaga={vaga} marcada={marcadasValidas.includes(vaga.id)} onAlternar={() => alternarVaga(vaga.id)} turno={analisouAlgo ? turno.trim() : undefined}>
+      {analisouAlgo ? <AnaliseDaVaga avaliacao={vaga.avaliacao ?? null} analisando={emAnalise.includes(vaga.id)} /> : null}
+    </CartaoVaga>
+  );
 
   return (
     <div className="grid gap-5">
@@ -166,7 +246,7 @@ export function TriagemPage() {
             </fieldset>
             <div className="flex md:justify-end">
               <Button type="submit" disabled={busca.isPending} className="h-10 w-full md:w-auto">
-                <Search size={16} /> {busca.isPending ? "Buscando…" : "Buscar vagas"}
+                <Search size={16} /> {busca.isPending ? "Buscando…" : inteligente ? "Buscar e analisar" : "Buscar vagas"}
               </Button>
             </div>
           </div>
@@ -187,6 +267,22 @@ export function TriagemPage() {
               <Input type="number" min={1} max={120} placeholder="Opcional" value={idade} onChange={(event) => setIdade(event.target.value)} />
             </Field>
           </div>
+          <div className="grid gap-4 border-t border-slate-200 pt-4">
+            <label className="flex w-fit cursor-pointer items-center gap-2 text-sm text-slate-700">
+              <input type="checkbox" className="h-4 w-4 accent-cyan-700" checked={inteligente} onChange={(event) => setModo(event.target.checked ? "inteligente" : "rapida")} />
+              <Sparkles size={15} className="text-cyan-700" /> Busca inteligente: comparar o currículo com as vagas (Luna + JEV)
+            </label>
+            {inteligente ? (
+              <>
+                {statusIa && !statusIa.jev.pronto ? (
+                  <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                    Score JEV indisponível: {statusIa.jev.motivo} As vagas aparecem sem score, com a comparação de termos do DNA Work.
+                  </p>
+                ) : null}
+                <PerfilCandidato perfil={perfil} onPerfil={setPerfil} turno={turno} onTurno={setTurno} status={statusIa} />
+              </>
+            ) : null}
+          </div>
           {erro ? <p className="text-sm text-rose-600">{erro}</p> : null}
         </form>
       </Card>
@@ -201,35 +297,49 @@ export function TriagemPage() {
                 <MapPin size={15} /> {busca.data.data.originLabel} · {vagas.length} {vagas.length === 1 ? "vaga" : "vagas"} em até {raioKm} km
               </p>
               {vagas.length ? (
-                <Button type="button" variant="ghost" onClick={() => setMarcadas(marcadas.length === vagas.length ? [] : vagas.map((vaga) => vaga.id))}>
-                  {marcadas.length === vagas.length ? "Desmarcar todas" : "Marcar todas"}
+                <Button type="button" variant="ghost" onClick={() => setMarcadas(marcadasValidas.length === vagas.length ? [] : vagas.map((vaga) => vaga.id))}>
+                  {marcadasValidas.length === vagas.length ? "Desmarcar todas" : "Marcar todas"}
                 </Button>
               ) : null}
             </div>
-            {vagas.length ? vagas.map((vaga) => {
-              const marcada = marcadas.includes(vaga.id);
-              return (
-                <label key={vaga.id} className={cn("flex cursor-pointer gap-3 rounded-xl border bg-white p-4 transition", marcada ? "border-cyan-500 ring-1 ring-cyan-500/40" : "border-slate-200 hover:border-cyan-200")}>
-                  <input type="checkbox" className="mt-1 h-4 w-4 shrink-0 accent-cyan-700" checked={marcada} onChange={() => alternarVaga(vaga.id)} />
-                  <div className="grid min-w-0 flex-1 gap-1">
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="font-semibold text-navy-900">{vaga.title}</p>
-                        <p className="text-sm text-slate-500">{vaga.company}</p>
-                      </div>
-                      <div className="flex shrink-0 items-center gap-2">
-                        <Badge value={nomeDoTipo(vaga.contractType) === "CLT" ? "clt" : "estagio"}>{vaga.contractType}</Badge>
-                        <span className="text-sm font-semibold text-slate-700">{vaga.distanceKm.toLocaleString("pt-BR")} km</span>
-                      </div>
-                    </div>
-                    <p className="text-sm text-slate-600">📍 {vaga.location || "Local não informado"}</p>
-                    {vaga.schedules.map((horario) => <p key={horario} className="whitespace-pre-line text-sm text-slate-600">🕒 {horario}</p>)}
-                    {vaga.homeOffice ? <p className="text-sm text-slate-600">🏠 Home office</p> : null}
-                    <p className="text-sm text-slate-600">💰 {vaga.salaryLabel}{vaga.hasBenefits ? " + benefícios" : ""}</p>
-                  </div>
-                </label>
-              );
-            }) : <Empty title="Não há vagas próximas" text="Nenhuma vaga dentro do raio escolhido. Tente um raio maior ou outro tipo." />}
+            {!vagas.length ? <Empty title="Não há vagas próximas" text="Nenhuma vaga dentro do raio escolhido. Tente um raio maior ou outro tipo." /> : !analisouAlgo ? (
+              <>
+                {inteligente ? (
+                  <Button type="button" variant="ghost" className="w-fit" disabled={!perfilPreenchido(perfil) || compatibilidade.isPending} onClick={analisarMais}>
+                    <Sparkles size={15} /> Analisar compatibilidade destas vagas
+                  </Button>
+                ) : null}
+                {vagas.map((vaga) => cartao(vaga))}
+                {inteligente && erroAnalise ? <p className="text-sm text-rose-600">Análise de compatibilidade falhou: {erroAnalise}</p> : null}
+              </>
+            ) : (
+              <>
+                {erroAnalise ? <p className="text-sm text-rose-600">Análise de compatibilidade falhou: {erroAnalise} As vagas continuam na lista.</p> : null}
+                {organizado.avaliadas.length ? (
+                  <Secao titulo={`Avaliadas pelo JEV (${organizado.avaliadas.length})`} texto="Da maior para a menor compatibilidade profissional; empate pela distância. A decisão final é sua.">
+                    {organizado.avaliadas.map(cartao)}
+                  </Secao>
+                ) : null}
+                {organizado.semAvaliacao.length ? (
+                  <Secao titulo={`Sem avaliação ou com informação insuficiente (${organizado.semAvaliacao.length})`} texto="Continuam disponíveis para seleção, na ordem de distância.">
+                    {paraRepetir.length ? (
+                      <Button type="button" variant="ghost" className="w-fit" disabled={compatibilidade.isPending} onClick={() => compatibilidade.mutate(paraRepetir)}>
+                        <RotateCcw size={15} /> Tentar de novo as que falharam ({paraRepetir.length})
+                      </Button>
+                    ) : null}
+                    {organizado.semAvaliacao.map(cartao)}
+                  </Secao>
+                ) : null}
+                {pendentes ? (
+                  <Secao titulo={`Ainda não analisadas (${pendentes})`} texto="Mais próximas primeiro. Analise sob demanda para controlar custo e tempo.">
+                    <Button type="button" variant="ghost" className="w-fit" disabled={compatibilidade.isPending} onClick={analisarMais}>
+                      <Sparkles size={15} /> {compatibilidade.isPending ? "Analisando…" : `Analisar mais ${Math.min(lote, pendentes)}`}
+                    </Button>
+                    {organizado.pendentes.map(cartao)}
+                  </Secao>
+                ) : null}
+              </>
+            )}
           </div>
           {vagas.length ? (
             <Card className="grid gap-3 xl:sticky xl:top-0">

@@ -34,6 +34,9 @@ import { AcessoService } from "./services/acesso.service.js";
 import { VagaService } from "./services/vaga.service.js";
 import { CadastroService } from "./services/cadastro.service.js";
 import { TriagemService } from "./services/triagem.service.js";
+import { CurriculoService } from "./services/curriculo.service.js";
+import { TriagemMatchingService } from "./services/triagem-matching.service.js";
+import { criarTransporteJev } from "./lib/jev/jev.js";
 import { CargoService } from "./services/cargo.service.js";
 import { normalizarAtendimento } from "./lib/atendimento.js";
 import { iniciarAgendaRegua } from "./lib/regua-agenda.js";
@@ -133,6 +136,8 @@ export async function buildApp(context: AppContext): Promise<FastifyInstance> {
     cadastro: new CadastroService(context.db, context.mysql ?? null, context.config, cargos),
     cargos,
     triagem: new TriagemService(context.db, context.mysql ?? null, context.config),
+    curriculo: new CurriculoService(context.config),
+    matching: new TriagemMatchingService(context.db, context.config, criarTransporteJev(context.config)),
     sync: new SyncCicloService(
       new VagasAbertasSyncService(context.db, context.mysql ?? null, context.config, app.log),
       new CargosSyncService(context.db, context.config, cargos, app.log),
