@@ -1,16 +1,16 @@
 # Agente — Vagas
 
-> Última revisão: 2026-11-12 (foto do cargo na mensagem para o candidato)
+> Última revisão: 2026-11-12 (filtro por prioridade)
 
 ## Para que serve
 
-Aqui o usuário consulta todas as vagas (cópia do Lightsail em `dna_work.vaga`) com filtros por cargo, grupo, empresa, modalidade e situação, e muda a situação direto na lista. Também pode abrir a ficha de uma vaga, com funil, mensagem para o candidato, candidatos sugeridos e contratados, e editar a vaga. Em "Consultar Modelos", mantém os **modelos globais de vaga** (um por cargo e modalidade, em `public.vaga_repetida`), que preenchem o formulário de abertura de vaga. As vagas abertas usadas pela Triagem (`public.vaga`) vêm de syncs automáticos a partir do Lightsail, do Notion e de `public.cargo`.
+Aqui o usuário consulta todas as vagas (cópia do Lightsail em `dna_work.vaga`) com filtros por cargo, grupo, empresa, modalidade, situação e prioridade, e muda a situação direto na lista. Também pode abrir a ficha de uma vaga, com funil, mensagem para o candidato, candidatos sugeridos e contratados, e editar a vaga. Em "Consultar Modelos", mantém os **modelos globais de vaga** (um por cargo e modalidade, em `public.vaga_repetida`), que preenchem o formulário de abertura de vaga. As vagas abertas usadas pela Triagem (`public.vaga`) vêm de syncs automáticos a partir do Lightsail, do Notion e de `public.cargo`.
 
 ## Rotas e abas
 
 | Rota | Componente | Arquivo | O que mostra |
 |---|---|---|---|
-| `/vagas` | `VagasPage` | `frontend/src/pages/VagasPage.tsx` | Menu "Consultar". Filtros (Cargo, Grupo, Empresa, Modalidade, Situação) na URL, tabela em telas largas e cartões em telas estreitas, ocupação das posições, tempo em aberto, selo de situação clicável (`StatusEditavel`) e paginação de 20, 25, 50 ou 100. |
+| `/vagas` | `VagasPage` | `frontend/src/pages/VagasPage.tsx` | Menu "Consultar". Filtros (Cargo, Grupo, Empresa, Modalidade, Situação, Prioridade) na URL, tabela em telas largas e cartões em telas estreitas, prioridade editável (`PrioridadeEditavel`: Alta, Média, Baixa), ocupação das posições, tempo em aberto, selo de situação clicável (`StatusEditavel`) e paginação de 20, 25, 50 ou 100. |
 | `/vagas/modelos` | `ConsultarModelosPage` | `frontend/src/pages/NovasAbasPage.tsx` (linha 180) | Menu "Consultar Modelos". Busca por cargo (com sugestões) e modalidade. Tabela com Cargo, Modalidade, Salário, Carga, Horário e as ações Abrir vaga, Editar e Apagar. |
 | `/vagas/modelos/novo` e `/vagas/modelos/:id/editar` | `ModeloFormPage` → `AbaVaga modo="modelo"` | `frontend/src/pages/GruposEmpresasPage.tsx` (linhas 452-741) | Formulário do modelo: o mesmo da abertura de vaga, sem empresa e sem quantidade. |
 | `/vagas/:id` | `VagaDetailPage` | `frontend/src/pages/VagaDetailPage.tsx` | Ficha da vaga: cabeçalho com Fechar/Reabrir, Novo processo, Contratar e Editar; os blocos Abertura, Inscritos, Entrevista e Contrato; as 4 etapas; mensagem para o candidato (com a foto do cargo, quando houver; "Copiar foto e mensagem" copia as duas num único item, como na Triagem); informações gerais; candidatos sugeridos; quem já trabalhou; contratados; processos relacionados (`ProcessosRelacionados` de `ProcessosPage.tsx`). |
@@ -24,7 +24,7 @@ Menu: `vagaLinks` em `frontend/src/components/shell.tsx` (linhas 36-39). Para li
 ## Arquivos
 
 **Frontend**
-- `frontend/src/pages/VagasPage.tsx`: `VagasPage`, `Modalidade`, `Ocupacao`, `Disponiveis`, `TempoAberto`, `StatusEditavel` (menu em portal, pede confirmação antes de gravar).
+- `frontend/src/pages/VagasPage.tsx`: `VagasPage`, `PrioridadeEditavel` (lista `PRIORIDADES` com nome e cores), `Modalidade`, `Ocupacao`, `Disponiveis`, `TempoAberto`, `StatusEditavel` (menu em portal, pede confirmação antes de gravar).
 - `frontend/src/pages/VagaDetailPage.tsx`: `VagaDetailPage`, `MensagemVaga` (usa `fotoDoCargo` e `copiarComFoto` de `frontend/src/lib/foto-cargo.ts`; fotos em `frontend/public/cargos/`, ver o agente da Triagem).
 - `frontend/src/pages/VagaFormPage.tsx`: edição (react-hook-form + zod).
 - `frontend/src/pages/NovasAbasPage.tsx`: `ConsultarModelosPage` e `Pesquisa` (campo com sugestões).
@@ -36,12 +36,12 @@ Menu: `vagaLinks` em `frontend/src/components/shell.tsx` (linhas 36-39). Para li
 **Backend**
 - `backend/src/routes/index.ts`: vagas (linhas 229-273), modelos globais (232-253), modelos legados `/api/v1/modelos` (718-726), cargos (757), abertura de vaga `/grupos-empresas/vagas` (762-770), sync manual (592-597).
 - `backend/src/services/vaga.service.ts`: list, get (ficha + mensagem), update (status no Lightsail + espelhos), create e sugeridos.
-- `backend/src/repositories/vaga.repository.ts`: SQL de `dna_work.vaga` (lista, ficha, funil, inscritos, sugeridos, quem já trabalhou, opções de filtro).
+- `backend/src/repositories/vaga.repository.ts`: SQL de `dna_work.vaga` (lista e ficha com a `prioridade`, `salvarPrioridade`, funil, inscritos, sugeridos, quem já trabalhou, opções de filtro).
 - `backend/src/services/presenters.ts`: `presentVaga`, `posicoesLivres`.
 - `backend/src/services/cadastro.service.ts`: `consultarModelos`, `opcoesModelos`, `obterModelo`, `criarModelo`, `editarModelo`, `apagarModelo`, `listarModelos`, `criarVaga`. Também tem `MIRROR_SQL`, que cria `public.vaga`, `public.vaga_repetida` e `public.cargo` se não existirem.
 - `backend/src/services/legado.service.ts`: `modelos` e `modelo` (`dna_work.vaga_modelo`, modelos antigos).
 - `backend/src/services/cargo.service.ts` e `backend/src/lib/cargo.ts`: lista de cargos, `chaveCargo`, `nomePadronizado`.
-- `backend/src/schemas/vaga.ts` (`vagaCreateSchema`, `vagaPatchSchema`, `vagaListSchema`) e `backend/src/schemas/cadastro.ts` (`modeloVagaSchema`, `vagaCadastroSchema`, `regrasDaVaga`).
+- `backend/src/schemas/vaga.ts` (`vagaCreateSchema`, `vagaPatchSchema`, `vagaListSchema`, `vagaPrioridadeSchema`, `PRIORIDADES_VAGA`) e `backend/src/schemas/cadastro.ts` (`modeloVagaSchema`, `vagaCadastroSchema`, `regrasDaVaga`).
 - `backend/src/lib/vaga-status.ts`: conversão dos códigos do Lightsail para os 4 status.
 - `backend/src/lib/vaga-id.ts`: `assinaturaDaVaga` e `reagruparVagaIds`.
 - `backend/src/lib/mensagem-vaga.ts`: `mensagemDaVaga` (mensagem no formato do Notion).
@@ -53,11 +53,12 @@ Menu: `vagaLinks` em `frontend/src/components/shell.tsx` (linhas 36-39). Para li
 
 | Método | Caminho | O que faz | Onde está no backend |
 |---|---|---|---|
-| GET | `/api/v1/vagas?page&pageSize&cargo_chave&grupo_id&id_empresa&tipo_vaga&situacao&q&cargo` | Lista paginada (`meta.total`). | routes:255 → `VagaService.list` → `VagaRepository.list` |
+| GET | `/api/v1/vagas?page&pageSize&cargo_chave&grupo_id&id_empresa&tipo_vaga&situacao&prioridade&q&cargo` | Lista paginada (`meta.total`). `prioridade` = `alta`, `media` ou `baixa`. | routes:255 → `VagaService.list` → `VagaRepository.list` |
 | GET | `/api/v1/vagas/filtros` | Empresas que têm vaga (com grupo), grupos e cargos (grafias juntadas por chave). | routes:254 → `VagaRepository.opcoesFiltro` |
 | GET | `/api/v1/modalidades` | `dna_work.modalidade_vaga`. | routes:148 |
 | GET | `/api/v1/vagas/:id` | Ficha: dados, funil, benefícios e `mensagem`. | routes:259 → `VagaService.get` |
 | PATCH | `/api/v1/vagas/:id` | Edita a vaga ou só a `situacao`. | routes:262 → `VagaService.update` |
+| PUT | `/api/v1/vagas/:id/prioridade` | Grava a prioridade (`{ prioridade: "alta" \| "media" \| "baixa" }`) em `dna_work.vaga.prioridade`. 404 `VAGA_NAO_ENCONTRADA` se a vaga não existe em `dna_work.vaga`. | routes → `VagaService.definirPrioridade` → `VagaRepository.salvarPrioridade` |
 | POST | `/api/v1/vagas` | Cria a vaga só em `dna_work.vaga`. Nenhuma tela usa: `/vagas/nova` redireciona. | routes:229 → `VagaService.create` |
 | GET | `/api/v1/vagas/:id/sugeridos` | Candidatos sugeridos e quem já trabalhou. | routes:265 → `VagaRepository.sugeridos` |
 | GET | `/api/v1/vagas/:id/contratacoes` | Contratações da vaga. | routes:268 → `ContratacaoService.listByVaga` |
@@ -80,6 +81,7 @@ Menu: `vagaLinks` em `frontend/src/components/shell.tsx` (linhas 36-39). Para li
 - `dna_work.vaga`:
   - campos principais: `id_vaga`, `id_empresa`, `cargo`, `tipo_vaga`, `salario` (texto no formato legado), `status` (código 0-9), `comparador`, `dataabertura`, `quantidade_posicoes`, `codigo`;
   - horário: `texto_carga`, `horabase`, `hora_saida_base`, `segunda_entrada` … `domindo_saida` (assim mesmo, "domindo"), `semanas_inicio`, `semanas_fim`, `periodo`, `tempo_refeicao`;
+  - `prioridade` (migration `prisma/migrations/20261112200000_vaga_prioridade`): `varchar(5)`, `NOT NULL DEFAULT 'media'`, CHECK `vaga_prioridade_valida` (`alta`, `media`, `baixa`). O padrão faz toda vaga, existente ou nova, começar como média. Só existe no Postgres; o Lightsail não tem a coluna;
   - outros: `beneficios_texto`, `sexo`, `idade`, `idadeate`, `km`, `atribuicaoes`, `atribu_contrato`, `requisitos_desejaveis`, `destaque`, `obs`.
 - `dna_work.empresa`, `dna_work.modalidade_vaga`, `dna_work.conratacaovaga` (ocupadas = contratações com status `CONTRATACAO_STATUS_ATIVO`), `dna_work.vaga_endereco` e `dna_work.beneficio_vaga` / `dna_work.beneficio`.
 - Funil e inscritos: `dna_work.chamado_emtrevista`, `emcaminhamento`, `selecionado_vaga`, `candidatura`, `candidatos_incluidos_vaga`. Cada uma só é usada se existir.
@@ -132,6 +134,7 @@ Menu: `vagaLinks` em `frontend/src/components/shell.tsx` (linhas 36-39). Para li
 - **Modalidade**: precisa existir em `dna_work.modalidade_vaga` (422 `MODALIDADE_INVALIDA`).
 - **Migration**: listar, ver e editar exigem a coluna `quantidade_posicoes` (`ensureCapacityColumn`). Sem ela, erro de migration, e a lista mostra o aviso da linha 94.
 - **Lista**: ordenada por `dataabertura desc`. Vagas "teste…" com status bloqueado vão para o fim. O filtro de cargo por `cargo_chave` pega todas as grafias do mesmo cargo. Trocar de grupo limpa a empresa que é de outro grupo.
+- **Prioridade**: Alta, Média ou Baixa, mostrada na primeira coluna da lista (e nos cartões). Trocar no seletor grava na hora, sem confirmação, só em `dna_work.vaga.prioridade` (`UPDATE`). A lista e `GET /vagas/:id` devolvem `prioridade`. O filtro "Prioridade" (`?prioridade=`) mostra só as vagas daquela prioridade e não muda a ordem da lista. Na Triagem, alta vai para o topo e baixa para o fim (ver agente da Triagem).
 - **Tempo em aberto**: só para vagas abertas; âmbar a partir de 30 dias, vermelho a partir de 60.
 - **`vaga_id`** (`lib/vaga-id.ts`): vagas em `public.vaga` com **mesma empresa e todos os campos de `CAMPOS_ASSINATURA` iguais** dividem o mesmo `vaga_id`. Cada grupo fica com o `vaga_id` que a maioria já tinha, para mudar o mínimo possível os ids já enviados a candidatos. A Triagem mostra só uma vaga por `vaga_id`.
 - **Modelos**:
@@ -149,6 +152,7 @@ Menu: `vagaLinks` em `frontend/src/components/shell.tsx` (linhas 36-39). Para li
 
 ## Cuidados ao mudar
 
+- `dna_work.vaga.prioridade` só existe no Postgres. Se a cópia do Lightsail para `dna_work.vaga` for refeita do zero (apagar e recriar a tabela), a coluna e as prioridades se perdem; o mesmo vale para `beneficios_texto`.
 - **Três bancos para a mesma vaga**: Lightsail (fonte), `dna_work.vaga` (cópia, base da lista e da ficha) e `public.vaga` (só abertas, base da Triagem). Mudar uma coluna num lugar sem o sync ou o `update` correspondente deixa as telas divergentes.
 - O sync **apaga** de `public.vaga` toda vaga que não está com status 0 no Lightsail. Fechar uma vaga em `/vagas` tira ela da Triagem no próximo ciclo, não na hora.
 - `horarioDe`, `faixaDaSemana` e `horarioAlinhado` (vagas-abertas-sync) são usados por `VagaService` e `CadastroService`. `horarioDoEspelho` (triagem.service) é usado por Triagem, matching JEV e Dossiê. Não mude o formato `N=HH:MM-HH:MM;texto=` sem mudar os dois lados.
@@ -166,5 +170,6 @@ Menu: `vagaLinks` em `frontend/src/components/shell.tsx` (linhas 36-39). Para li
 - `/vagas/:id/editar`: mude o horário (Fixo/Escala/Folga), use "Gerar texto pelos dias", salve e confira o `public.vaga.horario` da vaga, se ela estiver aberta.
 - `/vagas/modelos`: crie um modelo, tente criar outro com o mesmo cargo e modalidade (deve dar 409), edite, use "Abrir vaga" e apague.
 - Sync: `POST /api/v1/configuracoes/sync?dry=1` (administrador) mostra o que seria feito sem gravar.
-- Testes do backend: `backend/test/vaga-consulta.test.ts` (status, posições, unidades, cargos), `vaga-id.test.ts`, `mensagem-vaga.test.ts`, `horario-escala.test.ts`, `cargo.test.ts` e `triagem.test.ts` (horário e Notion).
+- `/vagas`: troque a prioridade de uma vaga, recarregue a página e confira que ficou salva. Use o filtro "Prioridade" e confira o total. Volte a vaga para Média depois.
+- Testes do backend: `backend/test/vaga-prioridade.test.ts` (Postgres embutido: começa média, grava alta/baixa, CHECK do banco, filtro por prioridade), `backend/test/vaga-consulta.test.ts` (status, posições, unidades, cargos), `vaga-id.test.ts`, `mensagem-vaga.test.ts`, `horario-escala.test.ts`, `cargo.test.ts` e `triagem.test.ts` (horário e Notion).
 - Comandos: `npm run lint -w frontend`, `npm run lint -w backend`, `npm test -w backend`.

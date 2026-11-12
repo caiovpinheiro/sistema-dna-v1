@@ -205,3 +205,8 @@ CREATE TABLE IF NOT EXISTS dna_work.api_idempotencia (
   response jsonb,
   criado_em timestamp without time zone NOT NULL DEFAULT now()
 );
+
+-- Prioridade da vaga (prisma/migrations/20261112200000_vaga_prioridade).
+ALTER TABLE dna_work.vaga
+  ADD COLUMN IF NOT EXISTS prioridade varchar(5) NOT NULL DEFAULT 'media'
+    CONSTRAINT vaga_prioridade_valida CHECK (prioridade IN ('alta', 'media', 'baixa'));

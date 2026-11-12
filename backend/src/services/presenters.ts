@@ -103,6 +103,7 @@ export function presentVaga(row: VagaRow) {
     quantidade_posicoes: row.quantidade_posicoes,
     ocupadas: row.ocupadas,
     disponiveis,
+    prioridade: row.prioridade ?? "media",
     codigo: row.codigo ?? null,
     horario: row.texto_carga?.trim() || (row.horabase && row.hora_saida_base ? `${row.horabase} às ${row.hora_saida_base}` : null),
     local: row.local ?? null,

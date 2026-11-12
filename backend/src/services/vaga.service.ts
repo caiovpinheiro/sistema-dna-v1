@@ -10,7 +10,7 @@ import { codigoParaStatus } from "../lib/vaga-status.js";
 import { EmpresaRepository } from "../repositories/empresa.repository.js";
 import { one } from "../repositories/sql.js";
 import { VagaRepository } from "../repositories/vaga.repository.js";
-import type { VagaCreate, VagaListQuery, VagaPatch } from "../schemas/vaga.js";
+import type { PrioridadeVaga, VagaCreate, VagaListQuery, VagaPatch } from "../schemas/vaga.js";
 import { reagruparVagaIds } from "../lib/vaga-id.js";
 import { presentVaga } from "./presenters.js";
 import { mensagemDaVaga } from "../lib/mensagem-vaga.js";
@@ -197,6 +197,13 @@ export class VagaService {
 
   opcoesFiltro() {
     return this.repo.opcoesFiltro(this.db);
+  }
+
+  async definirPrioridade(id: string, prioridade: PrioridadeVaga) {
+    const vaga = await this.repo.findById(this.db, id);
+    if (!vaga) throw new AppError(404, "VAGA_NAO_ENCONTRADA", "Vaga não encontrada.");
+    await this.repo.salvarPrioridade(this.db, id, prioridade);
+    return { id_vaga: id, prioridade };
   }
 
   async list(query: VagaListQuery) {

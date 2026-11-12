@@ -22,6 +22,8 @@ export type VagaRow = {
   nome_fantasia: string | null;
   modalidade: string | null;
   ocupadas: number;
+  /** Coluna dna_work.vaga.prioridade (alta, media ou baixa; padrão media). */
+  prioridade?: string | null;
   /** Só na listagem: nome da unidade no cadastro do sistema (public.empresa) e o grupo dela. */
   empresa_nome?: string | null;
   grupo_nome?: string | null;
@@ -124,7 +126,8 @@ export class VagaRepository {
       SELECT v.id_vaga, v.id_empresa, v.cargo, v.tipo_vaga, v.salario, v.status, v.comparador,
              v.dataabertura, v.publicar, v.carga_horaria, v.obs, v.quantidade_posicoes,
              e.razao_social, e.nome_fantasia, m.descricao AS modalidade,
-             COALESCE(o.ocupadas, 0)::int AS ocupadas
+             COALESCE(o.ocupadas, 0)::int AS ocupadas,
+             COALESCE(v.prioridade, 'media') AS prioridade
       FROM dna_work.vaga v
       LEFT JOIN dna_work.empresa e ON e.id_empresa = v.id_empresa
       LEFT JOIN dna_work.modalidade_vaga m ON m.id = v.tipo_vaga
@@ -136,6 +139,11 @@ export class VagaRepository {
       ) o ON o.id_vaga = v.id_vaga
       ${extraWhere}
     `;
+  }
+
+  /** Grava a prioridade na coluna dna_work.vaga.prioridade. */
+  async salvarPrioridade(db: Db, id: string, prioridade: string): Promise<void> {
+    await db.query("UPDATE dna_work.vaga SET prioridade = $2 WHERE id_vaga = $1", [id, prioridade]);
   }
 
   findById(db: Db, id: string): Promise<VagaRow | null> {
@@ -381,6 +389,7 @@ export class VagaRepository {
       if (query.situacao === "fechada") add("(v.status IS NULL OR NOT (v.status = ANY($#::int[])))", [...CODIGOS_POR_STATUS.aberta, ...CODIGOS_POR_STATUS.pausada, ...CODIGOS_POR_STATUS.contratada]);
       else add("v.status = ANY($#::int[])", CODIGOS_POR_STATUS[query.situacao]);
     }
+    if (query.prioridade) add("COALESCE(v.prioridade, 'media') = $#", query.prioridade);
     const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
     const order = sortClause(query.sort ?? "dataabertura", query.sort ? query.order : "desc", SORTS, "v.dataabertura");
     const from = `
@@ -405,6 +414,7 @@ export class VagaRepository {
              e.razao_social, e.nome_fantasia, m.descricao AS modalidade,
              NULLIF(btrim(pe.nome_fantasia), '') AS empresa_nome, g.nome AS grupo_nome,
              COALESCE(o.ocupadas, 0)::int AS ocupadas,
+             COALESCE(v.prioridade, 'media') AS prioridade,
              COALESCE(
                (
                  SELECT NULLIF(concat_ws(', ',

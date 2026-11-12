@@ -42,6 +42,21 @@ test("ordena por maior compatibilidade, com distância como desempate", () => {
   assert.deepEqual(organizado.pendentes.map((item) => item.id), ["e", "f"]);
 });
 
+test("prioridade: alta no topo e baixa no fim de cada parte; dentro da faixa vale a ordem normal", () => {
+  // O backend já manda alta primeiro e baixa por último (e, em cada faixa, pela distância).
+  const vagas = [
+    vaga("e", 5, { prioridade: "alta" }), vaga("c", 3, { prioridade: "alta" }), vaga("a", 1), vaga("b", 2), vaga("f", 6),
+    vaga("g", 0.5, { prioridade: "baixa" }), vaga("d", 4, { prioridade: "baixa" }),
+  ];
+  const avaliacoes = mesclarAvaliacoes({}, [avaliada("a", 3.9), avaliada("b", 3.2), avaliada("c", 0.4), avaliada("e", 2.1), avaliada("g", 4)]);
+  const organizado = organizarVagas(vagas, avaliacoes);
+  // Avaliadas: altas (e 2.1, c 0.4), médias (a 3.9, b 3.2) e, por último, a baixa g, mesmo com o maior score.
+  assert.deepEqual(organizado.avaliadas.map((item) => item.id), ["e", "c", "a", "b", "g"]);
+  assert.deepEqual(ordemDeExibicao(organizado).map((item) => item.id), ["e", "c", "a", "b", "g", "f", "d"]);
+  // O primeiro lote analisado começa pelas de prioridade alta.
+  assert.deepEqual(proximoLote(vagas, {}, 2), ["e", "c"]);
+});
+
 test("vagas sem avaliação ficam separadas, nunca descartadas", () => {
   const avaliacoes = mesclarAvaliacoes({}, [avaliada("c", 2), semScore("a", "falhou"), semScore("b", "dados_insuficientes"), semScore("d", "indisponivel")]);
   const organizado = organizarVagas(VAGAS, avaliacoes);

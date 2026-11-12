@@ -12,6 +12,20 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev", "-w", "frontend"],
       "port": 5173
+    },
+    {
+      "name": "api-teste",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "-w", "backend"],
+      "env": { "PORT": "3334", "CORS_ORIGIN": "https://interno.dnawork.ai,http://localhost:5173,http://localhost:5174" },
+      "port": 3334
+    },
+    {
+      "name": "web-teste",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "-w", "frontend", "--", "--port", "5174", "--strictPort"],
+      "env": { "API_PROXY_PORT": "3334" },
+      "port": 5174
     }
   ]
 }

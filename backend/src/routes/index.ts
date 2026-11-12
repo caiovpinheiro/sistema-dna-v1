@@ -11,7 +11,7 @@ import { contratacaoCreateSchema, contratacaoEncerrarSchema, contratacaoListSche
 import { empresaCreateSchema, empresaListSchema, empresaPatchSchema } from "../schemas/empresa.js";
 import { pageSchema } from "../schemas/common.js";
 import { processoCreateSchema, processoListSchema, processoMoverSchema } from "../schemas/processo.js";
-import { vagaCreateSchema, vagaListSchema, vagaPatchSchema } from "../schemas/vaga.js";
+import { vagaCreateSchema, vagaListSchema, vagaPatchSchema, vagaPrioridadeSchema } from "../schemas/vaga.js";
 import { empresaCadastroSchema, grupoCreateSchema, modeloVagaSchema, vagaCadastroSchema } from "../schemas/cadastro.js";
 import { documentoSchema } from "../schemas/documento-contrato.js";
 import { gerarDocumento } from "../lib/documento-contrato.js";
@@ -276,6 +276,9 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
   api.patch("/api/v1/vagas/:id", {
     schema: { tags: ["vagas"], params: z.object({ id: z.string().min(1) }), body: vagaPatchSchema },
   }, async (request) => ok(await services.vagas.update(request.params.id, request.body)));
+  api.put("/api/v1/vagas/:id/prioridade", {
+    schema: { tags: ["vagas"], params: z.object({ id: z.string().min(1) }), body: vagaPrioridadeSchema },
+  }, async (request) => ok(await services.vagas.definirPrioridade(request.params.id, request.body.prioridade)));
   api.get("/api/v1/vagas/:id/sugeridos", {
     schema: { tags: ["vagas"], params: z.object({ id: z.string().min(1) }) },
   }, async (request) => ok(await services.vagas.sugeridos(request.params.id)));

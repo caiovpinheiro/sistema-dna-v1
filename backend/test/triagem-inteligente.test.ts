@@ -486,7 +486,8 @@ test("busca rápida: mesmo contrato, filtros, agrupamento por vaga_id e sem limi
   const resultado = await service.buscar({ cep: "01001000", raioKm: 10, tipos: ["CLT"], sexo: "M", idade: 20, ...origem });
   assert.equal(resultado.originLabel, "CEP 01001-000");
   assert.deepEqual(resultado.jobs.map((job) => job.id), ["v0", "v1", "v2", "v3", "v4", "v5"]);
-  assert.deepEqual(Object.keys(resultado.jobs[0]).sort(), ["company", "contractType", "distanceKm", "hasBenefits", "homeOffice", "id", "location", "salaryLabel", "schedule", "schedules", "title"]);
+  assert.deepEqual(Object.keys(resultado.jobs[0]).sort(), ["company", "contractType", "distanceKm", "hasBenefits", "homeOffice", "id", "location", "prioridade", "salaryLabel", "schedule", "schedules", "title"]);
+  assert.equal(resultado.jobs[0].prioridade, "media");
   assert.equal(resultado.jobs[0].location, "Centro, São Paulo SP");
 });
 

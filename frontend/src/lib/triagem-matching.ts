@@ -14,7 +14,24 @@ export type Vaga = {
   schedule: string | null;
   schedules: string[];
   distanceKm: number;
+  /** Prioridade da vaga em /vagas. O backend já manda as de "alta" primeiro e as de "baixa" por último. */
+  prioridade?: "alta" | "media" | "baixa";
 };
+
+/** Vaga marcada como prioridade alta em /vagas: fica no topo da triagem e ganha o selo. */
+export function prioridadeAlta(vaga: Pick<Vaga, "prioridade">): boolean {
+  return vaga.prioridade === "alta";
+}
+
+/** Vaga marcada como prioridade baixa em /vagas: fica no fim da triagem e ganha um selo discreto. */
+export function prioridadeBaixa(vaga: Pick<Vaga, "prioridade">): boolean {
+  return vaga.prioridade === "baixa";
+}
+
+/** Faixa da vaga na ordem da triagem: alta (0), média (1, também quando não vem), baixa (2). */
+export function faixaDePrioridade(vaga: Pick<Vaga, "prioridade">): number {
+  return prioridadeAlta(vaga) ? 0 : prioridadeBaixa(vaga) ? 2 : 1;
+}
 
 export const ESCOLARIDADES = {
   medio_incompleto: "Ensino médio incompleto",
@@ -83,7 +100,7 @@ export type Avaliacoes = Record<string, AvaliacaoVaga>;
 export type VagaComAvaliacao = Vaga & { avaliacao: AvaliacaoVaga | null };
 
 export type Organizado = {
-  /** Avaliadas pelo JEV, da maior para a menor compatibilidade; empate pela distância. */
+  /** Avaliadas pelo JEV: alta, média e baixa, nessa ordem; em cada faixa, da maior para a menor compatibilidade; empate pela distância. */
   avaliadas: VagaComAvaliacao[];
   /** Analisadas mas sem score: JEV indisponível, falha, resposta inválida ou dados insuficientes. */
   semAvaliacao: VagaComAvaliacao[];
@@ -118,7 +135,10 @@ export function organizarVagas(vagas: Vaga[], avaliacoes: Avaliacoes): Organizad
     else if (avaliacao.status === "avaliada" && avaliacao.jev) organizado.avaliadas.push(item);
     else organizado.semAvaliacao.push(item);
   }
+  // semAvaliacao e pendentes seguem a ordem do backend, que já traz alta no topo e baixa no fim.
   organizado.avaliadas.sort((a, b) => {
+    const prioridade = faixaDePrioridade(a) - faixaDePrioridade(b);
+    if (prioridade !== 0) return prioridade;
     const diferenca = posicaoNaEscala(b.avaliacao!.jev!) - posicaoNaEscala(a.avaliacao!.jev!);
     if (diferenca !== 0) return diferenca;
     return a.distanceKm - b.distanceKm || a.id.localeCompare(b.id);

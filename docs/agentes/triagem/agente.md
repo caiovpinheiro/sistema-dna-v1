@@ -1,6 +1,6 @@
 # Agente — Triagem
 
-> Última revisão: 2026-11-12 (distância pelo endereço atual da empresa)
+> Última revisão: 2026-11-12 (prioridade alta no topo e baixa no fim)
 
 ## Para que serve
 
@@ -62,6 +62,7 @@ O menu fica em `frontend/src/components/shell.tsx` (`triagemLinks`, linhas 16-19
 
 **Postgres**
 - `public.vaga`: o que a busca lê (`id`, `vaga_id`, `tipo_vaga` (1 = Estágio, 2 = CLT), `cargo`, `salario`, `beneficios`, `sexo`, `idade`, `idade_ate`, `horario`, `tipo_trabalho`, `latitude`, `longitude`, `empresa_id`). O matching e o dossiê leem também `atividades`, `descricao`, `requisitos`, `escolaridade` e `carga_horaria`. Só entram vagas com latitude e longitude preenchidas ou com `cep` igual ao CEP pesquisado (`vagasAbertas`). Segundo dossie.service.ts:327, "public.vaga só guarda as abertas; o sync tira as fechadas".
+- `dna_work.vaga.prioridade` (`alta`, `media`, `baixa`; padrão `media`): lida na busca por `LEFT JOIN dna_work.vaga dv ON dv.id_vaga = v.id::text`. É definida em Consultar Vagas (`/vagas`); a Triagem só lê.
 - `public.empresa`: `nome_fantasia`, `local`, `id` e `cnpj`. O endereço (`cep`, `logradouro`, `numero`, `complemento`, `local`) e a coordenada são uma cópia do cadastro, conferida contra `dna_work.empresa` (a ficha) a cada busca. Para achar as empresas pendentes, a empresa do Lightsail conta como cadastrada se o `id_empresa` estiver em `public.empresa.id` ou se o CNPJ (quando tem) bater. Empresa sem CNPJ só é reconhecida pelo id.
 - `public.cargo`: `descricao` e `requisitos` servem de reserva quando a vaga não tem descrição nem requisitos (matching e dossiê).
 - `dna_work.flex`: `id_flex` → `valor`, que traduz o código de escolaridade da vaga antes de mandar ao JEV.
@@ -85,7 +86,12 @@ O menu fica em `frontend/src/components/shell.tsx` (`triagemLinks`, linhas 16-19
   - distância em linha reta menor ou igual a `raioKm` (1 a 100, padrão 10; a tela oferece 5/10/15/20/30/50);
   - sexo: só exclui quando a vaga tem sexo definido diferente de `I` e diferente do pedido;
   - idade: compara com `idade` e `idade_ate` da vaga, quando são inteiros maiores que zero.
-- **Vagas repetidas**: vagas com o mesmo `vaga_id` aparecem uma vez só, a unidade mais próxima (triagem.service.ts:167-170).
+- **Vagas repetidas**: vagas com o mesmo `vaga_id` aparecem uma vez só, a unidade mais próxima (`ordenarResultado`). A que aparece fica com a maior prioridade entre as unidades do grupo (uma alta basta para o grupo ser alta; baixa + média conta como média).
+- **Prioridade** (`ordenarResultado` e `FAIXA_PRIORIDADE` no backend; `faixaDePrioridade`, `prioridadeAlta`, `prioridadeBaixa` e `organizarVagas` no front):
+  - a vaga segue todas as regras acima para entrar no resultado; a prioridade não fura raio, tipo, sexo nem idade;
+  - se entrar, fica na sua faixa: **alta no topo, média no meio, baixa no fim**. Dentro de cada faixa vale a ordem normal: distância na busca rápida; na busca inteligente, score (e distância no empate) dentro de "Avaliadas", e a ordem do backend em "Sem avaliação" e "Ainda não analisadas". Uma baixa com score alto continua abaixo das médias;
+  - como a lista do backend já começa pelas altas, o primeiro lote mandado ao JEV (`proximoLote`) também começa por elas, e as baixas ficam para os últimos lotes;
+  - o cartão mostra o selo "Prioridade alta" (vermelho) ou "Prioridade baixa" (cinza, discreto). Média não tem selo.
 - **Home office** (`tipo_trabalho = "remoto"`): ganha linha própria e o trecho "home office" sai do horário (`semHomeOffice`).
 - **Salário**: zero ou vazio vira "salário a combinar". `beneficios` preenchido acrescenta "+ benefícios" ao texto.
 - **Horário do espelho** (`horarioDoEspelho`, triagem.service.ts:68): se `horario` tem `texto=…`, usa esse texto. Senão, monta a grade a partir de `1=HH:MM-HH:MM;2=…` (1 = domingo … 7 = sábado) com `textoDoHorario`.
@@ -125,7 +131,7 @@ O menu fica em `frontend/src/components/shell.tsx` (`triagemLinks`, linhas 16-19
 
 - `horarioDoEspelho`, `localDaEmpresa` e `semHomeOffice` são exportados de `triagem.service.ts` e usados por `triagem-matching.service.ts` e `dossie.service.ts`. Mudar o formato de `public.vaga.horario` (gravado pelos syncs e pelo cadastro de vaga) afeta as três telas.
 - A busca depende de `public.empresa` e `public.vaga` terem o endereço da ficha. Quem grava endereço de empresa em outro lugar deve chamar `sincronizarEnderecoEmpresas` (ou deixar o próximo ciclo/busca corrigir).
-- O contrato de `POST /triagem/vagas` (`{ originLabel, jobs: [{ id, title, company, location, contractType, salaryLabel, hasBenefits, homeOffice, schedule, schedules, distanceKm }] }`) é coberto por `triagem-rotas.test.ts`. Não renomeie campos.
+- O contrato de `POST /triagem/vagas` (`{ originLabel, jobs: [{ id, title, company, location, contractType, salaryLabel, hasBenefits, homeOffice, schedule, schedules, distanceKm, prioridade }] }`) é coberto por `triagem-rotas.test.ts`. Não renomeie campos.
 - `textoParaCandidato` define a mensagem que vai ao candidato (emojis, numeração, fechamento). Ela é testada em `frontend/test/triagem-matching.test.ts`.
 - As regras de perfil suficiente existem em dois lugares: `perfilPreenchido` no front e `perfilSuficiente` no back. Mudou um, mude o outro.
 - Foto nova de cargo: salve em `frontend/public/cargos/<chave-com-hifens>.jpg` e acrescente a chave em `FOTOS` (`lib/foto-cargo.ts`). Nomes diferentes para a mesma função (ex.: Estagiário Marketing → Assistente de Marketing) ficam em `MESMA_FOTO`.
@@ -139,6 +145,7 @@ O menu fica em `frontend/src/components/shell.tsx` (`triagemLinks`, linhas 16-19
 - Abra `/triagem`, digite um CEP e clique em "Buscar vagas". Marque vagas e confira o texto e o botão "Copiar texto". Com uma só vaga marcada (ex.: Operador de Caixa), confira a foto e o "Copiar foto e texto"; no Windows, a área de transferência deve ter imagem e texto (`[System.Windows.Forms.Clipboard]::GetImage()` e `ContainsText()`).
 - Ligue "Busca inteligente", envie um PDF de currículo e confira o CEP preenchido, os campos do perfil e as seções "Avaliadas pelo JEV", "Sem avaliação" e "Ainda não analisadas". Sem `JEV_API_URL`/`JEV_API_KEY`, aparece o aviso "Score JEV indisponível".
 - Abra `/triagem/dossie`, busque um telefone, escolha a vaga, envie o currículo e gere o dossiê. Só use "Salvar como nota no CRM" com um negócio de teste.
-- Testes do backend: `backend/test/triagem.test.ts` (horário, distância, Notion), `triagem-inteligente.test.ts` (arquivo, currículo, JEV), `triagem-rotas.test.ts` (permissão, contrato, 503 sem chave) e `dossie.test.ts`.
-- Teste do frontend: `frontend/test/triagem-matching.test.ts`.
+- Testes do backend: `backend/test/triagem.test.ts` (horário, distância, Notion, ordem por prioridade alta/média/baixa), `triagem-inteligente.test.ts` (arquivo, currículo, JEV), `triagem-rotas.test.ts` (permissão, contrato, 503 sem chave) e `dossie.test.ts`.
+- Teste do frontend: `frontend/test/triagem-matching.test.ts` (inclui alta no topo e baixa no fim da busca inteligente).
+- Prioridade: em `/vagas`, ponha uma vaga aberta como Alta e outra como Baixa; em `/triagem`, busque por um CEP perto delas e confira a Alta em primeiro (selo vermelho) e a Baixa em último (selo cinza). Volte as duas para Média depois.
 - Comandos: `npm run lint -w frontend`, `npm run lint -w backend`, `npm test -w backend`, `npm test -w frontend`.

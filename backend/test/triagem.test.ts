@@ -7,6 +7,39 @@ import { horarioEspelho } from "../src/services/notion-sync.service.js";
 import { msAteProximoSlot, slotDe } from "../src/lib/agenda-sync.js";
 import { beneficiosDe, faixaDaSemana, horarioAlinhado, horarioDe } from "../src/services/vagas-abertas-sync.service.js";
 import { moneyToNumber } from "../src/lib/money.js";
+import { ordenarResultado, type Prioridade, type VagaProxima } from "../src/services/triagem.service.js";
+
+function candidata(id: string, distanceKm: number, prioridade: Prioridade = "media", grupo = id): VagaProxima & { grupo: string } {
+  return {
+    id, grupo, title: id, company: "", location: "", contractType: "CLT", salaryLabel: "", hasBenefits: false,
+    homeOffice: false, schedule: null, schedules: [], distanceKm, prioridade,
+  };
+}
+
+test("triagem: alta no topo, baixa no fim, ordem de distância dentro de cada faixa", () => {
+  const ordem = ordenarResultado([
+    candidata("perto", 1), candidata("alta-longe", 9, "alta"), candidata("baixa-perto", 0.5, "baixa"),
+    candidata("alta-perto", 4, "alta"), candidata("meio", 3), candidata("baixa-longe", 7, "baixa"),
+  ]);
+  assert.deepEqual(ordem.map((vaga) => vaga.id), ["alta-perto", "alta-longe", "perto", "meio", "baixa-perto", "baixa-longe"]);
+  assert.equal("grupo" in ordem[0], false);
+});
+
+test("triagem: grupo repetido mostra a unidade mais próxima e herda a prioridade alta do grupo", () => {
+  const ordem = ordenarResultado([
+    candidata("outra", 1),
+    candidata("unidade-longe", 8, "alta", "g1"),
+    candidata("unidade-perto", 2, "media", "g1"),
+  ]);
+  assert.deepEqual(ordem.map((vaga) => [vaga.id, vaga.prioridade]), [["unidade-perto", "alta"], ["outra", "media"]]);
+});
+
+test("triagem: grupo com unidade baixa e unidade média conta como média", () => {
+  const ordem = ordenarResultado([
+    candidata("unidade-perto", 1, "baixa", "g1"), candidata("unidade-longe", 6, "media", "g1"), candidata("outra", 5),
+  ]);
+  assert.deepEqual(ordem.map((vaga) => [vaga.id, vaga.prioridade]), [["unidade-perto", "media"], ["outra", "media"]]);
+});
 
 test("agrupa dias com o mesmo horário", () => {
   assert.equal(

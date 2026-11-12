@@ -33,7 +33,11 @@ export type VagaProxima = {
   schedule: string | null;
   schedules: string[];
   distanceKm: number;
+  /** Prioridade da vaga em /vagas (dna_work.vaga.prioridade): "alta" vem primeiro na busca e "baixa" por último. */
+  prioridade: Prioridade;
 };
+
+export type Prioridade = "alta" | "media" | "baixa";
 
 export type EmpresaPendente = { nome: string; cnpj: string; vagas: number };
 
@@ -54,6 +58,7 @@ type VagaPostgres = {
   longitude: number | null;
   nome_fantasia: string | null;
   local: string | null;
+  prioridade: string | null;
 };
 
 const moeda = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
@@ -100,6 +105,34 @@ export function localDaEmpresa(local: string | null | undefined): string {
   return String(local ?? "").replace(/\s+/g, " ").trim().replace(/\s+-\s+/, ", ").replace(/\s*\/\s*/, " ");
 }
 
+function prioridadeDe(valor: string | null | undefined): Prioridade {
+  return valor === "alta" || valor === "baixa" ? valor : "media";
+}
+
+/** Posição da faixa de prioridade na busca: alta (0) no topo, média (1) no meio, baixa (2) no fim. */
+export const FAIXA_PRIORIDADE: Record<Prioridade, number> = { alta: 0, media: 1, baixa: 2 };
+
+/**
+ * Ordem final da busca, depois dos filtros (raio, sexo, idade):
+ * - mesmo vaga_id = mesma empresa e mesmos detalhes: mostra uma vez só, a unidade mais próxima;
+ *   o grupo fica com a maior prioridade entre as unidades dele (uma alta basta para o grupo ser alta);
+ * - prioridade alta no topo, média no meio, baixa no fim; dentro de cada faixa vale a ordem normal (distância).
+ */
+export function ordenarResultado(candidatas: Array<VagaProxima & { grupo: string }>): VagaProxima[] {
+  const ordenadas = [...candidatas].sort((a, b) => a.distanceKm - b.distanceKm);
+  const doGrupo = new Map<string, Prioridade>();
+  for (const vaga of ordenadas) {
+    const atual = doGrupo.get(vaga.grupo);
+    if (!atual || FAIXA_PRIORIDADE[vaga.prioridade] < FAIXA_PRIORIDADE[atual]) doGrupo.set(vaga.grupo, vaga.prioridade);
+  }
+  const unicas = new Map<string, VagaProxima>();
+  for (const { grupo, ...vaga } of ordenadas) {
+    if (!unicas.has(grupo)) unicas.set(grupo, { ...vaga, prioridade: doGrupo.get(grupo)! });
+  }
+  // sort estável: dentro da mesma faixa fica a ordem por distância.
+  return [...unicas.values()].sort((a, b) => FAIXA_PRIORIDADE[a.prioridade] - FAIXA_PRIORIDADE[b.prioridade]);
+}
+
 /**
  * Mesmo CEP da pessoa é 0 km: o ponto da pessoa vem do centro do CEP e o da empresa do endereço completo,
  * e os dois serviços chegam a divergir em mais de 1 km para o mesmo endereço.
@@ -135,9 +168,10 @@ export class TriagemService {
     const codigos = tipos.map((tipo) => (tipo === "Estágio" ? 1 : 2));
     const { rows } = await this.db.query<VagaPostgres>(
       `SELECT v.id::text AS id, v.vaga_id::text AS vaga_id, v.tipo_vaga, v.cargo, v.salario, v.beneficios, v.sexo, v.idade, v.idade_ate,
-              v.horario, v.tipo_trabalho, v.cep, v.latitude, v.longitude, e.nome_fantasia, e.local
+              v.horario, v.tipo_trabalho, v.cep, v.latitude, v.longitude, e.nome_fantasia, e.local, dv.prioridade
        FROM public.vaga v
        LEFT JOIN public.empresa e ON e.id = v.empresa_id
+       LEFT JOIN dna_work.vaga dv ON dv.id_vaga = v.id::text
        WHERE v.tipo_vaga = ANY($1::int[])
          AND ((v.latitude IS NOT NULL AND v.longitude IS NOT NULL) OR regexp_replace(coalesce(v.cep, ''), '\\D', '', 'g') = $2)`,
       [codigos, digits(cep)],
@@ -189,14 +223,11 @@ export class TriagemService {
         schedule: horario,
         schedules: horario ? [horario] : [],
         distanceKm: Math.round(distancia * 10) / 10,
+        prioridade: prioridadeDe(vaga.prioridade),
       });
     }
 
-    // Mesmo vaga_id = mesma empresa e mesmos detalhes: mostra uma vez só, a unidade mais próxima.
-    candidatas.sort((a, b) => a.distanceKm - b.distanceKm);
-    const unicas = new Map<string, VagaProxima>();
-    for (const { grupo, ...vaga } of candidatas) if (!unicas.has(grupo)) unicas.set(grupo, vaga);
-    return { originLabel, jobs: [...unicas.values()] };
+    return { originLabel, jobs: ordenarResultado(candidatas) };
   }
 
   /** Empresas do agente (sede 10) com vaga aberta no Lightsail que ainda não estão em public.empresa. */

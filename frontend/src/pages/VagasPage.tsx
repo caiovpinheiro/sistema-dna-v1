@@ -10,9 +10,16 @@ import { Badge, Button, Card, Empty, Select, Skeleton } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 import { STATUS_VAGA, dateBr, diasEmAberto, money, regimeLabel, situacaoLabel, textoDiasEmAberto } from "@/lib/format";
 
-type Row = { id_vaga: string; cargo: string; empresa: string | null; grupo: string | null; regime: string; situacao: string; quantidade_posicoes: number | null; ocupadas: number; disponiveis: number | null; salario: number | null; dataabertura: string | null };
+type Row = { id_vaga: string; cargo: string; empresa: string | null; grupo: string | null; regime: string; situacao: string; prioridade: Prioridade; quantidade_posicoes: number | null; ocupadas: number; disponiveis: number | null; salario: number | null; dataabertura: string | null };
 type Filtros = { empresas: Array<{ id: string; nome: string; grupo_id: string | null; grupo: string | null }>; grupos: Array<{ id: string; nome: string }>; cargos: Array<{ chave: string; nome: string }> };
 type Mode = { id: number; descricao: string };
+type Prioridade = "alta" | "media" | "baixa";
+
+const PRIORIDADES: Array<{ id: Prioridade; nome: string; estilo: string; ponto: string }> = [
+  { id: "alta", nome: "Alta", estilo: "border-rose-200 bg-rose-50 text-rose-700", ponto: "bg-rose-500" },
+  { id: "media", nome: "Média", estilo: "border-amber-200 bg-amber-50 text-amber-800", ponto: "bg-amber-500" },
+  { id: "baixa", nome: "Baixa", estilo: "border-slate-200 bg-slate-50 text-slate-600", ponto: "bg-slate-400" },
+];
 
 export function VagasPage() {
   const [params, setParams] = useSearchParams();
@@ -56,7 +63,7 @@ export function VagasPage() {
     setParams(next);
   }
   const lista = result.data;
-  const filtrando = ["cargo_chave", "grupo_id", "id_empresa", "tipo_vaga", "situacao"].some((chave) => params.get(chave));
+  const filtrando = ["cargo_chave", "grupo_id", "id_empresa", "tipo_vaga", "situacao", "prioridade"].some((chave) => params.get(chave));
   const total = lista ? Number(lista.meta?.total ?? lista.data.length) : null;
   return (
     <div className="grid gap-5">
@@ -66,7 +73,7 @@ export function VagasPage() {
         acoes={<Link to="/grupos-empresas?aba=vaga"><Button><Plus size={16} /> Nova vaga</Button></Link>}
       />
       {/* key: ao limpar, os campos voltam ao vazio. */}
-      <Card key={filtrando ? "com-filtro" : "sem-filtro"} className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <Card key={filtrando ? "com-filtro" : "sem-filtro"} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         <CampoFiltro rotulo="Cargo">
           <BuscaOpcao ariaLabel="Cargo" placeholder="Todos os cargos" value={cargoAtual} opcoes={opcoesCargo} onChange={(id) => { if (id !== cargoAtual) update("cargo_chave", id); }} />
         </CampoFiltro>
@@ -88,6 +95,12 @@ export function VagasPage() {
             {STATUS_VAGA.map((item) => <option key={item.id} value={item.id}>{item.nome}</option>)}
           </Select>
         </CampoFiltro>
+        <CampoFiltro rotulo="Prioridade">
+          <Select aria-label="Prioridade" defaultValue={params.get("prioridade") ?? ""} onChange={(event) => update("prioridade", event.target.value)}>
+            <option value="">Todas</option>
+            {PRIORIDADES.map((item) => <option key={item.id} value={item.id}>{item.nome}</option>)}
+          </Select>
+        </CampoFiltro>
       </Card>
       <ResumoResultados total={total} singular="vaga" plural="vagas" filtrando={filtrando} carregando={result.isLoading} onLimpar={() => setParams(new URLSearchParams())} />
       {result.isLoading ? <Skeleton className="h-64" /> : result.isError ? (
@@ -99,6 +112,7 @@ export function VagasPage() {
             <table className="data-table">
               <thead>
                 <tr>
+                  <th>Prioridade</th>
                   <th>Cargo</th>
                   <th>Empresa / grupo</th>
                   <th>Modalidade</th>
@@ -113,6 +127,7 @@ export function VagasPage() {
               <tbody>
                 {lista.data.map((item) => (
                   <tr key={item.id_vaga}>
+                    <td><PrioridadeEditavel vaga={item} /></td>
                     <td className="max-w-64"><Link className="block truncate" to={`/vagas/${item.id_vaga}`}>{item.cargo}</Link></td>
                     <td className="max-w-64">
                       <p className="truncate text-slate-700">{item.empresa ?? "Sem empresa"}</p>
@@ -145,6 +160,7 @@ export function VagasPage() {
                   <StatusEditavel vaga={item} />
                 </div>
                 <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-4">
+                  <div><dt className="text-xs text-slate-500">Prioridade</dt><dd><PrioridadeEditavel vaga={item} /></dd></div>
                   <div><dt className="text-xs text-slate-500">Modalidade</dt><dd><Modalidade regime={item.regime} /></dd></div>
                   <div><dt className="text-xs text-slate-500">Salário</dt><dd className="tabular-nums">{money(item.salario)}</dd></div>
                   <div><dt className="text-xs text-slate-500">Posições</dt><dd><Ocupacao vaga={item} /></dd></div>
@@ -201,6 +217,35 @@ function TempoAberto({ situacao, abertura }: { situacao: string; abertura: strin
       <span className={`font-semibold ${cor}`}>{textoDiasEmAberto(dias)}</span>
       <span className="text-xs text-slate-500">desde {dateBr(abertura)}</span>
     </span>
+  );
+}
+
+/** Prioridade da vaga (alta, média, baixa): troca na hora e grava em dna_work.vaga.prioridade. */
+function PrioridadeEditavel({ vaga }: { vaga: Row }) {
+  const client = useQueryClient();
+  const atual = PRIORIDADES.find((item) => item.id === vaga.prioridade) ?? PRIORIDADES[1];
+  const salvar = useMutation({
+    mutationFn: (prioridade: Prioridade) => api(`/api/v1/vagas/${vaga.id_vaga}/prioridade`, { method: "PUT", body: JSON.stringify({ prioridade }) }),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["vagas"] }),
+  });
+  const mostrada = PRIORIDADES.find((item) => item.id === salvar.variables && salvar.isPending) ?? atual;
+  return (
+    <div className="grid gap-1">
+      <label className={`relative inline-flex w-fit items-center gap-1.5 rounded-full border py-0.5 pl-2 pr-1 text-xs font-semibold ${mostrada.estilo} ${salvar.isPending ? "opacity-60" : ""}`}>
+        <span className={`size-2 rounded-full ${mostrada.ponto}`} aria-hidden />
+        <select
+          aria-label={`Prioridade de ${vaga.cargo}`}
+          value={mostrada.id}
+          disabled={salvar.isPending}
+          onChange={(event) => salvar.mutate(event.target.value as Prioridade)}
+          className="cursor-pointer appearance-none bg-transparent pr-4 font-semibold outline-none"
+        >
+          {PRIORIDADES.map((item) => <option key={item.id} value={item.id}>{item.nome}</option>)}
+        </select>
+        <ChevronDown size={12} aria-hidden className="pointer-events-none absolute right-1.5" />
+      </label>
+      {salvar.error ? <p role="alert" className="text-xs text-rose-600">{salvar.error instanceof ApiError ? salvar.error.message : "Não foi possível salvar."}</p> : null}
+    </div>
   );
 }
 

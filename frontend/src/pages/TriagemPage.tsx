@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { AlertTriangle, Briefcase, Check, ChevronDown, Clock, Copy, FileText, House, ListChecks, MapPin, RotateCcw, Search, Sparkles, Wallet } from "lucide-react";
+import { AlertTriangle, Briefcase, Check, ChevronDown, Clock, Copy, FileText, Flame, House, ListChecks, MapPin, RotateCcw, Search, Sparkles, Wallet } from "lucide-react";
 import { Link } from "react-router-dom";
 import { CabecalhoPagina } from "@/components/pagina";
 import { useMemo, useState, type FormEvent, type ReactNode } from "react";
@@ -14,6 +14,8 @@ import {
   mesclarAvaliacoes,
   ordemDeExibicao,
   organizarVagas,
+  prioridadeAlta,
+  prioridadeBaixa,
   problemaDoPerfil,
   proximoLote,
   rotuloTurnos,
@@ -118,6 +120,15 @@ function CartaoVaga({ vaga, marcada, onAlternar, turno, children }: { vaga: Vaga
       <div className="grid min-w-0 flex-1 content-start gap-2 p-4">
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div className="min-w-0">
+            {prioridadeAlta(vaga) ? (
+              <span className="mb-1 inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-xs font-bold text-rose-700">
+                <Flame size={12} aria-hidden />Prioridade alta
+              </span>
+            ) : prioridadeBaixa(vaga) ? (
+              <span className="mb-1 inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-600">
+                Prioridade baixa
+              </span>
+            ) : null}
             <p className="text-[15px] font-bold leading-snug text-navy-900">{vaga.title}</p>
             <p className="text-sm text-slate-500">{vaga.company || "Empresa não informada"}</p>
           </div>

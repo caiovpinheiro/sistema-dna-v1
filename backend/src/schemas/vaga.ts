@@ -71,6 +71,11 @@ export const vagaPatchSchema = z.object({
   beneficios: fields.beneficios,
 });
 
+/** Prioridade da vaga, guardada em dna_work.vaga.prioridade (padrão "media"). */
+export const PRIORIDADES_VAGA = ["alta", "media", "baixa"] as const;
+export type PrioridadeVaga = (typeof PRIORIDADES_VAGA)[number];
+export const vagaPrioridadeSchema = z.object({ prioridade: z.enum(PRIORIDADES_VAGA) });
+
 export const vagaListSchema = z.object({
   ...pageSchema,
   id_empresa: z.string().trim().optional(),
@@ -79,6 +84,7 @@ export const vagaListSchema = z.object({
   cargo_chave: z.string().trim().optional(),
   tipo_vaga: z.coerce.number().int().optional(),
   situacao: z.enum(STATUS_VAGA).optional(),
+  prioridade: z.enum(PRIORIDADES_VAGA).optional(),
   q: z.string().trim().optional(),
 });
 
