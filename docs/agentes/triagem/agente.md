@@ -1,6 +1,6 @@
 # Agente — Triagem
 
-> Última revisão: 2026-11-12 (commit 5f1e2d0)
+> Última revisão: 2026-11-12 (foto do cargo ao copiar o texto)
 
 ## Para que serve
 
@@ -23,6 +23,8 @@ O menu fica em `frontend/src/components/shell.tsx` (`triagemLinks`, linhas 16-19
 - `frontend/src/lib/triagem-matching.ts`: regras puras da tela. `organizarVagas` (avaliadas / sem avaliação / pendentes), `ordemDeExibicao`, `proximoLote`, `idsParaRepetir`, `selecaoValida`, `problemaDoPerfil`, `perfilPreenchido`, `rotuloTurnos`, `rotuloScore` e `textoParaCandidato`, que monta o texto com emojis (reexportado pela `TriagemPage`).
 - `frontend/src/lib/triagem-geo.ts`: geocodifica o CEP **no navegador**. Usa ViaCEP para o endereço e, para a coordenada, tenta AwesomeAPI, depois BrasilAPI e por fim Photon (komoot).
 - `frontend/src/pages/DossiePage.tsx`: página do dossiê. Tudo fica no arquivo (`Passo`, `Indicador`, `ResumoCandidato`).
+- `frontend/src/lib/foto-cargo.ts`: `fotoDoCargo` (nome do cargo → `/cargos/<chave>.jpg`, ou null) e `copiarComFoto` (texto + foto num único item da área de transferência). Também usado pela ficha da vaga.
+- `frontend/public/cargos/*.jpg`: fotos ilustrativas por cargo (1024 px, JPEG, nome = `chaveCargo` com hífens).
 - `frontend/src/lib/api.ts`: `api()` com cookie (`credentials: "include"`) e envelope `{ success, data, meta }`.
 
 **Backend**
@@ -94,6 +96,8 @@ O menu fica em `frontend/src/components/shell.tsx` (`triagemLinks`, linhas 16-19
 - **Status da avaliação**: `avaliada`, `indisponivel` (JEV sem configuração), `dados_insuficientes` (vaga sem atividades, descrição e requisitos, ou perfil fraco), `falhou` (timeout ou erro; pode ser repetida), `resposta_invalida` e `nao_encontrada`.
 - **Score do JEV**: vai de 0 a 4 (cinco níveis) e **não é percentual**. As avaliadas são ordenadas pela posição na escala; no empate, pela distância. A explicação textual é do DNA Work e não é o motivo do score (`AVISO_EXPLICACAO`).
 - **Seleção**: guardada por id. Reordenar não desmarca, e as vagas que saem do resultado deixam de contar (`selecaoValida`). O texto copiado segue a ordem da tela.
+- **Foto do cargo**: com **uma única** vaga marcada e foto para o cargo (`fotoDoCargo(vaga.title)`), a foto aparece acima do texto e o botão vira "Copiar foto e texto". Ele grava **um único item** na área de transferência com `text/plain` e `image/png` (o JPEG é redesenhado em PNG num canvas, porque o navegador só aceita PNG). Com duas ou mais vagas, ou cargo sem foto, copia só o texto. Se o navegador recusar a imagem, também cai para o texto.
+  - As mensagens são enviadas pelo chat do CRM próprio. Até 2026-11-12, ao colar, o CRM ficava só com a imagem e descartava o `text/plain`. A correção (usar o texto colado como legenda da imagem) foi pedida a quem cuida do CRM. Não troque por dois botões: o formato de um item com os dois tipos é o que o CRM vai ler.
 - **Currículo**:
   - PDF, DOCX, PNG, JPG e WEBP até 5 MB; `.doc` é recusado. O tipo é detectado pelos bytes, não pela extensão;
   - a Luna não extrai idade, sexo, telefone nem e-mail;
@@ -117,6 +121,7 @@ O menu fica em `frontend/src/components/shell.tsx` (`triagemLinks`, linhas 16-19
 - O contrato de `POST /triagem/vagas` (`{ originLabel, jobs: [{ id, title, company, location, contractType, salaryLabel, hasBenefits, homeOffice, schedule, schedules, distanceKm }] }`) é coberto por `triagem-rotas.test.ts`. Não renomeie campos.
 - `textoParaCandidato` define a mensagem que vai ao candidato (emojis, numeração, fechamento). Ela é testada em `frontend/test/triagem-matching.test.ts`.
 - As regras de perfil suficiente existem em dois lugares: `perfilPreenchido` no front e `perfilSuficiente` no back. Mudou um, mude o outro.
+- Foto nova de cargo: salve em `frontend/public/cargos/<chave-com-hifens>.jpg` e acrescente a chave em `FOTOS` (`lib/foto-cargo.ts`). Nomes diferentes para a mesma função (ex.: Estagiário Marketing → Assistente de Marketing) ficam em `MESMA_FOTO`.
 - Os prompts do dossiê são cópias do n8n. Ao mudar o texto no n8n, atualize `lib/dossie/prompts.ts`.
 - O matching e o dossiê têm consulta "básica" para quando faltam colunas (`descricao`, `requisitos`) ou a tabela `cargo` (erros 42703/42P01). Não remova essa reserva sem garantir o schema.
 - Nunca registre em log o conteúdo do currículo nem do estado mandado ao JEV. Os comentários e as mensagens de erro foram feitos para não expor esses dados.
@@ -124,7 +129,7 @@ O menu fica em `frontend/src/components/shell.tsx` (`triagemLinks`, linhas 16-19
 
 ## Como testar
 
-- Abra `/triagem`, digite um CEP e clique em "Buscar vagas". Marque vagas e confira o texto e o botão "Copiar texto".
+- Abra `/triagem`, digite um CEP e clique em "Buscar vagas". Marque vagas e confira o texto e o botão "Copiar texto". Com uma só vaga marcada (ex.: Operador de Caixa), confira a foto e o "Copiar foto e texto"; no Windows, a área de transferência deve ter imagem e texto (`[System.Windows.Forms.Clipboard]::GetImage()` e `ContainsText()`).
 - Ligue "Busca inteligente", envie um PDF de currículo e confira o CEP preenchido, os campos do perfil e as seções "Avaliadas pelo JEV", "Sem avaliação" e "Ainda não analisadas". Sem `JEV_API_URL`/`JEV_API_KEY`, aparece o aviso "Score JEV indisponível".
 - Abra `/triagem/dossie`, busque um telefone, escolha a vaga, envie o currículo e gere o dossiê. Só use "Salvar como nota no CRM" com um negócio de teste.
 - Testes do backend: `backend/test/triagem.test.ts` (horário, distância, Notion), `triagem-inteligente.test.ts` (arquivo, currículo, JEV), `triagem-rotas.test.ts` (permissão, contrato, 503 sem chave) e `dossie.test.ts`.

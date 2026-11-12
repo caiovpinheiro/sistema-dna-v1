@@ -1,6 +1,6 @@
 # Agente — Vagas
 
-> Última revisão: 2026-11-12 (commit 5f1e2d0)
+> Última revisão: 2026-11-12 (foto do cargo na mensagem para o candidato)
 
 ## Para que serve
 
@@ -13,7 +13,7 @@ Aqui o usuário consulta todas as vagas (cópia do Lightsail em `dna_work.vaga`)
 | `/vagas` | `VagasPage` | `frontend/src/pages/VagasPage.tsx` | Menu "Consultar". Filtros (Cargo, Grupo, Empresa, Modalidade, Situação) na URL, tabela em telas largas e cartões em telas estreitas, ocupação das posições, tempo em aberto, selo de situação clicável (`StatusEditavel`) e paginação de 20, 25, 50 ou 100. |
 | `/vagas/modelos` | `ConsultarModelosPage` | `frontend/src/pages/NovasAbasPage.tsx` (linha 180) | Menu "Consultar Modelos". Busca por cargo (com sugestões) e modalidade. Tabela com Cargo, Modalidade, Salário, Carga, Horário e as ações Abrir vaga, Editar e Apagar. |
 | `/vagas/modelos/novo` e `/vagas/modelos/:id/editar` | `ModeloFormPage` → `AbaVaga modo="modelo"` | `frontend/src/pages/GruposEmpresasPage.tsx` (linhas 452-741) | Formulário do modelo: o mesmo da abertura de vaga, sem empresa e sem quantidade. |
-| `/vagas/:id` | `VagaDetailPage` | `frontend/src/pages/VagaDetailPage.tsx` | Ficha da vaga: cabeçalho com Fechar/Reabrir, Novo processo, Contratar e Editar; os blocos Abertura, Inscritos, Entrevista e Contrato; as 4 etapas; mensagem para o candidato (copiar); informações gerais; candidatos sugeridos; quem já trabalhou; contratados; processos relacionados (`ProcessosRelacionados` de `ProcessosPage.tsx`). |
+| `/vagas/:id` | `VagaDetailPage` | `frontend/src/pages/VagaDetailPage.tsx` | Ficha da vaga: cabeçalho com Fechar/Reabrir, Novo processo, Contratar e Editar; os blocos Abertura, Inscritos, Entrevista e Contrato; as 4 etapas; mensagem para o candidato (com a foto do cargo, quando houver; "Copiar foto e mensagem" copia as duas num único item, como na Triagem); informações gerais; candidatos sugeridos; quem já trabalhou; contratados; processos relacionados (`ProcessosRelacionados` de `ProcessosPage.tsx`). |
 | `/vagas/:id/editar` | `VagaFormPage` | `frontend/src/pages/VagaFormPage.tsx` | Edição da vaga: cargo, situação, modalidade, salário, quantidade, km, carga, sexo, horário por dia (Fixo/Escala/Folga), texto do horário, atividades, benefícios, requisitos, destaques e observações. A empresa fica travada. |
 | `/vagas/nova` | — | `frontend/src/App.tsx:81` | Redireciona para `/grupos-empresas?aba=vaga`. A abertura de vaga mora na tela de Grupos e Empresas (`AbaVaga modo="vaga"`). |
 
@@ -25,7 +25,7 @@ Menu: `vagaLinks` em `frontend/src/components/shell.tsx` (linhas 36-39). Para li
 
 **Frontend**
 - `frontend/src/pages/VagasPage.tsx`: `VagasPage`, `Modalidade`, `Ocupacao`, `Disponiveis`, `TempoAberto`, `StatusEditavel` (menu em portal, pede confirmação antes de gravar).
-- `frontend/src/pages/VagaDetailPage.tsx`: `VagaDetailPage`, `MensagemVaga`.
+- `frontend/src/pages/VagaDetailPage.tsx`: `VagaDetailPage`, `MensagemVaga` (usa `fotoDoCargo` e `copiarComFoto` de `frontend/src/lib/foto-cargo.ts`; fotos em `frontend/public/cargos/`, ver o agente da Triagem).
 - `frontend/src/pages/VagaFormPage.tsx`: edição (react-hook-form + zod).
 - `frontend/src/pages/NovasAbasPage.tsx`: `ConsultarModelosPage` e `Pesquisa` (campo com sugestões).
 - `frontend/src/pages/GruposEmpresasPage.tsx`: `ModeloFormPage` e `AbaVaga` (formulário compartilhado entre vaga e modelo; também `cargaDoHorario`, `modosDoModelo`, `textoPrevisto`).
@@ -162,7 +162,7 @@ Menu: `vagaLinks` em `frontend/src/components/shell.tsx` (linhas 36-39). Para li
 ## Como testar
 
 - `/vagas`: aplique cada filtro e confira a URL e o total. Mude a situação pelo selo numa vaga de teste (isso grava no Lightsail).
-- `/vagas/:id`: confira a mensagem e o "Copiar mensagem", os sugeridos e os contratados. Use Fechar/Reabrir só numa vaga de teste.
+- `/vagas/:id`: confira a mensagem, a foto do cargo e o "Copiar foto e mensagem" (cargo sem foto mostra "Copiar mensagem"), os sugeridos e os contratados. Use Fechar/Reabrir só numa vaga de teste.
 - `/vagas/:id/editar`: mude o horário (Fixo/Escala/Folga), use "Gerar texto pelos dias", salve e confira o `public.vaga.horario` da vaga, se ela estiver aberta.
 - `/vagas/modelos`: crie um modelo, tente criar outro com o mesmo cargo e modalidade (deve dar 409), edite, use "Abrir vaga" e apague.
 - Sync: `POST /api/v1/configuracoes/sync?dry=1` (administrador) mostra o que seria feito sem gravar.

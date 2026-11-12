@@ -6,6 +6,7 @@ import { useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { AnaliseDaVaga, PerfilCandidato, useStatusIa, type CepDoCurriculo } from "@/components/triagem-inteligente";
 import { Badge, Button, Card, Empty, Field, Input, Select, Skeleton, Textarea, cn } from "@/components/ui";
 import { api } from "@/lib/api";
+import { copiarComFoto, fotoDoCargo } from "@/lib/foto-cargo";
 import { geocodeCep } from "@/lib/triagem-geo";
 import {
   PERFIL_VAZIO,
@@ -246,6 +247,8 @@ export function TriagemPage() {
   const marcadasValidas = useMemo(() => selecaoValida(marcadas, vagas), [marcadas, vagas]);
   const selecionadas = useMemo(() => selecionadasNaOrdem(ordem, marcadasValidas), [ordem, marcadasValidas]);
   const texto = textoParaCandidato(selecionadas);
+  // A foto do cargo só vai junto quando há uma única vaga marcada.
+  const foto = selecionadas.length === 1 ? fotoDoCargo(selecionadas[0].title) : null;
   const pendentes = organizado.pendentes.length;
   const paraRepetir = idsParaRepetir(avaliacoes);
 
@@ -290,9 +293,13 @@ export function TriagemPage() {
 
   async function copiar() {
     if (!texto) return;
-    await navigator.clipboard.writeText(texto);
-    setCopiado(true);
-    setTimeout(() => setCopiado(false), 2000);
+    try {
+      await copiarComFoto(texto, foto);
+      setCopiado(true);
+      setTimeout(() => setCopiado(false), 2000);
+    } catch {
+      setCopiado(false);
+    }
   }
 
   const cartao = (vaga: Vaga & { avaliacao?: AvaliacaoVaga | null }) => (
@@ -451,15 +458,21 @@ export function TriagemPage() {
                   {selecionadas.length ? `${selecionadas.length} ${selecionadas.length === 1 ? "vaga marcada" : "vagas marcadas"}, na ordem da lista.` : "Marque uma ou mais vagas para montar o texto."}
                 </p>
               </div>
+              {foto ? (
+                <figure className="grid gap-1.5">
+                  <img src={foto} alt={`Foto ilustrativa: ${selecionadas[0].title}`} className="aspect-[3/2] w-full rounded-lg object-cover" />
+                  <figcaption className="text-xs text-slate-500">A foto vai junto com o texto ao copiar.</figcaption>
+                </figure>
+              ) : null}
               {texto ? (
-                <Textarea readOnly value={texto} className="min-h-80" />
+                <Textarea readOnly value={texto} className={foto ? "min-h-56" : "min-h-80"} />
               ) : (
                 <div className="grid min-h-40 place-items-center rounded-lg border border-dashed border-slate-300 px-4 text-center text-sm text-slate-500">
                   <span className="grid justify-items-center gap-2"><Briefcase size={20} className="text-slate-400" /> O texto aparece aqui.</span>
                 </div>
               )}
               <Button type="button" onClick={() => void copiar()} disabled={!texto} className="h-11 w-full">
-                {copiado ? <Check size={16} /> : <Copy size={16} />} {copiado ? "Texto copiado" : "Copiar texto"}
+                {copiado ? <Check size={16} /> : <Copy size={16} />} {copiado ? (foto ? "Foto e texto copiados" : "Texto copiado") : (foto ? "Copiar foto e texto" : "Copiar texto")}
               </Button>
             </Card>
           ) : null}

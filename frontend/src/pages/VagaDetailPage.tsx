@@ -3,15 +3,17 @@ import { Link, useParams } from "react-router-dom";
 import { useState } from "react";
 import { Badge, Button, Card, Skeleton } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
+import { copiarComFoto, fotoDoCargo } from "@/lib/foto-cargo";
 import { dateBr, formatCpf, formatPhone, money, regimeLabel, situacaoLabel, textoPlano } from "@/lib/format";
 import { ProcessosRelacionados } from "@/pages/ProcessosPage";
 
-/** Mensagem para o candidato no formato do Notion (cargo, local, salário + benefícios e horário), com botão de copiar. */
-function MensagemVaga({ texto }: { texto: string }) {
+/** Mensagem para o candidato no formato do Notion (cargo, local, salário + benefícios e horário), com botão de copiar. Copia junto a foto do cargo, se houver. */
+function MensagemVaga({ texto, cargo }: { texto: string; cargo: string }) {
   const [copiado, setCopiado] = useState(false);
+  const foto = fotoDoCargo(cargo);
   async function copiar() {
     try {
-      await navigator.clipboard.writeText(texto);
+      await copiarComFoto(texto, foto);
       setCopiado(true);
       window.setTimeout(() => setCopiado(false), 2000);
     } catch {
@@ -22,9 +24,12 @@ function MensagemVaga({ texto }: { texto: string }) {
     <Card className="grid gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="font-bold">Mensagem para o candidato</h2>
-        <Button type="button" variant="secondary" onClick={() => void copiar()}>{copiado ? "Copiada" : "Copiar mensagem"}</Button>
+        <Button type="button" variant="secondary" onClick={() => void copiar()}>{copiado ? "Copiada" : foto ? "Copiar foto e mensagem" : "Copiar mensagem"}</Button>
       </div>
-      <p className="whitespace-pre-line text-sm text-slate-600">{texto}</p>
+      <div className="flex flex-wrap items-start gap-4">
+        {foto ? <img src={foto} alt={`Foto ilustrativa: ${cargo}`} className="aspect-[3/2] w-48 rounded-lg object-cover" /> : null}
+        <p className="whitespace-pre-line text-sm text-slate-600">{texto}</p>
+      </div>
     </Card>
   );
 }
@@ -140,7 +145,7 @@ export function VagaDetailPage() {
           <Card key={String(etapa)} className="bg-cyan-800 text-white"><p className="text-xs uppercase">{etapa}</p><p className="mt-2 font-bold">{nome} {valor}</p></Card>
         ))}
       </div>
-      {data.mensagem ? <MensagemVaga texto={data.mensagem} /> : null}
+      {data.mensagem ? <MensagemVaga texto={data.mensagem} cargo={data.cargo} /> : null}
       <Card className="grid gap-4">
         <h2 className="font-bold">Informações gerais</h2>
         <p className="text-sm text-slate-600">Distância: {data.km || "—"} km · Carga horária: {data.carga_horaria || "não informada"}</p>
