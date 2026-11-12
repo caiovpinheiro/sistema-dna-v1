@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useSearchParams } from "react-router-dom";
 import { BuscaOpcao } from "@/components/busca-opcao";
-import { Paginacao, numeroPagina } from "@/components/paginacao";
+import { Paginacao, numeroPagina, tamanhoPagina } from "@/components/paginacao";
 import { CabecalhoPagina, CampoFiltro, ResumoResultados } from "@/components/pagina";
 import { Badge, Button, Card, Empty, Select, Skeleton } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
@@ -18,7 +18,8 @@ export function VagasPage() {
   const [params, setParams] = useSearchParams();
   const query = Object.fromEntries(params.entries());
   const pagina = numeroPagina(params);
-  const result = useQuery({ queryKey: ["vagas", query], queryFn: () => api<Row[]>(`/api/v1/vagas?${new URLSearchParams({ ...query, page: String(pagina), pageSize: "20" })}`) });
+  const tamanho = tamanhoPagina(params);
+  const result = useQuery({ queryKey: ["vagas", query], queryFn: () => api<Row[]>(`/api/v1/vagas?${new URLSearchParams({ ...query, page: String(pagina), pageSize: String(tamanho) })}`) });
   const filtros = useQuery({ queryKey: ["vagas-filtros"], queryFn: () => api<Filtros>("/api/v1/vagas/filtros") });
   const modes = useQuery({ queryKey: ["modalidades"], queryFn: () => api<Mode[]>("/api/v1/modalidades") });
   function update(key: string, value: string) {
@@ -46,6 +47,12 @@ export function VagasPage() {
   function irPara(paginaDestino: number) {
     const next = new URLSearchParams(params);
     if (paginaDestino <= 1) next.delete("page"); else next.set("page", String(paginaDestino));
+    setParams(next);
+  }
+  function trocarTamanho(novo: number) {
+    const next = new URLSearchParams(params);
+    if (novo === 20) next.delete("pageSize"); else next.set("pageSize", String(novo));
+    next.delete("page");
     setParams(next);
   }
   const lista = result.data;
@@ -148,7 +155,7 @@ export function VagasPage() {
             ))}
           </ul>
           <div className="flex flex-wrap items-center justify-end gap-3 border-t border-slate-100">
-            <Paginacao pagina={pagina} tamanho={20} total={Number(lista.meta?.total ?? 0)} onPagina={irPara} />
+            <Paginacao pagina={pagina} tamanho={tamanho} total={Number(lista.meta?.total ?? 0)} onPagina={irPara} onTamanho={trocarTamanho} />
           </div>
         </Card>
       ) : filtrando ? (

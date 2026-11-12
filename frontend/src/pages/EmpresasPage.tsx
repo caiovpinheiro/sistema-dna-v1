@@ -3,7 +3,7 @@ import { ChevronRight, Plus, Search } from "lucide-react";
 import type { FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { LinhaPreview, PreviewFlutuante, useLinhaPreview } from "@/components/preview";
-import { Paginacao, numeroPagina } from "@/components/paginacao";
+import { Paginacao, numeroPagina, tamanhoPagina } from "@/components/paginacao";
 import { CabecalhoPagina, CampoFiltro, ResumoResultados } from "@/components/pagina";
 import { Button, Badge, Card, Empty, Input, Select, Skeleton, cn } from "@/components/ui";
 import { api } from "@/lib/api";
@@ -28,7 +28,8 @@ export function EmpresasPage() {
   const [params, setParams] = useSearchParams();
   const query = Object.fromEntries(params.entries());
   const pagina = numeroPagina(params);
-  const result = useQuery({ queryKey: ["empresas", query], queryFn: () => api<Row[]>(`/api/v1/empresas?${new URLSearchParams({ ...query, page: String(pagina), pageSize: "20" })}`) });
+  const tamanho = tamanhoPagina(params);
+  const result = useQuery({ queryKey: ["empresas", query], queryFn: () => api<Row[]>(`/api/v1/empresas?${new URLSearchParams({ ...query, page: String(pagina), pageSize: String(tamanho) })}`) });
   const preview = useLinhaPreview();
   const detalhe = useQuery({
     queryKey: ["empresa", preview.id],
@@ -46,11 +47,18 @@ export function EmpresasPage() {
       const value = String(data.get(key) ?? "").trim();
       if (value) next.set(key, value);
     }
+    if (tamanho !== 20) next.set("pageSize", String(tamanho));
     setParams(next);
   }
   function irPara(paginaDestino: number) {
     const next = new URLSearchParams(params);
     if (paginaDestino <= 1) next.delete("page"); else next.set("page", String(paginaDestino));
+    setParams(next);
+  }
+  function trocarTamanho(novo: number) {
+    const next = new URLSearchParams(params);
+    if (novo === 20) next.delete("pageSize"); else next.set("pageSize", String(novo));
+    next.delete("page");
     setParams(next);
   }
   const lista = result.data;
@@ -139,7 +147,7 @@ export function EmpresasPage() {
             </tbody>
           </table>
           <div className="flex flex-wrap items-center justify-end gap-3 border-t border-slate-100">
-            <Paginacao pagina={pagina} tamanho={20} total={Number(lista.meta?.total ?? 0)} onPagina={irPara} />
+            <Paginacao pagina={pagina} tamanho={tamanho} total={Number(lista.meta?.total ?? 0)} onPagina={irPara} onTamanho={trocarTamanho} />
           </div>
           <PreviewFlutuante box={preview.box}>
             {aberto ? (
