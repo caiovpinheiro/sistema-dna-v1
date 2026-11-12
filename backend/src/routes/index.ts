@@ -375,6 +375,9 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
   api.get("/api/v1/tce/escolas", {
     schema: { tags: ["termos"], querystring: z.object({ q: z.string().max(120).optional() }) },
   }, async (request) => ok(await services.tce.buscarEscolas(request.query.q ?? "")));
+  api.get("/api/v1/tce/vagas", {
+    schema: { tags: ["termos"], querystring: z.object({ q: z.string().trim().max(120).optional().default("") }) },
+  }, async (request) => ok(await services.tce.buscarVagasEstagio(request.query.q)));
   api.get("/api/v1/tce/candidatos", {
     schema: { tags: ["termos"], querystring: z.object({ q: z.string().max(120).optional() }) },
   }, async (request) => ok(await services.tce.buscarCandidatos(request.query.q ?? "")));

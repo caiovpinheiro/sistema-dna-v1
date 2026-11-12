@@ -1,6 +1,7 @@
 import { legacyToIso } from "./dates.js";
 import { moneyToNumber } from "./money.js";
-import type { Concedente, ManualData } from "./tce-fields.js";
+import { horarioDoEspelho } from "../services/triagem.service.js";
+import { CARGA_HORARIA_DIARIA, CARGA_HORARIA_SEMANAL, type Concedente, type ManualData } from "./tce-fields.js";
 
 export type CandidatoTce = {
   id: string;
@@ -60,11 +61,6 @@ function bolsaTexto(value: string | null | undefined) {
   return numero == null ? texto(value) : numero.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }).replace(/\s/g, " ");
 }
 
-function horasTexto(value: string | null | undefined) {
-  const limpo = texto(value);
-  return /^\d+$/.test(limpo) ? `${limpo} horas` : limpo;
-}
-
 export function preenchimentoDoCandidato(candidato: Linha, escola: Partial<ManualData> | null, contrato: Linha | null): PreenchimentoTce {
   const campos: Partial<ManualData> = {
     nome: texto(candidato.nome),
@@ -107,11 +103,12 @@ export function preenchimentoDoCandidato(candidato: Linha, escola: Partial<Manua
     };
     campos.estagio_inicio = legacyToIso(contrato.datainicio) ?? "";
     campos.estagio_termino = terminoDoEstagio(campos.estagio_inicio, legacyToIso(contrato.datafim) ?? "", terminoEstudo);
-    campos.carga_horaria_semanal = horasTexto(contrato.carga_horaria);
     campos.jornada = texto(contrato.texto_carga);
     campos.bolsa = bolsaTexto(contrato.salario);
     campos.plano_atividades = texto(contrato.atribuicaoes);
   }
+  campos.carga_horaria_diaria = CARGA_HORARIA_DIARIA;
+  campos.carga_horaria_semanal = CARGA_HORARIA_SEMANAL;
   return {
     campos,
     concedente,
@@ -119,5 +116,49 @@ export function preenchimentoDoCandidato(candidato: Linha, escola: Partial<Manua
     escolaId: idValido(candidato.escola),
     idContratacao: Number(contrato?.id_contratacao) || null,
     terminoEstudo,
+  };
+}
+
+/** Linha de public.vaga (estágio) com a empresa, como vem da busca do TCE. */
+export type LinhaVagaTce = {
+  id: string;
+  empresa_id: string | null;
+  cargo: string | null;
+  salario: string | null;
+  beneficios: string | null;
+  horario: string | null;
+  jornada: string | null;
+  atividades: string | null;
+  razao_social: string | null;
+  nome_fantasia: string | null;
+  local: string | null;
+};
+
+export type VagaTce = {
+  id: string;
+  cargo: string;
+  empresa: string;
+  empresaId: string;
+  local: string;
+  /** Campos das condições do estágio que a vaga preenche; só os que têm valor. */
+  campos: Partial<ManualData>;
+};
+
+/** Vaga de estágio → campos do Anexo I: jornada (horário da vaga), bolsa, benefícios e plano de atividades. */
+export function vagaParaTce(linha: LinhaVagaTce): VagaTce {
+  const campos: Partial<ManualData> = {
+    jornada: horarioDoEspelho(linha.horario) ?? texto(linha.jornada),
+    bolsa: Number(linha.salario) > 0 ? bolsaTexto(linha.salario) : "",
+    beneficios: texto(linha.beneficios),
+    plano_atividades: texto(linha.atividades),
+  };
+  for (const chave of Object.keys(campos) as Array<keyof ManualData>) if (!campos[chave]) delete campos[chave];
+  return {
+    id: linha.id,
+    cargo: texto(linha.cargo) || "Vaga de estágio",
+    empresa: texto(linha.nome_fantasia) || texto(linha.razao_social),
+    empresaId: idValido(linha.empresa_id),
+    local: texto(linha.local).replace(/\s+-\s+/, ", ").replace(/\s*\/\s*/, " "),
+    campos,
   };
 }

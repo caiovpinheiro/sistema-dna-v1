@@ -30,6 +30,19 @@ type Preenchimento = {
 };
 
 const APOLICE = "Apólice Coletiva nº 09820055561928 da Porto Seguro";
+/** Valores iguais em todo TCE: aparecem só para leitura e o backend também grava sempre estes. */
+const FIXOS: Record<string, string> = {
+  seguro_apolice: APOLICE,
+  carga_horaria_diaria: "6 horas",
+  carga_horaria_semanal: "30 horas",
+};
+const AVISO_FIXO: Record<string, string> = {
+  seguro_apolice: "Fixa para todos os termos.",
+  carga_horaria_diaria: "Padrão de todo estágio.",
+  carga_horaria_semanal: "Padrão de todo estágio.",
+};
+
+type VagaEstagio = { id: string; cargo: string; empresa: string; empresaId: string; local: string; campos: Record<string, string> };
 
 const CAMPOS: Array<{ key: string; label: string; section: string; full?: boolean; multiline?: boolean; placeholder?: string; date?: boolean }> = [
   { key: "nome", label: "Nome completo", section: "candidato" },
@@ -126,7 +139,7 @@ export function GeradorTce({ editarId }: { editarId?: string }) {
   const [aberta, setAberta] = useState(false);
   const [empresaId, setEmpresaId] = useState("");
   const [concedente, setConcedente] = useState({ razao_social: "", cnpj: "", endereco: "", cep: "", cidade: "", estado: "", email: "", representante: "" });
-  const [campos, setCampos] = useState<Record<string, string>>({ seguro_apolice: APOLICE });
+  const [campos, setCampos] = useState<Record<string, string>>({ ...FIXOS });
   const [candidatoBusca, setCandidatoBusca] = useState("");
   // Candidato escolhido na pesquisa: o TCE grava os documentos dele (CPF, RG, endereço, responsável) na ficha.
   const [candidatoId, setCandidatoId] = useState<string | null>(null);
@@ -137,6 +150,11 @@ export function GeradorTce({ editarId }: { editarId?: string }) {
   // Só para o selo "Preenchido" do bloco da escola.
   const [escolaEscolhida, setEscolaEscolhida] = useState("");
   const [responsavel, setResponsavel] = useState(false);
+  const [vagaBusca, setVagaBusca] = useState("");
+  const [vagas, setVagas] = useState<VagaEstagio[]>([]);
+  const [vagaAberta, setVagaAberta] = useState(false);
+  const [vagaEscolhida, setVagaEscolhida] = useState("");
+  const [vagaAviso, setVagaAviso] = useState("");
   const [erro, setErro] = useState("");
   const [pronto, setPronto] = useState(!editarId);
   const dados = useQuery({
@@ -150,7 +168,7 @@ export function GeradorTce({ editarId }: { editarId?: string }) {
     setEmpresaId(salvo.empresa_id || "");
     setConcedente(salvo.concedente);
     setBusca(salvo.concedente.razao_social ? `${salvo.concedente.razao_social} · ${salvo.concedente.cnpj}` : "");
-    setCampos({ ...salvo.campos, seguro_apolice: APOLICE });
+    setCampos({ ...salvo.campos, ...FIXOS });
     setEscolaBusca(salvo.campos.nome_escola || "");
     setResponsavel(Boolean(salvo.campos.nome_responsavel));
     setPronto(true);
@@ -181,7 +199,7 @@ export function GeradorTce({ editarId }: { editarId?: string }) {
   function aplicarPreenchimento(dados: Preenchimento) {
       setIdContratacao(dados.idContratacao ?? null);
       setTerminoEstudo(dados.terminoEstudo ?? "");
-      setCampos((atual) => ({ ...atual, ...dados.campos, seguro_apolice: APOLICE }));
+      setCampos((atual) => ({ ...atual, ...dados.campos, ...FIXOS }));
       if (dados.campos.nome_responsavel) setResponsavel(true);
       if (dados.escolaId) {
         setEscolaBusca(dados.campos.nome_escola || "");
@@ -232,6 +250,37 @@ export function GeradorTce({ editarId }: { editarId?: string }) {
     return () => { ativo = false; };
   }, [contratacaoParam]);
 
+  async function procurarVaga(valor: string) {
+    setVagaBusca(valor);
+    setVagaEscolhida("");
+    setVagaAberta(true);
+    try {
+      const result = await api<VagaEstagio[]>(`/api/v1/tce/vagas?q=${encodeURIComponent(valor.trim())}`);
+      setVagas(result.data);
+    } catch {
+      setVagas([]);
+    }
+  }
+
+  /** Vaga escolhida: preenche as condições que ela tem e, sem empresa escolhida ainda, a concedente. */
+  function escolherVaga(vaga: VagaEstagio) {
+    setCampos((atual) => ({ ...atual, ...vaga.campos, ...FIXOS }));
+    setVagaBusca(`${vaga.cargo}${vaga.empresa ? ` · ${vaga.empresa}` : ""}`);
+    setVagaEscolhida(vaga.cargo);
+    setVagaAberta(false);
+    const empresa = lista.find((item) => item.id === vaga.empresaId);
+    if (!empresaId && empresa) {
+      setEmpresaId(empresa.id);
+      setConcedente({ razao_social: empresa.razao_social, cnpj: empresa.cnpj, endereco: empresa.endereco, cep: empresa.cep, cidade: empresa.cidade, estado: empresa.estado, email: empresa.email, representante: empresa.representante });
+      setBusca(`${empresa.razao_social}${empresa.nome_fantasia ? ` (${empresa.nome_fantasia})` : ""} · ${empresa.cnpj}`);
+      setVagaAviso("A empresa concedente também foi preenchida com a empresa da vaga.");
+    } else if (empresaId && vaga.empresaId && vaga.empresaId !== empresaId) {
+      setVagaAviso("Atenção: a vaga é de outra empresa, diferente da concedente escolhida no bloco 1.");
+    } else {
+      setVagaAviso("");
+    }
+  }
+
   async function procurarEscola(valor: string) {
     setEscolaBusca(valor);
     setEscolaEscolhida("");
@@ -250,7 +299,7 @@ export function GeradorTce({ editarId }: { editarId?: string }) {
     }
   }
 
-  const corpo = { empresa_id: empresaId, id_contratacao: idContratacao, id_candidato: candidatoId, concedente, campos: { ...campos, seguro_apolice: APOLICE } };
+  const corpo = { empresa_id: empresaId, id_contratacao: idContratacao, id_candidato: candidatoId, concedente, campos: { ...campos, ...FIXOS } };
   const gerar = useMutation({
     mutationFn: () => editarId
       ? api<{ id: string }>(`/api/v1/tce/${editarId}`, { method: "PATCH", body: JSON.stringify(corpo) })
@@ -276,15 +325,15 @@ export function GeradorTce({ editarId }: { editarId?: string }) {
         ) : (
           <Input
             type={field.date ? "date" : "text"}
-            readOnly={field.key === "seguro_apolice"}
-            className={field.key === "seguro_apolice" ? "bg-slate-50 text-slate-500" : undefined}
+            readOnly={field.key in FIXOS}
+            className={field.key in FIXOS ? "bg-slate-50 text-slate-500" : undefined}
             placeholder={field.placeholder ?? EXEMPLOS[field.key]}
-            value={field.key === "seguro_apolice" ? APOLICE : campos[field.key] ?? ""}
+            value={FIXOS[field.key] ?? campos[field.key] ?? ""}
             onChange={(event) => setCampos((atual) => ({ ...atual, [field.key]: event.target.value }))}
           />
         )}
         {field.key === "estagio_termino" && terminoEstudo ? <span className="text-xs text-slate-500">Os estudos terminam em {dataBr(terminoEstudo)}; o estágio não pode passar disso.</span> : null}
-        {field.key === "seguro_apolice" ? <span className="text-xs text-slate-500">Fixa para todos os termos.</span> : null}
+        {AVISO_FIXO[field.key] ? <span className="text-xs text-slate-500">{AVISO_FIXO[field.key]}</span> : null}
       </Field>
     </div>
   );
@@ -380,7 +429,19 @@ export function GeradorTce({ editarId }: { editarId?: string }) {
           <Grade>{camposDa("escola")}</Grade>
         </Bloco>
 
-        <Bloco id="tce-estagio" numero={5} titulo="Condições do estágio" texto="Vão no Anexo I do termo.">
+        <Bloco id="tce-estagio" numero={5} titulo="Condições do estágio" texto="Vão no Anexo I do termo. A vaga preenche jornada, bolsa, benefícios e plano de atividades.">
+          <Busca rotulo="Preencher pela vaga de estágio" origem={vagaEscolhida}>
+            <Input value={vagaBusca} autoComplete="off" placeholder="Digite o cargo ou a empresa da vaga" className="pl-9" onChange={(event) => void procurarVaga(event.target.value)} onFocus={() => { if (!vagas.length) void procurarVaga(vagaBusca); else setVagaAberta(true); }} onBlur={() => window.setTimeout(() => setVagaAberta(false), 150)} />
+            {vagaAberta ? (
+              <Sugestoes>
+                {vagas.length === 0 ? <p className="px-3 py-2 text-sm text-slate-500">Nenhuma vaga de estágio aberta com esse cargo ou empresa.</p> : null}
+                {vagas.map((vaga) => (
+                  <Sugestao key={vaga.id} titulo={vaga.cargo} detalhe={[vaga.empresa, vaga.local, vaga.campos.bolsa].filter(Boolean).join(" — ")} onEscolher={() => escolherVaga(vaga)} />
+                ))}
+              </Sugestoes>
+            ) : null}
+            {vagaAviso ? <p className={cn("mt-1 text-xs", vagaAviso.startsWith("Atenção") ? "text-amber-800" : "text-slate-500")}>{vagaAviso}</p> : null}
+          </Busca>
           <Subtitulo>Período</Subtitulo>
           <Grade>{camposDa("estagio", ["estagio_inicio", "estagio_termino", "emissao_cidade_data", "data_termo_aditivo"])}</Grade>
           <Subtitulo>Jornada e supervisão</Subtitulo>

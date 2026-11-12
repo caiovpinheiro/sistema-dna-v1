@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { preenchimentoDoCandidato } from "../src/lib/tce-candidato.js";
+import { preenchimentoDoCandidato, vagaParaTce } from "../src/lib/tce-candidato.js";
 
 test("preenche o TCE com o candidato, a escola e a contratação que já existem", () => {
   const preenchido = preenchimentoDoCandidato(
@@ -65,6 +65,7 @@ test("preenche o TCE com o candidato, a escola e a contratação que já existem
   assert.equal(preenchido.campos.nome_escola, "E.E. Koheiji Adachi");
   assert.equal(preenchido.campos.estagio_inicio, "2026-09-14");
   assert.equal(preenchido.campos.bolsa, "R$ 1.100,00");
+  assert.equal(preenchido.campos.carga_horaria_diaria, "6 horas");
   assert.equal(preenchido.campos.carga_horaria_semanal, "30 horas");
   assert.equal(preenchido.campos.plano_atividades, "Auxiliar no atendimento\nApoiar a reposição");
   assert.equal(preenchido.concedente?.razao_social, "Comércio de Alimentos Alves e Farias LTDA");
@@ -94,4 +95,24 @@ test("preenchimento sem contratação usa o término dos estudos do candidato", 
   assert.equal(preenchido.terminoEstudo, "2027-12-20");
   assert.equal(preenchido.campos.nome_escola, "E.E. Teste");
   assert.equal(preenchido.idContratacao, null);
+});
+
+test("vaga de estágio preenche jornada, bolsa, benefícios e plano de atividades, sem campos vazios", () => {
+  const vaga = vagaParaTce({
+    id: "v1", empresa_id: "emp-uuid", cargo: "Estagiário administrativo", salario: "1200", beneficios: "Vale-transporte",
+    horario: "texto=Segunda a sexta, das 13h às 19h", jornada: "outra", atividades: "Arquivar documentos<br>Atender telefone",
+    razao_social: "Escritório Lima ME", nome_fantasia: "Contábil Lima", local: "Mooca - São Paulo / SP",
+  });
+  assert.equal(vaga.empresa, "Contábil Lima");
+  assert.equal(vaga.empresaId, "emp-uuid");
+  assert.equal(vaga.local, "Mooca, São Paulo SP");
+  assert.deepEqual(vaga.campos, {
+    jornada: "Segunda a sexta, das 13h às 19h",
+    bolsa: "R$ 1.200,00",
+    beneficios: "Vale-transporte",
+    plano_atividades: "Arquivar documentos\nAtender telefone",
+  });
+  const semDados = vagaParaTce({ id: "v2", empresa_id: null, cargo: null, salario: "0", beneficios: null, horario: null, jornada: "Seg a sex", atividades: null, razao_social: null, nome_fantasia: null, local: null });
+  assert.deepEqual(semDados.campos, { jornada: "Seg a sex" });
+  assert.equal(semDados.cargo, "Vaga de estágio");
 });
