@@ -5,6 +5,7 @@ import type { AppConfig } from "../config.js";
 import type { MysqlPool } from "../db/mysql.js";
 import { moneyToNumber } from "../lib/money.js";
 import { reagruparVagaIds, type MudancaVagaId } from "../lib/vaga-id.js";
+import { sincronizarEnderecoEmpresas, type EnderecoAtualizado } from "../lib/empresa-endereco.js";
 import type { Logger } from "./notion-sync.service.js";
 
 /** Colunas da grade no Lightsail, na numeração 1 domingo … 7 sábado. O Lightsail escreve "domindo". */
@@ -68,6 +69,8 @@ export type ResultadoAbertas = {
   atualizadas: Array<{ id_vaga: string; codigo: string; campos: string[] }>;
   /** Vagas que mudaram de vaga_id: o mesmo só para vagas repetidas da mesma empresa com todos os detalhes iguais. */
   reagrupadas: MudancaVagaId[];
+  /** Empresas cujo endereço mudou na ficha: a triagem passa a medir a distância pelo endereço novo. */
+  enderecos: EnderecoAtualizado[];
 };
 
 const COLUNAS_INSERT = [
@@ -176,10 +179,18 @@ export class VagasAbertasSyncService {
   ) {}
 
   async executar(dry: boolean, slot: string): Promise<ResultadoAbertas> {
-    const resultado: ResultadoAbertas = { dry, lidas: 0, novas: 0, jaExistiam: 0, fora: 0, erros: 0, pendentes: [], inseridas: [], apagadas: [], atualizadas: [], reagrupadas: [] };
+    const resultado: ResultadoAbertas = { dry, lidas: 0, novas: 0, jaExistiam: 0, fora: 0, erros: 0, pendentes: [], inseridas: [], apagadas: [], atualizadas: [], reagrupadas: [], enderecos: [] };
     if (!this.mysql) {
       this.log.error({ slot }, "sync vagas: MySQL não configurado");
       return resultado;
+    }
+
+    // 0) Endereço da ficha que mudou volta para public.empresa e public.vaga, antes de copiar vagas novas com a coordenada da empresa.
+    try {
+      resultado.enderecos = await sincronizarEnderecoEmpresas(this.db, this.config.GOOGLE_MAPS_API_KEY, this.log, { dry });
+    } catch (error) {
+      resultado.erros += 1;
+      this.log.error({ slot, erro: error instanceof Error ? error.message : String(error) }, "sync vagas: falha ao conferir o endereço das empresas");
     }
 
     const [postgres, empresas] = await Promise.all([
@@ -285,7 +296,7 @@ export class VagasAbertasSyncService {
     const { lidas, novas: inseridas, jaExistiam, fora, erros } = resultado;
     this.log.info({
       dry, slot, lidas, novas: inseridas, jaExistiam, fora, erros, atualizadas: resultado.atualizadas.length,
-      reagrupadas: resultado.reagrupadas.length,
+      reagrupadas: resultado.reagrupadas.length, enderecos: resultado.enderecos.length,
       pendentes: resultado.pendentes.map((item) => `${item.nome} | ${item.cnpj} | ${item.vagas}`),
     }, "sync vagas: fim");
     return resultado;

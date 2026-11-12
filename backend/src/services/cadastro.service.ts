@@ -11,6 +11,7 @@ import { formatMoneyLegacy, moneyToNumber, parseMoney } from "../lib/money.js";
 import type { CargoService } from "./cargo.service.js";
 import { chaveCargo } from "../lib/cargo.js";
 import { reagruparVagaIds } from "../lib/vaga-id.js";
+import { geocodeEndereco } from "../lib/empresa-endereco.js";
 import type { EmpresaCadastro, GrupoCreate, ModeloVaga, VagaCadastro } from "../schemas/cadastro.js";
 
 type GrupoRow = { id: string; nome: string; email: string | null; telefone: string | null; criado_em: string };
@@ -156,17 +157,6 @@ export function empresaParecida(
     (empresa.cep ?? "").replace(/\D/g, "") === cep
     && [chaveDoNome(empresa.razao_social), chaveDoNome(empresa.nome_fantasia)].some((nome) => nome && nomes.has(nome)),
   );
-}
-
-/** "Rua X, 123 - Bairro, Cidade - UF, 00000-000, Brasil": o endereço inteiro, para o Google achar o ponto certo. */
-export function enderecoParaGeocode(partes: { logradouro?: string | null; numero?: string | null; bairro?: string | null; cidade?: string | null; uf?: string | null; cep?: string | null }) {
-  const limpo = (valor: string | null | undefined) => (valor ?? "").replace(/\s+/g, " ").trim();
-  const rua = [limpo(partes.logradouro), limpo(partes.numero)].filter(Boolean).join(", ");
-  const cidadeUf = [limpo(partes.cidade), limpo(partes.uf).toUpperCase()].filter(Boolean).join(" - ");
-  const digitos = limpo(partes.cep).replace(/\D/g, "");
-  const cep = digitos.length === 8 ? `${digitos.slice(0, 5)}-${digitos.slice(5)}` : "";
-  const trechos = [[rua, limpo(partes.bairro)].filter(Boolean).join(" - "), cidadeUf, cep].filter(Boolean);
-  return rua && cidadeUf ? `${trechos.join(", ")}, Brasil` : "";
 }
 
 function localDe(bairro: string, cidade: string, uf: string) {
@@ -1128,18 +1118,8 @@ export class CadastroService {
     if (!this.config.GOOGLE_MAPS_API_KEY) {
       throw new AppError(503, "GOOGLE_NAO_CONFIGURADO", "Defina GOOGLE_MAPS_API_KEY para gravar a latitude e a longitude.");
     }
-    const completo = endereco ? enderecoParaGeocode({ ...endereco, cep }) : "";
-    for (const busca of [completo, cep].filter(Boolean)) {
-      const url = new URL("https://maps.googleapis.com/maps/api/geocode/json");
-      url.searchParams.set("address", busca);
-      url.searchParams.set("components", "country:BR");
-      url.searchParams.set("region", "br");
-      url.searchParams.set("key", this.config.GOOGLE_MAPS_API_KEY);
-      const response = await fetch(url);
-      const body = await response.json() as { status?: string; results?: Array<{ geometry?: { location?: { lat: number; lng: number } } }> };
-      const location = body.results?.[0]?.geometry?.location;
-      if (response.ok && location && body.status === "OK") return location;
-    }
+    const location = await geocodeEndereco(this.config.GOOGLE_MAPS_API_KEY, cep, endereco);
+    if (location) return location;
     throw new AppError(502, "GEOCODE_FALHOU", "Não foi possível obter latitude e longitude a partir do endereço da empresa.");
   }
 

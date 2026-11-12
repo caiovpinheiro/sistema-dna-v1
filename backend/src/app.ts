@@ -124,7 +124,7 @@ export async function buildApp(context: AppContext): Promise<FastifyInstance> {
   const cargos = new CargoService(context.db, context.config);
   const services = {
     candidatos: new CandidatoService(context.db, candidatos),
-    empresas: new EmpresaService(context.db, empresas),
+    empresas: new EmpresaService(context.db, empresas, { apiKey: context.config.GOOGLE_MAPS_API_KEY, log: app.log }),
     vagas: new VagaService(context.db, vagas, empresas, context.config, context.capabilities, context.mysql ?? null),
     contratacoes: new ContratacaoService(context.db, contratacoes, vagas, candidatos, context.config, context.capabilities, processos),
     processos,

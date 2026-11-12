@@ -5,6 +5,8 @@ import { AppError } from "../lib/errors.js";
 import { EmpresaRepository } from "../repositories/empresa.repository.js";
 import type { EmpresaCreate, EmpresaListQuery, EmpresaPatch } from "../schemas/empresa.js";
 import { presentEmpresa } from "./presenters.js";
+import { sincronizarEnderecoEmpresas } from "../lib/empresa-endereco.js";
+import type { Logger } from "./notion-sync.service.js";
 
 const MENU_PORTAL = "9%34%35%37";
 const SUB1_PORTAL = "146%203%206";
@@ -30,8 +32,15 @@ const PATCHABLE = new Set([
   "matriz", "ie", "site", "obs",
 ]);
 
+const ENDERECO = ["cep", "logradouro", "numero", "complemento", "bairro", "cidade", "uf"];
+
 export class EmpresaService {
-  constructor(private readonly db: Pool, private readonly repo: EmpresaRepository) {}
+  constructor(
+    private readonly db: Pool,
+    private readonly repo: EmpresaRepository,
+    /** Para levar o endereço novo à triagem (public.empresa e public.vaga) logo depois de editar a ficha. */
+    private readonly endereco?: { apiKey: string; log: Logger },
+  ) {}
 
   private async assertMatriz(matriz: string | undefined, selfId?: string) {
     if (!matriz) return;
@@ -77,6 +86,11 @@ export class EmpresaService {
     if (patch.matriz === id) delete patch.matriz;
     await this.assertMatriz(patch.matriz, id);
     await this.repo.update(this.db, id, patch);
+    if (this.endereco && ENDERECO.some((campo) => campo in patch)) {
+      // Falha aqui não desfaz a edição: o sync das vagas confere o endereço de novo no próximo horário.
+      await sincronizarEnderecoEmpresas(this.db, this.endereco.apiKey, this.endereco.log, { ids: [id] }).catch((error: unknown) =>
+        this.endereco!.log.error({ id_empresa: id, erro: error instanceof Error ? error.message : String(error) }, "endereço da empresa: falha ao atualizar a triagem"));
+    }
     return presentEmpresa((await this.repo.findById(this.db, id))!);
   }
 

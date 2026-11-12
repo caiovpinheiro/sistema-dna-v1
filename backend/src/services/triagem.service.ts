@@ -47,6 +47,7 @@ type VagaPostgres = {
   idade_ate: number | null;
   horario: string | null;
   tipo_trabalho: string | null;
+  cep: string | null;
   latitude: number | null;
   longitude: number | null;
   nome_fantasia: string | null;
@@ -97,6 +98,17 @@ export function localDaEmpresa(local: string | null | undefined): string {
   return String(local ?? "").replace(/\s+/g, " ").trim().replace(/\s+-\s+/, ", ").replace(/\s*\/\s*/, " ");
 }
 
+/**
+ * Mesmo CEP da pessoa é 0 km: o ponto da pessoa vem do centro do CEP e o da empresa do endereço completo,
+ * e os dois serviços chegam a divergir em mais de 1 km para o mesmo endereço.
+ */
+export function distanciaDaVaga(origem: Ponto, cep: string, vaga: { cep: string | null; latitude: number | string | null; longitude: number | string | null }): number {
+  const cepPessoa = digits(cep);
+  if (cepPessoa.length === 8 && digits(vaga.cep) === cepPessoa) return 0;
+  if (vaga.latitude == null || vaga.longitude == null) return Number.NaN;
+  return distanciaKm(origem, { lat: Number(vaga.latitude), lng: Number(vaga.longitude) });
+}
+
 export class TriagemService {
   constructor(
     private readonly db: Pool,
@@ -104,16 +116,17 @@ export class TriagemService {
     private readonly config: AppConfig,
   ) {}
 
-  /** Vagas abertas do Postgres (public.vaga) com a empresa: só as dos tipos pedidos e com coordenada. */
-  private async vagasAbertas(tipos: TipoVaga[]) {
+  /** Vagas abertas do Postgres (public.vaga) com a empresa: só as dos tipos pedidos e com coordenada (ou no mesmo CEP da pessoa). */
+  private async vagasAbertas(tipos: TipoVaga[], cep: string) {
     const codigos = tipos.map((tipo) => (tipo === "Estágio" ? 1 : 2));
     const { rows } = await this.db.query<VagaPostgres>(
       `SELECT v.id::text AS id, v.vaga_id::text AS vaga_id, v.tipo_vaga, v.cargo, v.salario, v.beneficios, v.sexo, v.idade, v.idade_ate,
-              v.horario, v.tipo_trabalho, v.latitude, v.longitude, e.nome_fantasia, e.local
+              v.horario, v.tipo_trabalho, v.cep, v.latitude, v.longitude, e.nome_fantasia, e.local
        FROM public.vaga v
        LEFT JOIN public.empresa e ON e.id = v.empresa_id
-       WHERE v.tipo_vaga = ANY($1::int[]) AND v.latitude IS NOT NULL AND v.longitude IS NOT NULL`,
-      [codigos],
+       WHERE v.tipo_vaga = ANY($1::int[])
+         AND ((v.latitude IS NOT NULL AND v.longitude IS NOT NULL) OR regexp_replace(coalesce(v.cep, ''), '\\D', '', 'g') = $2)`,
+      [codigos, digits(cep)],
     );
     return rows;
   }
@@ -129,12 +142,12 @@ export class TriagemService {
     const [origem, originLabel, vagas] = await Promise.all([
       this.origem(input),
       rotuloDoCep(input.cep),
-      this.vagasAbertas(input.tipos),
+      this.vagasAbertas(input.tipos, input.cep),
     ]);
 
     const candidatas: Array<VagaProxima & { grupo: string }> = [];
     for (const vaga of vagas) {
-      const distancia = distanciaKm(origem, { lat: Number(vaga.latitude), lng: Number(vaga.longitude) });
+      const distancia = distanciaDaVaga(origem, input.cep, vaga);
       if (!Number.isFinite(distancia) || distancia > input.raioKm) continue;
       const sexo = String(vaga.sexo ?? "").trim().toUpperCase();
       if (input.sexo && sexo && sexo !== "I" && sexo !== input.sexo) continue;
