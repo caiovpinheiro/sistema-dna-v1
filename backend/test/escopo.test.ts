@@ -212,12 +212,21 @@ test("contrata até o limite, bloqueia a sexta, a duplicada, a sem vaga e a empr
   const full = await call("GET", `/api/v1/vagas/${idVaga}`);
   assert.equal(full.json().data.ocupadas, 5);
   assert.equal(full.json().data.disponiveis, 0);
-  assert.equal(full.json().data.situacao, "preenchida");
+  assert.equal(full.json().data.situacao, "contratada");
   const sixth = await call("POST", "/api/v1/contratacoes", {
     id_candidato: ids[5], id_vaga: idVaga, data_inicio: "2026-11-01",
   }, { "idempotency-key": `sexta-${Date.now()}` });
   assert.equal(sixth.statusCode, 409);
-  assert.equal(sixth.json().error.code, "VAGA_SEM_POSICAO");
+  assert.equal(sixth.json().error.code, "VAGA_ENCERRADA");
+
+  // Ao preencher a última posição a vaga passa a "contratada" e a checagem de status vem primeiro.
+  // Reaberta à mão, a capacidade e o vínculo duplicado continuam barrando.
+  await db.query("UPDATE dna_work.vaga SET status = 0 WHERE id_vaga = $1", [idVaga]);
+  const semPosicao = await call("POST", "/api/v1/contratacoes", {
+    id_candidato: ids[5], id_vaga: idVaga, data_inicio: "2026-11-01",
+  }, { "idempotency-key": `sexta-reaberta-${Date.now()}` });
+  assert.equal(semPosicao.statusCode, 409);
+  assert.equal(semPosicao.json().error.code, "VAGA_SEM_POSICAO");
 
   const again = await call("POST", "/api/v1/contratacoes", {
     id_candidato: ids[0], id_vaga: idVaga, data_inicio: "2026-11-02",
