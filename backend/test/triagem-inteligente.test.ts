@@ -3,6 +3,7 @@ import test from "node:test";
 import JSZip from "jszip";
 import sharp from "sharp";
 import type { Pool } from "pg";
+import { cepDoCurriculo } from "../src/lib/curriculo/cep.js";
 import { detectarTipo, prepararCurriculo, TAMANHO_MAXIMO_CURRICULO } from "../src/lib/curriculo/arquivo.js";
 import { ateTresFrases, escolaridadeSugerida, mesesSemSobreposicao, normalizarCurriculo, perfilParaEdicao, perfilSuficiente, textoDoCurriculo } from "../src/lib/curriculo/perfil.js";
 import { CurriculoService, type FetchLike } from "../src/services/curriculo.service.js";
@@ -254,6 +255,8 @@ test("JEV: escala real 0–4 e leitura da resposta oficial", () => {
   assert.equal(avaliacao.probabilidadeNivel, 0.43);
   assert.equal(avaliacao.descricaoNivel, "possui algumas experiências ou habilidades transferíveis relevantes.");
   assert.equal(avaliacao.modelo, "jev-1.14.0");
+  assert.equal(avaliacao.legenda["4"], PERGUNTA_COMPATIBILIDADE.scoreLevels[4]);
+  assert.equal(interpretarRespostaJev(respostaApi(1, [0, 1, 0, 0, 0], { legend: undefined })).legenda["1"], PERGUNTA_COMPATIBILIDADE.scoreLevels[1]);
   // A API não devolve motivo: nada é atribuído ao JEV.
   assert.equal(avaliacao.justificativa, null);
   assert.deepEqual(avaliacao.evidencias, []);
@@ -485,4 +488,49 @@ test("busca rápida: mesmo contrato, filtros, agrupamento por vaga_id e sem limi
   assert.deepEqual(resultado.jobs.map((job) => job.id), ["v0", "v1", "v2", "v3", "v4", "v5"]);
   assert.deepEqual(Object.keys(resultado.jobs[0]).sort(), ["company", "contractType", "distanceKm", "hasBenefits", "homeOffice", "id", "location", "salaryLabel", "schedule", "schedules", "title"]);
   assert.equal(resultado.jobs[0].location, "Centro, São Paulo SP");
+});
+
+// ---------- CEP a partir do currículo ----------
+
+
+const ENDERECO = { cep: null, logradouro: "Rua Augusta, 1500 - apto 3", bairro: "Consolação", cidade: "São Paulo", uf: "SP" };
+
+test("CEP: usa o CEP escrito no currículo sem consultar nada", async () => {
+  let consultas = 0;
+  const resultado = await cepDoCurriculo({ ...ENDERECO, cep: "01304001" }, async () => { consultas += 1; return respostaJson(200, []); });
+  assert.deepEqual(resultado, { cep: "01304001", origem: "curriculo", endereco: "Rua Augusta, 1500 - apto 3, Consolação, São Paulo/SP", motivo: null });
+  assert.equal(consultas, 0);
+});
+
+test("CEP: pelo endereço só preenche quando sobra um CEP", async () => {
+  let url = "";
+  const unico = await cepDoCurriculo(ENDERECO, async (u) => {
+    url = u;
+    return respostaJson(200, [{ cep: "01305-100", bairro: "Consolação" }, { cep: "01412-000", bairro: "Cerqueira César" }]);
+  });
+  assert.equal(url, "https://viacep.com.br/ws/SP/S%C3%A3o%20Paulo/Rua%20Augusta/json/");
+  assert.equal(unico.cep, "01305100");
+  assert.equal(unico.origem, "endereco");
+
+  const varios = await cepDoCurriculo({ ...ENDERECO, bairro: null }, async () => respostaJson(200, [{ cep: "01305-100" }, { cep: "01412-000" }]));
+  assert.equal(varios.cep, null);
+  assert.match(varios.motivo ?? "", /2 CEPs possíveis/);
+
+  const nenhum = await cepDoCurriculo(ENDERECO, async () => respostaJson(200, []));
+  assert.equal(nenhum.cep, null);
+  const falha = await cepDoCurriculo(ENDERECO, async () => { throw new Error("rede"); });
+  assert.match(falha.motivo ?? "", /Não foi possível consultar/);
+  const incompleto = await cepDoCurriculo({ cep: null, logradouro: null, bairro: "Centro", cidade: "Osasco", uf: "SP" }, async () => respostaJson(200, []));
+  assert.equal(incompleto.cep, null);
+  assert.equal(await cepDoCurriculo(null).then((item) => item.cep), null);
+});
+
+test("CEP: endereço é normalizado e nunca entra no texto do JEV", async () => {
+  const extraido = normalizarCurriculo({ ...LUNA_OK, endereco: { cep: "01304-001", logradouro: "Rua Augusta", bairro: null, cidade: "São Paulo", uf: "sp" } }, REFERENCIA);
+  assert.deepEqual(extraido.endereco, { cep: "01304001", logradouro: "Rua Augusta", bairro: null, cidade: "São Paulo", uf: "SP" });
+  assert.equal(normalizarCurriculo({ ...LUNA_OK, endereco: { cep: "123", logradouro: null, bairro: null, cidade: null, uf: null } }, REFERENCIA).endereco, null);
+  const texto = textoDoCurriculo(perfilParaEdicao(extraido));
+  assert.doesNotMatch(texto, /Augusta|01304/);
+  const service = new CurriculoService(configLuna, async () => respostaLuna({ ...LUNA_OK, endereco: { cep: "01304-001", logradouro: null, bairro: null, cidade: null, uf: null } }), () => REFERENCIA);
+  assert.equal((await service.analisar({ tipo: "texto", texto: "currículo" })).localizacao.cep, "01304001");
 });

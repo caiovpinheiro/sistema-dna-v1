@@ -1,7 +1,7 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { AlertTriangle, Check, Copy, MapPin, RotateCcw, Search, Sparkles } from "lucide-react";
 import { useMemo, useState, type FormEvent, type ReactNode } from "react";
-import { AnaliseDaVaga, PerfilCandidato, useStatusIa } from "@/components/triagem-inteligente";
+import { AnaliseDaVaga, PerfilCandidato, useStatusIa, type CepDoCurriculo } from "@/components/triagem-inteligente";
 import { Badge, Button, Card, Empty, Field, Input, Select, Skeleton, Textarea, cn } from "@/components/ui";
 import { api } from "@/lib/api";
 import { geocodeCep } from "@/lib/triagem-geo";
@@ -74,6 +74,23 @@ function AvisoEmpresasPendentes() {
 
 type Modo = "rapida" | "inteligente";
 
+function AvisoCep({ info, cepAtual, onUsar }: { info: CepDoCurriculo; cepAtual: string; onUsar: (cep: string) => void }) {
+  const digitado = cepAtual.replace(/\D/g, "");
+  const origem = info.origem === "curriculo" ? "CEP escrito no currículo" : "CEP encontrado pelo endereço do currículo";
+  if (!info.cep) {
+    return <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">CEP não preenchido pelo currículo: {info.motivo}{info.endereco ? ` (${info.endereco})` : ""}</p>;
+  }
+  if (digitado === info.cep) {
+    return <p className="flex items-center gap-1.5 rounded-lg bg-cyan-50 px-3 py-2 text-xs text-cyan-800"><MapPin size={13} /> {origem}{info.endereco ? `: ${info.endereco}` : ""}. Confira antes de buscar.</p>;
+  }
+  return (
+    <p className="flex flex-wrap items-center gap-2 rounded-lg bg-cyan-50 px-3 py-2 text-xs text-cyan-800">
+      <MapPin size={13} /> {origem}: {mascaraCep(info.cep)}{info.endereco ? ` (${info.endereco})` : ""}.
+      <button type="button" className="font-semibold underline" onClick={() => onUsar(info.cep!)}>Usar este CEP</button>
+    </p>
+  );
+}
+
 /** Cartão da vaga. Na busca rápida é idêntico ao de antes; na inteligente ganha a análise embaixo. */
 function CartaoVaga({ vaga, marcada, onAlternar, turno, children }: { vaga: Vaga; marcada: boolean; onAlternar: () => void; turno?: string; children?: ReactNode }) {
   return (
@@ -127,6 +144,7 @@ export function TriagemPage() {
   const [avaliacoes, setAvaliacoes] = useState<Avaliacoes>({});
   const [emAnalise, setEmAnalise] = useState<string[]>([]);
   const [erroAnalise, setErroAnalise] = useState("");
+  const [cepDoCurriculo, setCepDoCurriculo] = useState<CepDoCurriculo | null>(null);
 
   const inteligente = modo === "inteligente";
   const status = useStatusIa(inteligente);
@@ -201,6 +219,12 @@ export function TriagemPage() {
     });
   }
 
+  /** CEP do currículo: preenche o campo vazio; se já há outro CEP digitado, oferece a troca. */
+  function receberCep(localizacao: CepDoCurriculo) {
+    setCepDoCurriculo(localizacao);
+    if (localizacao.cep && !cep.replace(/\D/g, "")) setCep(mascaraCep(localizacao.cep));
+  }
+
   function analisarMais() {
     const ids = proximoLote(vagas, avaliacoes, lote);
     if (ids.length) compatibilidade.mutate(ids);
@@ -251,6 +275,9 @@ export function TriagemPage() {
               </Button>
             </div>
           </div>
+          {inteligente && cepDoCurriculo && (cepDoCurriculo.cep || cepDoCurriculo.motivo) ? (
+            <AvisoCep info={cepDoCurriculo} cepAtual={cep} onUsar={(valor) => setCep(mascaraCep(valor))} />
+          ) : null}
           <div className="grid gap-4 border-t border-slate-200 pt-4 sm:grid-cols-3">
             <Field label="Raio">
               <Select value={raioKm} onChange={(event) => setRaioKm(Number(event.target.value))}>
@@ -280,7 +307,7 @@ export function TriagemPage() {
                     Score JEV indisponível: {statusIa.jev.motivo} As vagas aparecem sem score, com a comparação de termos do DNA Work.
                   </p>
                 ) : null}
-                <PerfilCandidato perfil={perfil} onPerfil={setPerfil} status={statusIa} />
+                <PerfilCandidato perfil={perfil} onPerfil={setPerfil} onCep={receberCep} status={statusIa} />
               </>
             ) : null}
           </div>

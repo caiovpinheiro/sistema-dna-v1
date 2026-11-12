@@ -1,6 +1,7 @@
 import type { AppConfig } from "../config.js";
 import { AppError } from "../lib/errors.js";
 import type { CurriculoPreparado } from "../lib/curriculo/arquivo.js";
+import { cepDoCurriculo, type CepDoCurriculo } from "../lib/curriculo/cep.js";
 import { LUNA_JSON_SCHEMA, normalizarCurriculo, perfilParaEdicao, type CurriculoExtraido, type PerfilProfissional } from "../lib/curriculo/perfil.js";
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
@@ -8,6 +9,8 @@ export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>
 export type AnaliseCurriculo = {
   extraido: CurriculoExtraido;
   perfil: PerfilProfissional;
+  /** CEP para a busca, tirado do endereço do currículo. Não vai para o JEV. */
+  localizacao: CepDoCurriculo;
   modelo: string;
 };
 
@@ -20,6 +23,7 @@ export const INSTRUCOES_LUNA = [
   "Se a experiência estiver marcada como atual, \"até o momento\" ou equivalente, use atual=true e fim=null.",
   "Não calcule tempo total; o sistema calcula a partir das datas.",
   "Não extraia idade, data de nascimento, sexo, estado civil, documentos, telefone ou e-mail.",
+  "O endereço residencial (CEP, rua sem número, bairro, cidade, UF) serve só para localizar a pessoa; copie como está escrito e não deduza CEP.",
   "O resumo tem no máximo 3 frases objetivas e só descreve fatos do currículo.",
   "Não faça julgamentos como bom candidato, candidato fraco, recomendado ou não recomendado.",
 ].join("\n");
@@ -80,6 +84,7 @@ export class CurriculoService {
     private readonly config: Pick<AppConfig, "OPENAI_API_KEY" | "OPENAI_API_URL" | "LUNA_MODEL" | "LUNA_TIMEOUT_MS">,
     private readonly fetcher: FetchLike = fetch,
     private readonly agora: () => Date = () => new Date(),
+    private readonly localizar: (endereco: CurriculoExtraido["endereco"]) => Promise<CepDoCurriculo> = (endereco) => cepDoCurriculo(endereco),
   ) {}
 
   get configurada() {
@@ -170,6 +175,8 @@ export class CurriculoService {
     } catch {
       throw new AppError(502, "LUNA_FORMATO", "A resposta da IA veio fora do formato esperado. Tente de novo.");
     }
-    return { extraido, perfil: perfilParaEdicao(extraido), modelo: this.modelo };
+    // Falha ao achar o CEP não derruba a análise: o operador digita o CEP como antes.
+    const localizacao = await this.localizar(extraido.endereco).catch(() => ({ cep: null, origem: null, endereco: null, motivo: null }));
+    return { extraido, perfil: perfilParaEdicao(extraido), localizacao, modelo: this.modelo };
   }
 }

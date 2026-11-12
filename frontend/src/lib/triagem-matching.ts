@@ -53,6 +53,7 @@ export type AvaliacaoJev = {
   descricaoNivel: string | null;
   probabilidadeNivel: number | null;
   probabilidades: Record<string, number> | null;
+  legenda: Record<string, string>;
   modelo: string | null;
   justificativa: string | null;
   evidencias: string[];

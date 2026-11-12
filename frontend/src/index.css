@@ -284,3 +284,19 @@ button, a {
   button, a { transition: none; }
   .acao:hover, .acao:active { transform: none; }
 }
+
+/* Score do JEV na triagem: um tom só (escala ordinal), validado contra as duas superfícies. */
+.app-canvas {
+  --jev-forte: #0891b2;
+  --jev-fraco: rgb(8 145 178 / 0.28);
+  --jev-trilho: #e2e8f0;
+  --jev-marca-borda: #ffffff;
+}
+.app-canvas.escuro {
+  --jev-trilho: rgb(255 255 255 / 0.09);
+  --jev-marca-borda: #15181e;
+}
+.jev-trilho { background: var(--jev-trilho); }
+.jev-forte { background: var(--jev-forte); }
+.jev-fraco { background: var(--jev-fraco); }
+.jev-marca { background: var(--jev-forte); box-shadow: 0 0 0 2px var(--jev-marca-borda); }

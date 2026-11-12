@@ -7,10 +7,28 @@ import { z } from "zod";
 export const LUNA_JSON_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["nome", "localizacao", "escolaridade", "formacoes", "ultimo_cargo", "experiencias", "habilidades", "cursos", "objetivo", "resumo"],
+  required: ["nome", "localizacao", "endereco", "escolaridade", "formacoes", "ultimo_cargo", "experiencias", "habilidades", "cursos", "objetivo", "resumo"],
   properties: {
     nome: { type: ["string", "null"] },
     localizacao: { type: ["string", "null"], description: "Cidade/UF ou bairro, só se escrito no currículo." },
+    endereco: {
+      description: "Endereço residencial escrito no currículo, só para localizar a pessoa. null se não houver.",
+      anyOf: [
+        {
+          type: "object",
+          additionalProperties: false,
+          required: ["cep", "logradouro", "bairro", "cidade", "uf"],
+          properties: {
+            cep: { type: ["string", "null"], description: "CEP exatamente como escrito; null se não houver." },
+            logradouro: { type: ["string", "null"], description: "Rua/avenida, sem número." },
+            bairro: { type: ["string", "null"] },
+            cidade: { type: ["string", "null"] },
+            uf: { type: ["string", "null"], description: "Sigla do estado com 2 letras." },
+          },
+        },
+        { type: "null" },
+      ],
+    },
     escolaridade: { type: ["string", "null"], description: "Maior nível de escolaridade informado, com situação (completo, cursando, incompleto)." },
     formacoes: {
       type: "array",
@@ -56,6 +74,13 @@ const textoOpcional = z.string().nullable().optional().transform((valor) => limp
 const lunaRespostaSchema = z.object({
   nome: textoOpcional,
   localizacao: textoOpcional,
+  endereco: z.object({
+    cep: textoOpcional,
+    logradouro: textoOpcional,
+    bairro: textoOpcional,
+    cidade: textoOpcional,
+    uf: textoOpcional,
+  }).nullable().optional().transform((valor) => valor ?? null),
   escolaridade: textoOpcional,
   formacoes: z.array(z.object({
     curso: textoOpcional,
@@ -102,9 +127,26 @@ export type TempoTotal = {
   texto: string;
 };
 
+export type EnderecoExtraido = { cep: string | null; logradouro: string | null; bairro: string | null; cidade: string | null; uf: string | null };
+
+/** CEP com 8 dígitos, ou null. Aceita "01001-000", "01001000", "01.001-000". */
+export function cepValido(valor: string | null | undefined): string | null {
+  const digitos = String(valor ?? "").replace(/\D/g, "");
+  return digitos.length === 8 && !/^0{8}$/.test(digitos) ? digitos : null;
+}
+
+function enderecoNormalizado(endereco: { cep: string | null; logradouro: string | null; bairro: string | null; cidade: string | null; uf: string | null } | null): EnderecoExtraido | null {
+  if (!endereco) return null;
+  const uf = endereco.uf && /^[A-Za-z]{2}$/.test(endereco.uf.trim()) ? endereco.uf.trim().toUpperCase() : null;
+  const saida = { cep: cepValido(endereco.cep), logradouro: endereco.logradouro, bairro: endereco.bairro, cidade: endereco.cidade, uf };
+  return Object.values(saida).some(Boolean) ? saida : null;
+}
+
 export type CurriculoExtraido = {
   nome: string | null;
   localizacao: string | null;
+  /** Só para localizar a pessoa (CEP da busca). Nunca vai para o JEV. */
+  endereco: EnderecoExtraido | null;
   escolaridade: string | null;
   formacoes: Array<{ curso: string | null; instituicao: string | null; situacao: string | null; periodo: string | null }>;
   ultimoCargo: string | null;
@@ -283,6 +325,7 @@ export function normalizarCurriculo(bruto: unknown, referencia = new Date()): Cu
   return {
     nome: dados.nome,
     localizacao: dados.localizacao,
+    endereco: enderecoNormalizado(dados.endereco),
     escolaridade: dados.escolaridade,
     formacoes: dados.formacoes.filter((item) => item.curso || item.instituicao).slice(0, 10),
     ultimoCargo: dados.ultimo_cargo ?? experiencias.find((item) => item.atual)?.cargo ?? null,

@@ -26,7 +26,7 @@ const vaga = (id: string, distanceKm: number, extra: Partial<Vaga> = {}): Vaga =
 });
 
 const jev = (score: number, escala = { min: 0, max: 4 }): AvaliacaoJev => ({
-  score, escala, confianca: 0.7, nivel: "Moderada", descricaoNivel: null, probabilidadeNivel: null, probabilidades: null, modelo: "jev-1.14.0",
+  score, escala, confianca: 0.7, nivel: "Moderada", descricaoNivel: null, probabilidadeNivel: null, probabilidades: null, legenda: {}, modelo: "jev-1.14.0",
   justificativa: null, evidencias: [], lacunas: [],
 });
 

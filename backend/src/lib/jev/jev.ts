@@ -69,6 +69,8 @@ export type AvaliacaoJev = {
   probabilidadeNivel: number | null;
   /** Probabilidade de cada nível, como o JEV devolveu. */
   probabilidades: Record<string, number> | null;
+  /** Descrição de cada nível ("0": "Muito baixa: …"), da legend do JEV ou, sem ela, da régua enviada. */
+  legenda: Record<string, string>;
   modelo: string | null;
   /** A API não devolve texto próprio: ficam vazios e a tela diz isso. */
   justificativa: null;
@@ -155,14 +157,17 @@ export function interpretarRespostaJev(bruto: unknown, pergunta: PerguntaScore =
   if (confianca !== null && (confianca < 0 || confianca > 1)) throw new RespostaJevInvalida("Confiança do JEV fora de 0–1.");
 
   const probabilidades = lerProbabilidades(resposta.probabilities, pergunta.scoreLevels.length);
+  const legendaBruta = resposta.legend && typeof resposta.legend === "object" ? resposta.legend as Record<string, unknown> : {};
+  const legenda = Object.fromEntries(pergunta.scoreLevels.map((nivel, indice) => {
+    const texto = legendaBruta[String(indice)];
+    return [String(indice), typeof texto === "string" && texto.trim() ? texto.trim() : nivel];
+  }));
   let nivel: string | null = null;
   let descricaoNivel: string | null = null;
   let probabilidadeNivel: number | null = null;
   if (probabilidades) {
     const [indice, p] = Object.entries(probabilidades).sort((a, b) => b[1] - a[1] || Number(a[0]) - Number(b[0]))[0];
-    const legenda = (resposta.legend as Record<string, unknown> | undefined)?.[indice];
-    const texto = typeof legenda === "string" && legenda.trim() ? legenda : pergunta.scoreLevels[Number(indice)];
-    const [nome, ...resto] = texto.split(":");
+    const [nome, ...resto] = legenda[indice].split(":");
     nivel = nome.trim() || null;
     descricaoNivel = resto.join(":").trim() || null;
     probabilidadeNivel = p;
@@ -175,6 +180,7 @@ export function interpretarRespostaJev(bruto: unknown, pergunta: PerguntaScore =
     descricaoNivel,
     probabilidadeNivel,
     probabilidades,
+    legenda,
     modelo: typeof corpo.model === "string" && corpo.model.trim() ? corpo.model.trim() : null,
     justificativa: null,
     evidencias: [],
