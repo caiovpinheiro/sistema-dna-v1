@@ -853,6 +853,7 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
       body: z.object({
         vagaId: z.string().trim().min(1, "Escolha a vaga.").max(64),
         dealId: z.string().trim().max(64).optional(),
+        telefone: z.string().trim().max(40).optional(),
         manual: z.object({
           nome: z.string().trim().max(200).optional(),
           idade: z.string().trim().max(10).optional(),

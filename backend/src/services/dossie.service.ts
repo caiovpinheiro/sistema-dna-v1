@@ -52,6 +52,7 @@ export type DadosManuais = { nome?: string; idade?: string; escolaridade?: strin
 export type PedidoDossie = {
   vagaId: string;
   dealId?: string;
+  telefone?: string;
   manual?: DadosManuais;
   curriculo?: CurriculoPreparado;
 };
@@ -65,14 +66,78 @@ export type Dossie = {
   curriculo: "enviado" | "banco" | "nenhum";
 };
 
+/**
+ * Mesma consulta do workflow "gerador-dossies" do n8n, mas trazendo todas as linhas do candidato: as do negócio
+ * e as do mesmo telefone (o candidato pode ter linhas em negócios antigos). A ordem é a do n8n, com o negócio
+ * atual na frente; depois as linhas são juntadas campo a campo (vale o primeiro valor preenchido).
+ */
 const SQL_CANDIDATO = `SELECT id::int AS id, created_at, "dealId", telefone::float8 AS telefone, resumo_cv, nome,
   cep::float8 AS cep, sexo, escolaridade, turno, idade, tipo_de_vaga,
   "teste comportamental", info_conducoes, descricao_vaga, id_vaga_escolhida,
   id_empresa, resumo_entrevista
 FROM public.candidatos_dados
 WHERE "dealId" = $1
-ORDER BY (resumo_cv IS NOT NULL) DESC, id DESC
-LIMIT 1`;
+   OR (cardinality($2::text[]) > 0 AND regexp_replace(split_part(telefone::text, '.', 1), '\\D', '', 'g') = ANY($2::text[]))
+ORDER BY ("dealId" = $1) DESC, (resumo_cv IS NOT NULL) DESC, id DESC
+LIMIT 20`;
+
+/** Campos do painel do negócio no CRM que completam o que faltar em candidatos_dados. */
+const CAMPOS_CRM: Array<[string, keyof CandidatoDados]> = [
+  ["nome_completo", "nome"],
+  ["idade", "idade"],
+  ["escolaridade", "escolaridade"],
+  ["turno", "turno"],
+  ["sexo", "sexo"],
+  ["tipo_de_vaga", "tipo_de_vaga"],
+  ["teste_comportamental", "teste comportamental"],
+  ["teste_de_perfil_disc", "teste comportamental"],
+  ["resumo_da_entrevista", "resumo_entrevista"],
+  ["id_vaga_escolhida", "id_vaga_escolhida"],
+];
+
+function vazio(valor: unknown) {
+  return valor == null || (typeof valor === "string" && !valor.trim());
+}
+
+/** Junta as linhas campo a campo: a primeira (negócio atual, com currículo, mais recente) manda; as outras só preenchem o vazio. */
+export function juntarLinhas(linhas: CandidatoDados[]): CandidatoDados | null {
+  if (!linhas.length) return null;
+  const junta = { ...linhas[0] } as Record<string, unknown>;
+  for (const linha of linhas.slice(1)) {
+    for (const [chave, valor] of Object.entries(linha)) if (vazio(junta[chave]) && !vazio(valor)) junta[chave] = valor;
+  }
+  return junta as CandidatoDados;
+}
+
+/** Variações do telefone para achar a linha: com e sem o 55 do Brasil. */
+export function variacoesDoTelefone(telefone: string | null | undefined): string[] {
+  const numero = digitos(String(telefone ?? ""));
+  if (numero.length < 10) return [];
+  const local = numero.startsWith("55") && numero.length >= 12 ? numero.slice(2) : numero;
+  return [...new Set([numero, local, `55${local}`])];
+}
+
+/** Valores do painel de campos do negócio (dealPanelFields), por nome do campo. */
+export function camposDoPainel(negocio: Record<string, unknown>): Record<string, string> {
+  const campos: Record<string, string> = {};
+  const painel = Array.isArray(negocio.dealPanelFields) ? negocio.dealPanelFields as Array<Record<string, unknown>> : [];
+  for (const campo of painel) {
+    const nome = texto(campo.name);
+    const valor = texto(Array.isArray(campo.value) ? campo.value.join(", ") : campo.value);
+    if (nome && valor) campos[nome] = valor;
+  }
+  return campos;
+}
+
+/** Completa a linha do banco com o que o CRM tem e o banco não. Sem linha no banco, monta uma só com o CRM. */
+export function completarComCrm(linha: CandidatoDados | null, campos: Record<string, string>, dealId: string): CandidatoDados | null {
+  const preenchidos = CAMPOS_CRM.filter(([nome]) => campos[nome]);
+  if (!preenchidos.length) return linha;
+  const base = (linha ? { ...linha } : { dealId }) as Record<string, unknown>;
+  // A vaga escolhida muda no CRM ao longo do atendimento: o valor de lá vale mais que o gravado no banco.
+  for (const [nome, chave] of preenchidos) if (vazio(base[chave]) || chave === "id_vaga_escolhida") base[chave] = campos[nome];
+  return base as CandidatoDados;
+}
 
 /** Dados que o dossiê nunca usa e não precisam sair do sistema (o prompt já proíbe telefone e CEP no texto). */
 const FORA_DO_PROMPT = new Set(["id", "created_at", "dealId", "telefone", "cep", "descricao_vaga", "id_vaga_escolhida", "id_empresa", "tipo_de_vaga"]);
@@ -270,15 +335,41 @@ export class DossieService {
     }));
   }
 
-  /** Linha de candidatos_dados pelo dealId. Banco sem a tabela responde null, sem derrubar a tela. */
-  async dadosDoCandidato(dealId: string): Promise<CandidatoDados | null> {
+  /** Linhas de candidatos_dados do negócio e do telefone, juntas. Banco sem a tabela responde null, sem derrubar a tela. */
+  async dadosDoCandidato(dealId: string, telefone?: string | null): Promise<CandidatoDados | null> {
     try {
-      const { rows } = await this.db.query<CandidatoDados>(SQL_CANDIDATO, [dealId]);
-      return rows[0] ?? null;
+      const { rows } = await this.db.query<CandidatoDados>(SQL_CANDIDATO, [dealId, variacoesDoTelefone(telefone)]);
+      return juntarLinhas(rows);
     } catch (error) {
       if ((error as { code?: string }).code === "42P01") return null;
       throw error;
     }
+  }
+
+  /** Campos do painel do negócio no CRM. Falha do CRM aqui não impede o dossiê: só fica sem esse complemento. */
+  private async camposDoNegocio(dealId: string): Promise<Record<string, string>> {
+    try {
+      return camposDoPainel(await this.crm<Record<string, unknown>>(`/api/deals/${encodeURIComponent(dealId)}`));
+    } catch {
+      return {};
+    }
+  }
+
+  /** Dados do candidato para o dossiê: candidatos_dados (negócio + telefone) completado com o painel do CRM. */
+  async candidatoCompleto(dealId: string, telefone?: string | null): Promise<CandidatoDados | null> {
+    const [linha, campos] = await Promise.all([this.dadosDoCandidato(dealId, telefone), this.camposDoNegocio(dealId)]);
+    return completarComCrm(linha, campos, dealId);
+  }
+
+  /** Acha, entre as vagas abertas, a do id_vaga_escolhida (id da vaga ou o vaga_id do grupo). */
+  async vagaDoId(idVaga: unknown): Promise<string | null> {
+    const id = texto(idVaga);
+    if (!id) return null;
+    const { rows } = await this.db.query<{ id: string }>(
+      "SELECT v.id::text AS id FROM public.vaga v WHERE v.id::text = $1 OR v.vaga_id::text = $1 ORDER BY (v.id::text = $1) DESC LIMIT 1",
+      [id],
+    );
+    return rows[0]?.id ?? null;
   }
 
   private async negociosPorTelefone(telefone: string): Promise<NegocioCrm[]> {
@@ -317,8 +408,10 @@ export class DossieService {
       negocio = await this.negocioPorId(input.dealId);
       if (negocio && !negocios.length) negocios = [negocio];
     }
-    const candidato = negocio ? await this.dadosDoCandidato(negocio.id) : null;
-    return { negocios, negocio, candidato };
+    const candidato = negocio ? await this.candidatoCompleto(negocio.id, negocio.telefone ?? input.telefone) : null;
+    // Vaga do campo id_vaga_escolhida do negócio: a tela já deixa selecionada.
+    const vagaEscolhidaId = candidato ? await this.vagaDoId(candidato.id_vaga_escolhida) : null;
+    return { negocios, negocio, candidato, vagaEscolhidaId, idVagaCrm: texto(candidato?.id_vaga_escolhida) };
   }
 
   private exigirChave() {
@@ -379,7 +472,7 @@ export class DossieService {
     this.exigirChave();
     const [linhaVaga] = await this.linhasDeVaga(input.vagaId);
     if (!linhaVaga) throw new AppError(404, "VAGA_NAO_ENCONTRADA", "A vaga escolhida não está mais aberta.");
-    const linha = input.dealId ? await this.dadosDoCandidato(input.dealId) : null;
+    const linha = input.dealId ? await this.candidatoCompleto(input.dealId, input.telefone) : null;
 
     const enviado = input.curriculo;
     // Texto colado/DOCX entra como resumo_cv; PDF e imagem vão anexados e substituem o resumo_cv do banco.

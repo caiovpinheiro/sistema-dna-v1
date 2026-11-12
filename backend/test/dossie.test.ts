@@ -3,7 +3,7 @@ import test from "node:test";
 import type { Pool } from "pg";
 import { AppError } from "../src/lib/errors.js";
 import { PROMPT_DOSSIE_CLT, PROMPT_DOSSIE_ESTAGIO } from "../src/lib/dossie/prompts.js";
-import { DossieService, interpretarDossie, montarDadosDoCandidato, type CandidatoDados, type CrmFn } from "../src/services/dossie.service.js";
+import { DossieService, camposDoPainel, completarComCrm, interpretarDossie, juntarLinhas, montarDadosDoCandidato, variacoesDoTelefone, type CandidatoDados, type CrmFn } from "../src/services/dossie.service.js";
 
 const config = { OPENAI_API_KEY: "sk-teste", OPENAI_API_URL: "https://openai.test/v1", LUNA_MODEL: "luna-teste", LUNA_TIMEOUT_MS: 10_000 };
 
@@ -20,18 +20,20 @@ const linha: CandidatoDados = {
   id_empresa: "1", resumo_entrevista: "",
 };
 
-function banco(opcoes: { vagas?: typeof vagaClt[]; candidato?: CandidatoDados | null; semTabela?: boolean } = {}) {
+function banco(opcoes: { vagas?: Array<typeof vagaClt & { vaga_id?: string }>; candidato?: CandidatoDados | null; outras?: CandidatoDados[]; semTabela?: boolean } = {}) {
   const consultas: string[] = [];
   const db = {
     async query(sql: string, params: unknown[] = []) {
       consultas.push(sql);
       if (sql.includes("FROM public.candidatos_dados")) {
         if (opcoes.semTabela) throw Object.assign(new Error("sem tabela"), { code: "42P01" });
-        return { rows: opcoes.candidato && params[0] === opcoes.candidato.dealId ? [opcoes.candidato] : [] };
+        const telefones = (params[1] as string[] | undefined) ?? [];
+        const todas = [...(opcoes.candidato ? [opcoes.candidato] : []), ...(opcoes.outras ?? [])];
+        return { rows: todas.filter((linha) => linha.dealId === params[0] || telefones.includes(String(linha.telefone))) };
       }
       if (sql.includes("FROM public.vaga v")) {
         const vagas = opcoes.vagas ?? [vagaClt, vagaEstagio];
-        return { rows: params.length ? vagas.filter((vaga) => vaga.id === params[0]) : vagas };
+        return { rows: params.length ? vagas.filter((vaga) => vaga.id === params[0] || vaga.vaga_id === params[0]) : vagas };
       }
       throw new Error(`consulta inesperada: ${sql}`);
     },
@@ -142,7 +144,8 @@ test("busca pelo telefone: só dígitos no CRM, negócio aberto e mais recente p
 
   const outro = await servico.buscarCandidato({ telefone: "11999990000", dealId: "antigo" });
   assert.equal(outro.negocio?.id, "antigo");
-  assert.equal(outro.candidato, null);
+  // Mesmo telefone: as linhas do outro negócio também entram.
+  assert.equal(outro.candidato?.nome, "Maria Souza");
 });
 
 test("banco sem candidatos_dados não derruba a busca", async () => {
@@ -166,4 +169,43 @@ test("salvar nota posta o conteúdo no negócio", async () => {
 test("sem OPENAI_API_KEY a geração responde 503", async () => {
   const { db } = banco();
   await assert.rejects(new DossieService(db, { ...config, OPENAI_API_KEY: "" }, semCrm).gerar({ vagaId: "101" }), (erro: AppError) => erro.statusCode === 503);
+});
+
+test("junta as linhas do candidato: a primeira manda, as outras preenchem o vazio", () => {
+  const junta = juntarLinhas([linha, { ...linha, id: 2, dealId: "velho", resumo_cv: "antigo", info_conducoes: null, resumo_entrevista: "Boa comunicação" }]);
+  assert.equal(junta?.resumo_cv, "Atendente por 2 anos na Loja Y.");
+  assert.equal(junta?.info_conducoes, "40 min, 1 condução");
+  assert.equal(junta?.resumo_entrevista, "Boa comunicação");
+  assert.equal(juntarLinhas([]), null);
+  assert.deepEqual(variacoesDoTelefone("+55 (11) 97035-0419"), ["5511970350419", "11970350419"]);
+  assert.deepEqual(variacoesDoTelefone("11970350419"), ["11970350419", "5511970350419"]);
+});
+
+test("painel do CRM completa o que falta no banco, sem sobrescrever", () => {
+  const campos = camposDoPainel({ dealPanelFields: [
+    { name: "nome_completo", value: "Outro Nome" },
+    { name: "teste_comportamental", value: "Perfil de dominância" },
+    { name: "id_vaga_escolhida", value: "uuid-1" },
+    { name: "turno", value: null },
+  ] });
+  assert.deepEqual(campos, { nome_completo: "Outro Nome", teste_comportamental: "Perfil de dominância", id_vaga_escolhida: "uuid-1" });
+  const completa = completarComCrm({ ...linha, "teste comportamental": null, id_vaga_escolhida: null }, campos, "deal-1");
+  assert.equal(completa?.nome, "Maria Souza");
+  assert.equal(completa?.["teste comportamental"], "Perfil de dominância");
+  assert.equal(completa?.id_vaga_escolhida, "uuid-1");
+  assert.equal(completarComCrm(null, campos, "deal-9")?.nome, "Outro Nome");
+});
+
+test("busca acha linhas de outro negócio pelo telefone e já marca a vaga do id_vaga_escolhida", async () => {
+  const atual: CandidatoDados = { ...linha, dealId: "deal-novo", "teste comportamental": null, info_conducoes: null, id_vaga_escolhida: null };
+  const antiga: CandidatoDados = { ...linha, id: 9, dealId: "deal-velho", resumo_cv: null };
+  const { db } = banco({ candidato: atual, outras: [antiga], vagas: [{ ...vagaClt, vaga_id: "uuid-vaga" }, vagaEstagio] });
+  const crm = (async (path: string) => path.startsWith("/api/deals?")
+    ? { items: [{ id: "deal-novo", title: "Negócio Maria", status: "OPEN", contact: { name: "Maria", phone: "+5511999990000" } }] }
+    : { id: "deal-novo", dealPanelFields: [{ name: "id_vaga_escolhida", value: "uuid-vaga" }] }) as CrmFn;
+  const resultado = await new DossieService(db, config, crm).buscarCandidato({ telefone: "5511999990000" });
+  assert.equal(resultado.candidato?.["teste comportamental"], "Perfil analítico");
+  assert.equal(resultado.candidato?.info_conducoes, "40 min, 1 condução");
+  assert.equal(resultado.idVagaCrm, "uuid-vaga");
+  assert.equal(resultado.vagaEscolhidaId, "101");
 });

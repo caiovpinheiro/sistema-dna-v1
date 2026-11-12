@@ -31,7 +31,7 @@ type CandidatoDados = {
   descricao_vaga: string | null;
 };
 
-type Busca = { negocios: Negocio[]; negocio: Negocio | null; candidato: CandidatoDados | null };
+type Busca = { negocios: Negocio[]; negocio: Negocio | null; candidato: CandidatoDados | null; vagaEscolhidaId: string | null; idVagaCrm: string | null };
 type Manual = { nome: string; idade: string; escolaridade: string; turno: string; bairroCidade: string };
 type Resultado = { dossie: string; tipo: "CLT" | "Estágio"; modelo: string; vaga: Vaga; curriculo: "enviado" | "banco" | "nenhum" };
 
@@ -155,6 +155,11 @@ export function DossiePage() {
     onSuccess: (resposta) => {
       setBusca(resposta.data);
       setDealId(resposta.data.negocio?.id ?? "");
+      // Vaga do campo id_vaga_escolhida do negócio já vem marcada; o operador pode trocar.
+      if (resposta.data.vagaEscolhidaId) {
+        setVagaId(resposta.data.vagaEscolhidaId);
+        setFiltroVaga("");
+      }
       setManual(MANUAL_VAZIO);
       setDossie("");
       setNotaSalva(false);
@@ -166,7 +171,7 @@ export function DossiePage() {
     mutationFn: async () => {
       const body: Record<string, unknown> = {
         vagaId,
-        ...(dealId ? { dealId } : {}),
+        ...(dealId ? { dealId, telefone: telefone.replace(/\D/g, "") } : {}),
         manual: Object.fromEntries(Object.entries(manual).filter(([, valor]) => valor.trim())),
       };
       if (arquivo) body.arquivo = { nome: arquivo.name, base64: await lerBase64(arquivo) };
@@ -292,6 +297,10 @@ export function DossiePage() {
                 ))}
               </Select>
               {vagas.isError ? <p className="text-sm text-rose-600">{vagas.error.message}</p> : null}
+              {busca?.idVagaCrm && !busca.vagaEscolhidaId ? (
+                <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">A vaga escolhida no CRM ({busca.idVagaCrm}) não está entre as vagas abertas. Escolha a vaga na lista.</p>
+              ) : null}
+              {vagaEscolhida && busca?.vagaEscolhidaId === vagaEscolhida.id ? <p className="text-xs font-medium text-emerald-700">Vaga escolhida no CRM (id_vaga_escolhida).</p> : null}
               {vagaEscolhida ? <p className="text-xs text-slate-500">Dossiê de {vagaEscolhida.tipo === "Estágio" ? "estágio" : "CLT"} para {vagaEscolhida.cargo}{vagaEscolhida.empresa ? ` na ${vagaEscolhida.empresa}` : ""}.</p> : null}
             </Passo>
 
