@@ -1,6 +1,6 @@
 # Agente — Termos e documentos
 
-> Última revisão: 2026-11-12 (commit 5f1e2d0)
+> Última revisão: 2026-11-12 (commit "Preenche o TCE pela vaga de estágio e fixa a carga horária")
 
 ## Para que serve
 
@@ -11,7 +11,7 @@ Gera o Termo de Compromisso de Estágio (TCE) em PDF a partir de um formulário 
 | Rota | Componente | Arquivo | O que mostra |
 | --- | --- | --- | --- |
 | `/termos` (menu "Consultar") | `TermosPage` | `frontend/src/pages/TermosPage.tsx` | Lista de TCEs (até 200, mais novos primeiro) com filtro por status (Todos, Gerado, Aguardando, Assinado, Recusado), botões copiar link de assinatura por signatário, editar e excluir. |
-| `/termos/gerar` (menu "Gerar TCE") | `GerarTcePage` → `GeradorTce` | `frontend/src/pages/TermosPage.tsx`, `frontend/src/components/gerador-tce.tsx` | Formulário do TCE: empresa concedente, candidato, responsável legal (opcional), instituição de ensino, estágio. Aceita `?contratacao=<id>` (botão "Gerar TCE" da ficha de contratação). |
+| `/termos/gerar` (menu "Gerar TCE") | `GerarTcePage` → `GeradorTce` | `frontend/src/pages/TermosPage.tsx`, `frontend/src/components/gerador-tce.tsx` | Formulário do TCE em cinco blocos numerados na ordem do termo (empresa concedente, estagiário, responsável legal opcional, instituição de ensino, condições do estágio/Anexo I), cada um com a pesquisa de preenchimento automático no topo (empresa, candidato, escola e vaga de estágio). Painel lateral fixo com os campos principais preenchidos por bloco e o botão de gerar. Aceita `?contratacao=<id>` (botão "Gerar TCE" da ficha de contratação). |
 | `/termos/documentos` (menu "Gerar documento") | `GerarDocumentoPage` (+ `GerarRescisaoMedio`) | `frontend/src/pages/GerarDocumentoPage.tsx`, `frontend/src/components/gerar-rescisao-medio.tsx` | Seletor de documento: Contrato (Modelo 1), Termo de adesão (Modelo 2) ou Rescisão estágio ensino médio. Baixa o arquivo gerado. |
 | `/termos/:id/editar` | `EditarTcePage` → `GeradorTce editarId` | `frontend/src/pages/TermosPage.tsx` | Mesmo formulário carregado com os dados salvos; salvar refaz o PDF. |
 | `/termos/:id` | `TermoDetailPage` | `frontend/src/pages/TermoDetailPage.tsx` | Status "gerado": prévia do PDF (iframe) + "Pedir assinatura da escola", "Enviar PDF por e-mail", "Enviar para assinatura". Depois de enviado: signatários com copiar/abrir link, "Baixar PDF assinado", "Reenviar e-mails de assinatura". |
@@ -46,6 +46,7 @@ Backend
 | DELETE | `/api/v1/termos/:id` | Apaga TCE, payload e arquivo PDF | `:354` → `TceService.excluir` |
 | GET | `/api/v1/tce/empresas` | Todas as empresas de `public.empresa` (filtro no cliente, 15 itens) | `:360` → `listEmpresasCadastro` |
 | GET | `/api/v1/tce/escolas?q=` | Busca instituições (≥2 caracteres, máx. 15) | `:361` → `searchEscolas` |
+| GET | `/api/v1/tce/vagas?q=` | Vagas de estágio abertas (`public.vaga`, `tipo_vaga = 1`) por cargo ou empresa (máx. 30), com os campos do Anexo I que cada uma preenche | `routes/index.ts` → `TceService.buscarVagasEstagio` → `vagaParaTce` (`lib/tce-candidato.ts`) |
 | GET | `/api/v1/tce/candidatos?q=` | Busca candidato por nome, CPF ou empresa (máx. 20) | `:364` → `TceService.buscarCandidatos` |
 | GET | `/api/v1/tce/candidatos/:id` | Pré-preenchimento a partir do candidato (e da contratação mais recente/ativa dele) | `:367` → `candidatoParaTce` |
 | GET | `/api/v1/tce/contratacoes/:id` | Pré-preenchimento a partir de uma contratação | `:370` → `contratacaoParaTce` |
@@ -70,6 +71,7 @@ Postgres:
 - `public.tces` (lida/gravada): `id`, `empresa_id`, `empresa_nome`, `candidato_nome`, `payload` (jsonb `{ campos, empresa }` — é a fonte da edição e do envio), `pdf_path` (nome do arquivo), `status` (sempre `generated`, não é usado na tela).
 - `public.candidato_documentos` (gravada): upsert por `(id_candidato, tipo)` com tipos `cpf`, `rg`, `nascimento`, `endereco`, `matricula`, `responsavel`, `origem = 'tce'`, `tce_id`.
 - `public.empresa` (lida): empresas do gerador (`lib/empresas-cadastro.ts`).
+- `public.vaga` (lida): vagas de estágio abertas para a pesquisa do bloco 5 (`cargo`, `salario`, `beneficios`, `horario`, `jornada`, `atividades`, `empresa_id`).
 - Somente leitura em `dna_work`: `candidato`, `conratacaovaga`, `empresa`, `vaga`, `instituicao`, `flex` (nível do curso), `rescisao_documento` (motivo/avaliação/resumo para a rescisão do médio), `emailsvinculo`, `emails`, `servidor_email` (modelos de e-mail).
 - Arquivos: PDFs do TCE em disco, pasta `PDF_STORAGE_DIR`; sem ela, `./data/tces` ou, se não for gravável, a pasta temporária do sistema (`tce.service.ts:483-497`).
 
@@ -82,6 +84,8 @@ Serviços externos:
 ## Regras e comportamentos importantes
 
 TCE (`tce.service.ts`):
+- Carga horária é fixa: 6 horas por dia e 30 por semana (`CARGA_HORARIA_DIARIA`/`CARGA_HORARIA_SEMANAL` em `lib/tce-fields.ts`, repetidas em `FIXOS` no `gerador-tce.tsx`). Os campos são só leitura na tela; o backend sobrescreve ao gerar/salvar e o pré-preenchimento por candidato/contratação também usa esses valores.
+- Pesquisa de vaga (bloco 5): ao escolher, preenche `jornada` (texto do horário da vaga, senão `vaga.jornada`), `bolsa` (salário em R$, se maior que zero), `beneficios` e `plano_atividades` (`vaga.atividades`); só os que a vaga tem. Se a empresa concedente ainda não foi escolhida, preenche com a empresa da vaga (mesmo id de `public.empresa`); se já houver outra, só avisa que a vaga é de outra empresa.
 - Apólice de seguro é fixa (`APOLICE_SEGURO` em `lib/tce-fields.ts`, repetida como `APOLICE` em `gerador-tce.tsx`); o campo é somente leitura e o backend sempre sobrescreve.
 - Só os campos de `MANUAL_FIELDS` são aceitos; o resto do corpo é ignorado (`routes/index.ts:395` e `:431`).
 - Validações no servidor (`montar`, `:218-259`): nome obrigatório (422 `NOME_OBRIGATORIO`), razão social da concedente obrigatória (422 `EMPRESA_OBRIGATORIA`), término ≥ início, no máximo 730 dias (422 `ESTAGIO_MAIS_DE_2_ANOS`), datas válidas em `AAAA-MM-DD` (gravadas no PDF como `DD/MM/AAAA`).
@@ -117,6 +121,6 @@ Gerar documento:
 
 ## Como testar
 
-- Tela: `/termos/gerar` → escolher empresa, buscar candidato e escola, gerar; conferir o PDF em `/termos/:id`; editar em `/termos/:id/editar`; excluir em `/termos`. Abrir uma contratação de estágio e clicar "Gerar TCE" para testar o pré-preenchimento. Em `/termos/documentos`, gerar contrato, adesão e rescisão do médio e abrir os arquivos. Envio real só com ZapSign/Mailjet configurados.
-- Testes: `backend/test/tce-candidato.test.ts` (pré-preenchimento e término do estágio), `backend/test/documento-contrato.test.ts` (contrato e adesão .docx), `backend/test/rescisao-medio.test.ts` (cláusulas e PDF da rescisão do médio). Não há teste para gerar/enviar TCE nem para o webhook (não encontrado).
+- Tela: `/termos/gerar` → escolher empresa, buscar candidato e escola, escolher a vaga no bloco 5 (confere jornada, bolsa, benefícios, plano e, sem empresa escolhida, a concedente), conferir carga horária 6/30 só leitura, gerar; conferir o PDF em `/termos/:id`; editar em `/termos/:id/editar`; excluir em `/termos`. Abrir uma contratação de estágio e clicar "Gerar TCE" para testar o pré-preenchimento. Em `/termos/documentos`, gerar contrato, adesão e rescisão do médio e abrir os arquivos. Envio real só com ZapSign/Mailjet configurados.
+- Testes: `backend/test/tce-candidato.test.ts` (pré-preenchimento, término do estágio, carga horária fixa e vaga → campos do Anexo I), `backend/test/documento-contrato.test.ts` (contrato e adesão .docx), `backend/test/rescisao-medio.test.ts` (cláusulas e PDF da rescisão do médio). Não há teste para gerar/enviar TCE nem para o webhook (não encontrado).
 - Comandos: `npm run lint -w frontend`, `npm run lint -w backend`, `npm test -w backend`, `npm run agentes:conferir`.

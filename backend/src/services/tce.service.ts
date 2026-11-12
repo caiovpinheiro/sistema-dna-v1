@@ -9,8 +9,8 @@ import { AppError } from "../lib/errors.js";
 import { getEscola, mensagemEscola, searchEscolas } from "../lib/escolas.js";
 import { getEmpresaCadastro, listEmpresasCadastro } from "../lib/empresas-cadastro.js";
 import { fillTceTemplate } from "../lib/tce-pdf.js";
-import { APOLICE_SEGURO, CAMPOS_DATA, dataParaPdf, emptyManual, ESCOLA_KEYS, type Concedente, type ManualData } from "../lib/tce-fields.js";
-import { preenchimentoDoCandidato, type CandidatoTce } from "../lib/tce-candidato.js";
+import { APOLICE_SEGURO, CARGA_HORARIA_DIARIA, CARGA_HORARIA_SEMANAL, CAMPOS_DATA, dataParaPdf, emptyManual, ESCOLA_KEYS, type Concedente, type ManualData } from "../lib/tce-fields.js";
+import { preenchimentoDoCandidato, vagaParaTce, type CandidatoTce, type LinhaVagaTce, type VagaTce } from "../lib/tce-candidato.js";
 import { one } from "../repositories/sql.js";
 import { enviarModelo, textoHtml } from "../lib/email-modelo.js";
 import { criarDocumentoZapSign } from "../lib/zapsign.js";
@@ -42,6 +42,22 @@ export class TceService {
     } catch (error) {
       return { opcoes: [], erro: mensagemEscola(error) };
     }
+  }
+
+  /** Vagas de estágio abertas (public.vaga, tipo 1) para preencher as condições do estágio. */
+  async buscarVagasEstagio(termo: string): Promise<VagaTce[]> {
+    const consulta = termo.trim().replace(/[%_]/g, "");
+    const { rows } = await this.db.query<LinhaVagaTce>(`
+      SELECT v.id::text AS id, v.empresa_id::text AS empresa_id, v.cargo, v.salario::text AS salario, v.beneficios,
+             v.horario, v.jornada, v.atividades, e.razao_social, e.nome_fantasia, e.local
+      FROM public.vaga v
+      LEFT JOIN public.empresa e ON e.id = v.empresa_id
+      WHERE v.tipo_vaga = 1
+        AND ($1 = '' OR v.cargo ILIKE '%' || $1 || '%' OR e.razao_social ILIKE '%' || $1 || '%' OR e.nome_fantasia ILIKE '%' || $1 || '%')
+      ORDER BY e.nome_fantasia NULLS LAST, e.razao_social, v.cargo
+      LIMIT 30
+    `, [consulta]);
+    return rows.map(vagaParaTce);
   }
 
   async buscarCandidatos(termo: string): Promise<CandidatoTce[]> {
@@ -216,7 +232,8 @@ export class TceService {
   }
 
   private async montar(input: GerarTceInput, empresa: Concedente | null) {
-    const campos = { ...input.campos, seguro_apolice: APOLICE_SEGURO };
+    // Valores fixos de todo TCE: a tela mostra só para leitura e aqui sempre vale o padrão.
+    const campos = { ...input.campos, seguro_apolice: APOLICE_SEGURO, carga_horaria_diaria: CARGA_HORARIA_DIARIA, carga_horaria_semanal: CARGA_HORARIA_SEMANAL };
     if (input.escolaId) {
       const escola = await getEscola(this.db, input.escolaId);
       if (!escola) throw new AppError(404, "NAO_ENCONTRADO", "Escola não encontrada.");

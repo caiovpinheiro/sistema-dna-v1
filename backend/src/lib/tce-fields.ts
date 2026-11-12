@@ -1,5 +1,9 @@
 export const APOLICE_SEGURO = "Apólice Coletiva nº 09820055561928 da Porto Seguro";
 
+/** Carga horária do estágio é sempre a mesma: 6 horas por dia, 30 por semana. */
+export const CARGA_HORARIA_DIARIA = "6 horas";
+export const CARGA_HORARIA_SEMANAL = "30 horas";
+
 export const MANUAL_FIELDS = [
   "nome", "data_nascimento", "cpf", "rg", "email", "telefone", "endereco", "cep", "cidade", "estado",
   "curso", "periodo", "ano", "turno", "tipo_estagio",
