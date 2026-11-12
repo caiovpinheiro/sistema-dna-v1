@@ -158,6 +158,11 @@ button, a {
 .acao-cyan:hover { background: #cffafe; }
 .acao-rose { background: #fff1f2; color: #be123c; }
 .acao-rose:hover { background: #ffe4e6; }
+.app-canvas.escuro .acao-cyan { background: rgb(34 211 238 / 0.12); color: #67e8f9; }
+.app-canvas.escuro .acao-cyan:hover { background: rgb(34 211 238 / 0.22); }
+.app-canvas.escuro .acao-rose { background: rgb(244 63 94 / 0.14); color: #fda4af; }
+.app-canvas.escuro .acao-rose:hover { background: rgb(244 63 94 / 0.24); }
+.acao:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .data-table {
   width: 100%;

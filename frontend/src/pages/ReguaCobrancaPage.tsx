@@ -1,8 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
-import { Badge, Button, Card } from "@/components/ui";
+import { Building2, CalendarClock, ChevronDown, ExternalLink, FileCheck2, FlaskConical, Info, Search, Users } from "lucide-react";
+import { useMemo, useState } from "react";
+import { CabecalhoPagina, CampoFiltro } from "@/components/pagina";
+import { Badge, Button, Card, Empty, Input, Skeleton, cn } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
-import { money } from "@/lib/format";
+import { dataHoraBr, money } from "@/lib/format";
 
 type Envio = {
   id: string;
@@ -67,11 +69,31 @@ function badgeStatus(status: string) {
   return "aberta";
 }
 
+/** Cor do selo de cada etapa: feita em verde, a fazer em ciano, prevista em cinza, problema em rosa, à parte em âmbar. */
+const tomEnvio: Record<string, string> = {
+  enviado: "ativa", resolvido: "ativa", a_enviar: "aberta", enviando: "aberta", prevista: "encerrada",
+  escalar: "recusado", falha: "recusado", encaminhado: "pausada", suspenso: "pausada",
+};
+
+const FILTROS = [
+  { id: "", rotulo: "Todos" },
+  { id: "em_aberto", rotulo: "Em aberto" },
+  { id: "suspenso", rotulo: "Comprovante a validar" },
+  { id: "encaminhado", rotulo: "Encaminhados" },
+  { id: "pago", rotulo: "Pagos" },
+];
+
+function semAcento(texto: string) {
+  return texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
 export function ReguaCobrancaPage() {
   const [competencia, setCompetencia] = useState(competenciaAtual);
   const [aberta, setAberta] = useState<string | null>(null);
   const [grupoAberto, setGrupoAberto] = useState<string | null>(null);
   const [erro, setErro] = useState("");
+  const [filtro, setFiltro] = useState("");
+  const [busca, setBusca] = useState("");
   const client = useQueryClient();
   const lista = useQuery({
     queryKey: ["regua", competencia],
@@ -112,128 +134,288 @@ export function ReguaCobrancaPage() {
   });
   const grupos = lista.data?.data ?? [];
   const pendencias = grupos.reduce((total, grupo) => total + grupo.pendencias, 0);
+  const totalDevido = grupos.reduce((total, grupo) => total + (Number(grupo.total_devido) || 0), 0);
+  const pagos = grupos.filter((grupo) => grupo.status === "pago").length;
+  const visiveis = useMemo(() => {
+    const termo = semAcento(busca.trim());
+    return grupos.filter((grupo) => (!filtro || grupo.status === filtro)
+      && (!termo || semAcento(`${grupo.empresa} ${grupo.cnpj ?? ""} ${grupo.unidades.map((unidade) => unidade.empresa).join(" ")}`).includes(termo)));
+  }, [grupos, filtro, busca]);
+  const contagem = (id: string) => (id ? grupos.filter((grupo) => grupo.status === id).length : grupos.length);
+  const ocupado = envio.isPending || relatorioEmail.isPending || comprovante.isPending || validar.isPending;
 
   return (
     <div className="grid gap-5">
-      <div>
-        <h1 className="text-2xl font-extrabold">Régua de cobrança</h1>
-        <p className="text-sm text-slate-500">As filiais ficam dentro da matriz. O vencimento é o da cobrança no Asaas. Pagamento confirmado encerra a régua. Comprovante suspende até alguém validar. A simulação não envia e-mail nem grava etapa.</p>
-      </div>
-      <Card className="flex flex-wrap items-end gap-3">
-        <label className="grid gap-1.5 text-sm font-medium">Competência
-          <input className="h-11 rounded-xl border border-slate-200 px-3" type="month" value={competencia} onChange={(event) => setCompetencia(event.target.value)} />
-        </label>
-        <p className="pb-3 text-sm text-slate-500">{pendencias} em aberto em {grupos.length} grupo(s)</p>
-        <Button type="button" variant="secondary" disabled={simulacao.isPending} onClick={() => { setErro(""); simulacao.mutate(); }}>Simular o dia</Button>
-      </Card>
-      {erro ? <p className="text-sm text-rose-600" role="alert">{erro}</p> : null}
+      <CabecalhoPagina
+        titulo="Régua de cobrança"
+        descricao="Acompanhe as etapas de cobrança de cada fatura do mês e registre o que foi feito à mão."
+        acoes={(
+          <>
+            <label className="flex items-center gap-2 text-sm font-semibold text-slate-600">
+              Competência
+              <Input type="month" aria-label="Competência" value={competencia} onChange={(event) => { setCompetencia(event.target.value); setGrupoAberto(null); setAberta(null); simulacao.reset(); }} className="w-44" />
+            </label>
+            <Button type="button" variant="secondary" disabled={simulacao.isPending} onClick={() => { setErro(""); simulacao.mutate(); }}>
+              <FlaskConical size={16} /> {simulacao.isPending ? "Simulando…" : "Simular o dia"}
+            </Button>
+          </>
+        )}
+      />
+
+      <details className="group rounded-xl border border-slate-200 bg-white px-4 py-3">
+        <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-semibold text-slate-700 [&::-webkit-details-marker]:hidden">
+          <Info size={16} className="text-cyan-700" /> Como a régua funciona
+          <ChevronDown size={15} className="ml-auto transition group-open:rotate-180" />
+        </summary>
+        <ul className="mt-3 grid gap-1.5 border-t border-slate-200 pt-3 text-sm text-slate-600 md:grid-cols-2">
+          <li>As filiais ficam dentro do grupo da matriz.</li>
+          <li>O vencimento é o da cobrança no Asaas.</li>
+          <li>Pagamento confirmado encerra a régua da fatura.</li>
+          <li>Comprovante registrado suspende a régua até alguém validar.</li>
+          <li>"Simular o dia" mostra o que seria enviado hoje, sem enviar e-mail nem gravar etapa.</li>
+          <li>Os botões das etapas aparecem quando a fatura já entrou na régua automática.</li>
+        </ul>
+      </details>
+
+      {grupos.length ? (
+        <dl className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <Resumo rotulo="Total devido no mês" valor={money(totalDevido)} destaque />
+          <Resumo rotulo="Grupos com cobrança" valor={grupos.length.toLocaleString("pt-BR")} />
+          <Resumo rotulo="Pendências em aberto" valor={pendencias.toLocaleString("pt-BR")} />
+          <Resumo rotulo="Grupos pagos" valor={`${pagos.toLocaleString("pt-BR")} de ${grupos.length.toLocaleString("pt-BR")}`} />
+        </dl>
+      ) : null}
+
+      {erro ? <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert">{erro}</p> : null}
+
       {simulacao.data ? (
-        <Card className="grid gap-2">
-          <h2 className="font-bold">Simulação de {dataBr(simulacao.data.data.data)} — nenhum e-mail foi enviado</h2>
-          {simulacao.data.data.acoes.length === 0 ? <p className="text-sm text-slate-500">Nenhuma etapa seria disparada nesta data.</p> : null}
-          <ul className="grid gap-1 text-sm">
-            {simulacao.data.data.acoes.map((acao) => (
-              <li key={`${acao.email}-${acao.etapa}-${acao.empresa}`}>{acao.email || "sem e-mail"}: {acao.label} ({acao.tipo}) · {money(acao.valor)} · {(acao.faturas ?? [{ empresa: acao.empresa, valor: acao.valor, vencimento: acao.vencimento }]).map((fatura) => fatura.empresa).join(", ")}</li>
-            ))}
-          </ul>
+        <Card className="grid gap-3 border-cyan-500/30">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <h2 className="flex items-center gap-2 text-[15px] font-bold text-navy-900"><FlaskConical size={16} className="text-cyan-700" /> Simulação de {dataBr(simulacao.data.data.data)}</h2>
+              <p className="text-sm text-slate-500">Nenhum e-mail foi enviado e nada foi gravado.</p>
+            </div>
+            <Button type="button" variant="ghost" onClick={() => simulacao.reset()}>Fechar</Button>
+          </div>
+          {simulacao.data.data.acoes.length === 0 ? <p className="text-sm text-slate-500">Nenhuma etapa seria disparada nesta data.</p> : (
+            <div className="overflow-x-auto">
+              <table className="data-table compact">
+                <thead><tr><th>Etapa</th><th>Para</th><th>Empresas</th><th className="text-right">Valor</th></tr></thead>
+                <tbody>
+                  {simulacao.data.data.acoes.map((acao) => (
+                    <tr key={`${acao.email}-${acao.etapa}-${acao.empresa}`}>
+                      <td className="whitespace-nowrap font-semibold">{acao.label} <span className="font-normal text-slate-500">({acao.tipo})</span></td>
+                      <td className="text-slate-600">{acao.email || <span className="text-rose-700">sem e-mail</span>}</td>
+                      <td className="text-slate-600">{(acao.faturas ?? [{ empresa: acao.empresa, valor: acao.valor, vencimento: acao.vencimento }]).map((fatura) => fatura.empresa).join(", ")}</td>
+                      <td className="whitespace-nowrap text-right tabular-nums">{money(acao.valor)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </Card>
       ) : null}
-      {lista.isLoading ? <p className="text-sm text-slate-500">Carregando faturas…</p> : null}
-      {lista.isError ? <p className="text-sm text-rose-600">{lista.error instanceof ApiError ? lista.error.message : "Não foi possível carregar a régua."}</p> : null}
-      {!lista.isLoading && grupos.length === 0 ? <p className="text-sm text-slate-500">Nenhuma cobrança registrada nesta competência. Gere a cobrança em Contas a receber antes.</p> : null}
-      {grupos.map((grupo) => (
-        <Card key={grupo.id} className="grid gap-4">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-extrabold">{grupo.empresa}</h2>
-              <p className="text-sm text-slate-500">{grupo.cnpj || "sem CNPJ"} · {grupo.unidades.length} unidade(s) · {grupo.pendencias} pendência(s)</p>
+
+      {grupos.length ? (
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div className="flex flex-wrap gap-2" role="group" aria-label="Filtrar por situação">
+            {FILTROS.map((item) => (
+              <button key={item.id} type="button" aria-pressed={filtro === item.id} onClick={() => setFiltro(item.id)}
+                className={cn("inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-sm font-semibold ring-1 transition", filtro === item.id ? "bg-cyan-700 text-white ring-cyan-700" : "bg-white text-slate-600 ring-slate-200 hover:bg-slate-50")}>
+                {item.rotulo} <span className={cn("tabular-nums", filtro === item.id ? "" : "text-slate-400")}>{contagem(item.id)}</span>
+              </button>
+            ))}
+          </div>
+          <CampoFiltro rotulo="Buscar empresa" className="w-full sm:w-72">
+            <div className="relative">
+              <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <Input value={busca} onChange={(event) => setBusca(event.target.value)} placeholder="Nome, filial ou CNPJ" className="pl-9" />
             </div>
-            <Badge value={badgeStatus(grupo.status)}>{statusPagamento[grupo.status] ?? grupo.status}</Badge>
-          </div>
-          <div className="flex flex-wrap gap-4 text-sm">
-            <span>Total devido <strong>{money(grupo.total_devido)}</strong></span>
-            <span>Próxima ação <strong>{grupo.proxima_acao ?? "Régua encerrada"}</strong></span>
-          </div>
-          <Button type="button" variant="ghost" onClick={() => setGrupoAberto(grupoAberto === grupo.id ? null : grupo.id)}>{grupoAberto === grupo.id ? "Ocultar unidades" : "Ver unidades e faturas"}</Button>
-          {grupoAberto === grupo.id ? grupo.unidades.map((unidade) => (
-            <div key={unidade.id_empresa} className="grid gap-3 border-t border-slate-100 pt-3">
-              <h3 className="font-bold">{unidade.empresa}</h3>
-              <p className="text-sm text-slate-500">{unidade.cnpj}</p>
-              {unidade.faturas.map((fatura) => (
-                <div key={fatura.id_cobranca} className="grid gap-3">
-                  <div className="flex flex-wrap gap-4 text-sm">
-                    <span>Valor <strong>{money(fatura.valor)}</strong></span>
-                    <span>Vencimento <strong>{dataBr(fatura.vencimento)}</strong></span>
-                    <span>Status <strong>{statusPagamento[fatura.status_pagamento] ?? fatura.status_pagamento}</strong></span>
-                    <span>Próximo passo <strong>{fatura.proximo_passo ?? "Régua encerrada"}</strong></span>
-                    <span>Comprovante <strong>{fatura.comprovante ? `sim${fatura.data_baixa ? `, baixa ${dataBr(fatura.data_baixa)}` : ""}` : "não"}</strong></span>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {fatura.link_cobranca ? <a className="acao acao-cyan" href={fatura.link_cobranca} target="_blank" rel="noreferrer">Link da cobrança</a> : <span className="text-sm text-slate-400">Cobrança sem link</span>}
-                    <a className="acao acao-cyan" href={fatura.link_central} target="_blank" rel="noreferrer">Central da empresa</a>
-                    {fatura.persistida && fatura.status_pagamento !== "pago" && fatura.status_pagamento !== "suspenso" ? <Button type="button" variant="secondary" onClick={() => comprovante.mutate(fatura.id)}>Registrar comprovante</Button> : null}
-                    {fatura.persistida && fatura.status_pagamento === "suspenso" ? <Button type="button" variant="secondary" onClick={() => validar.mutate(fatura.id)}>Validar comprovante</Button> : null}
-                    <Button type="button" variant="ghost" onClick={() => setAberta(aberta === fatura.id ? null : fatura.id)}>{aberta === fatura.id ? "Ocultar relatório" : "Relatório de candidatos"}</Button>
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full min-w-[720px] text-left text-sm">
-                      <thead className="text-xs uppercase text-slate-400">
-                        <tr><th className="py-2">Ação</th><th>Data</th><th>Status</th><th>Registro</th><th></th></tr>
-                      </thead>
-                      <tbody>
-                        {fatura.envios.map((item) => (
-                          <tr key={`${fatura.id_cobranca}-${item.etapa}`} className="border-t border-slate-100">
-                            <td className="py-2 font-semibold">{item.label}</td>
-                            <td>{dataBr(item.data_prevista)}</td>
-                            <td>{statusEnvio[item.status] ?? item.status}</td>
-                            <td className="text-slate-500">{item.enviado_em ? `${new Date(item.enviado_em).toLocaleString("pt-BR")} · ${item.responsavel ?? ""}` : "—"}</td>
-                            <td className="py-2">
-                              {fatura.persistida && (item.etapa === "relatorio" || (!item.marco && item.status === "a_enviar")) && fatura.status_pagamento === "em_aberto" ? (
-                                <div className="flex flex-wrap gap-2">
-                                  {item.etapa === "relatorio" ? (
-                                    <button type="button" className="acao acao-cyan" disabled={relatorioEmail.isPending} onClick={() => relatorioEmail.mutate(fatura.id)}>Enviar relatório</button>
-                                  ) : (
-                                    <button type="button" className="acao acao-cyan" onClick={() => envio.mutate({ id: item.id, status: "enviado" })}>Registrar envio</button>
-                                  )}
-                                  {item.pendentes && item.etapa !== "encaminhar" ? <button type="button" className="acao acao-rose" onClick={() => envio.mutate({ id: item.id, status: "escalar" })}>Escalar</button> : null}
-                                  {item.etapa === "encaminhar" ? <button type="button" className="acao acao-rose" onClick={() => envio.mutate({ id: item.id, status: "encaminhado" })}>Encaminhar</button> : null}
-                                </div>
-                              ) : null}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  {aberta === fatura.id ? (
-                    <div className="overflow-x-auto">
-                      {relatorio.isLoading ? <p className="text-sm text-slate-500">Carregando candidatos…</p> : null}
-                      <table className="w-full min-w-[640px] text-left text-sm">
-                        <thead className="text-xs uppercase text-slate-400">
-                          <tr><th className="py-2">Candidato</th><th>Cargo</th><th>Início</th><th>Contrato</th><th>Situação</th><th>Referência</th></tr>
-                        </thead>
-                        <tbody>
-                          {(relatorio.data?.data ?? []).map((linha, index) => (
-                            <tr key={`${linha.nome}-${index}`} className="border-t border-slate-100">
-                              <td className="py-2">{linha.nome}</td>
-                              <td>{linha.cargo}</td>
-                              <td>{linha.inicio}</td>
-                              <td>{linha.contrato}</td>
-                              <td>{linha.situacao}</td>
-                              <td>{linha.referencia}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                      {!relatorio.isLoading && (relatorio.data?.data.length ?? 0) === 0 ? <p className="text-sm text-slate-500">Nenhum candidato ativo ou desligado neste mês.</p> : null}
-                    </div>
-                  ) : null}
+          </CampoFiltro>
+        </div>
+      ) : null}
+
+      {lista.isLoading ? <Skeleton className="h-64" /> : null}
+      {lista.isError ? <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert">{lista.error instanceof ApiError ? lista.error.message : "Não foi possível carregar a régua."}</p> : null}
+      {!lista.isLoading && !lista.isError && grupos.length === 0 ? <Empty title="Nenhuma cobrança nesta competência" text="Gere as cobranças em Contas a receber; elas aparecem aqui com as etapas da régua." /> : null}
+      {grupos.length && !visiveis.length ? <Empty title="Nenhum grupo com esse filtro" text="Troque a situação ou limpe a busca para ver todos os grupos." /> : null}
+
+      <div className="grid gap-3">
+        {visiveis.map((grupo) => {
+          const aberto = grupoAberto === grupo.id;
+          return (
+            <section key={grupo.id} className={cn("overflow-hidden rounded-xl border bg-white", aberto ? "border-cyan-500/40" : "border-slate-200")}>
+              <button type="button" aria-expanded={aberto} onClick={() => setGrupoAberto(aberto ? null : grupo.id)}
+                className="grid w-full gap-3 px-4 py-4 text-left hover:bg-slate-50 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1.6fr)_auto_auto] md:items-center">
+                <div className="min-w-0">
+                  <p className="truncate text-[15px] font-bold text-navy-900">{grupo.empresa}</p>
+                  <p className="flex items-center gap-1.5 text-xs text-slate-500">
+                    <Building2 size={12} /> {grupo.unidades.length} {grupo.unidades.length === 1 ? "unidade" : "unidades"}{grupo.cnpj ? `, ${grupo.cnpj}` : ""}
+                  </p>
                 </div>
-              ))}
-            </div>
-          )) : null}
-        </Card>
-      ))}
+                <div>
+                  <p className="text-xs text-slate-500">Total devido</p>
+                  <p className="font-bold tabular-nums text-navy-900">{money(grupo.total_devido)}</p>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs text-slate-500">Próxima ação</p>
+                  <p className="flex items-center gap-1.5 truncate text-sm font-semibold text-slate-700"><CalendarClock size={14} className="shrink-0 text-slate-400" /> {grupo.proxima_acao ?? "Régua encerrada"}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge value={badgeStatus(grupo.status)}>{statusPagamento[grupo.status] ?? grupo.status}</Badge>
+                  {grupo.pendencias ? <span className="text-xs font-semibold text-amber-800">{grupo.pendencias} {grupo.pendencias === 1 ? "pendência" : "pendências"}</span> : null}
+                </div>
+                <span className="flex items-center gap-1 text-sm font-semibold text-cyan-700">
+                  {aberto ? "Fechar" : "Ver faturas"} <ChevronDown size={16} className={cn("transition", aberto ? "rotate-180" : "")} />
+                </span>
+              </button>
+              {aberto ? (
+                <div className="grid gap-4 border-t border-slate-200 bg-slate-50 p-4">
+                  {grupo.unidades.map((unidade) => (
+                    <div key={unidade.id_empresa} className="grid gap-3">
+                      {grupo.unidades.length > 1 || unidade.empresa !== grupo.empresa ? (
+                        <p className="text-sm font-bold text-navy-900">{unidade.empresa}{unidade.cnpj ? <span className="ml-2 font-normal text-slate-500">{unidade.cnpj}</span> : null}</p>
+                      ) : null}
+                      {unidade.faturas.map((fatura) => (
+                        <FaturaRegua
+                          key={fatura.id_cobranca}
+                          fatura={fatura}
+                          ocupado={ocupado}
+                          relatorioAberto={aberta === fatura.id}
+                          onRelatorio={() => setAberta(aberta === fatura.id ? null : fatura.id)}
+                          onComprovante={() => comprovante.mutate(fatura.id)}
+                          onValidar={() => validar.mutate(fatura.id)}
+                          onEnviarRelatorio={() => relatorioEmail.mutate(fatura.id)}
+                          onEnvio={(id, status) => envio.mutate({ id, status })}
+                        >
+                          {aberta === fatura.id ? (
+                            <div className="grid gap-2 border-t border-slate-200 pt-3">
+                              <p className="flex items-center gap-1.5 text-sm font-semibold text-navy-900"><Users size={15} /> Candidatos da fatura</p>
+                              {relatorio.isLoading ? <p className="text-sm text-slate-500">Carregando candidatos…</p> : (relatorio.data?.data.length ?? 0) === 0 ? (
+                                <p className="text-sm text-slate-500">Nenhum candidato ativo ou desligado neste mês.</p>
+                              ) : (
+                                <div className="overflow-x-auto">
+                                  <table className="data-table compact">
+                                    <thead><tr><th>Candidato</th><th>Cargo</th><th>Início</th><th>Contrato</th><th>Situação</th><th>Referência</th></tr></thead>
+                                    <tbody>
+                                      {(relatorio.data?.data ?? []).map((linha, index) => (
+                                        <tr key={`${linha.nome}-${index}`}>
+                                          <td className="font-medium">{linha.nome}</td>
+                                          <td>{linha.cargo}</td>
+                                          <td className="whitespace-nowrap">{linha.inicio}</td>
+                                          <td>{linha.contrato}</td>
+                                          <td>{linha.situacao}</td>
+                                          <td>{linha.referencia}</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              )}
+                            </div>
+                          ) : null}
+                        </FaturaRegua>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </section>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function Resumo({ rotulo, valor, destaque }: { rotulo: string; valor: string; destaque?: boolean }) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+      <dt className="text-xs font-semibold text-slate-500">{rotulo}</dt>
+      <dd className={cn("mt-0.5 font-extrabold tabular-nums text-navy-900", destaque ? "text-xl" : "text-lg")}>{valor}</dd>
+    </div>
+  );
+}
+
+/** Uma fatura: dados principais, ações e as etapas da régua (a próxima em destaque). */
+function FaturaRegua({ fatura, ocupado, relatorioAberto, onRelatorio, onComprovante, onValidar, onEnviarRelatorio, onEnvio, children }: {
+  fatura: Fatura;
+  ocupado: boolean;
+  relatorioAberto: boolean;
+  onRelatorio: () => void;
+  onComprovante: () => void;
+  onValidar: () => void;
+  onEnviarRelatorio: () => void;
+  onEnvio: (id: string, status: "enviado" | "escalar" | "encaminhado") => void;
+  children?: React.ReactNode;
+}) {
+  const proxima = fatura.envios.find((item) => item.label === fatura.proximo_passo)?.etapa;
+  return (
+    <div className="grid gap-4 rounded-xl border border-slate-200 bg-white p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <dl className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
+          <Dado rotulo="Valor"><span className="font-bold tabular-nums">{money(fatura.valor)}</span></Dado>
+          <Dado rotulo="Vencimento"><span className="tabular-nums">{dataBr(fatura.vencimento)}</span></Dado>
+          <Dado rotulo="Situação"><Badge value={badgeStatus(fatura.status_pagamento)}>{statusPagamento[fatura.status_pagamento] ?? fatura.status_pagamento}</Badge></Dado>
+          <Dado rotulo="Próximo passo">{fatura.proximo_passo ?? "Régua encerrada"}</Dado>
+          <Dado rotulo="Comprovante">{fatura.comprovante ? `Recebido${fatura.data_baixa ? `, baixa em ${dataBr(fatura.data_baixa)}` : ""}` : "Não recebido"}</Dado>
+        </dl>
+        <div className="flex flex-wrap gap-2">
+          {fatura.link_cobranca ? <a className="acao acao-cyan inline-flex items-center gap-1" href={fatura.link_cobranca} target="_blank" rel="noreferrer">Link da cobrança <ExternalLink size={12} /></a> : <span className="text-xs text-slate-400">Cobrança sem link</span>}
+          <a className="acao acao-cyan inline-flex items-center gap-1" href={fatura.link_central} target="_blank" rel="noreferrer">Central da empresa <ExternalLink size={12} /></a>
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {fatura.persistida && fatura.status_pagamento !== "pago" && fatura.status_pagamento !== "suspenso" ? <Button type="button" variant="secondary" disabled={ocupado} onClick={onComprovante}><FileCheck2 size={15} /> Registrar comprovante</Button> : null}
+        {fatura.persistida && fatura.status_pagamento === "suspenso" ? <Button type="button" disabled={ocupado} onClick={onValidar}><FileCheck2 size={15} /> Validar comprovante</Button> : null}
+        <Button type="button" variant="ghost" onClick={onRelatorio}><Users size={15} /> {relatorioAberto ? "Ocultar candidatos" : "Ver candidatos da fatura"}</Button>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="data-table compact min-w-[680px]">
+          <thead><tr><th>Etapa</th><th>Data</th><th>Situação</th><th>Registro</th><th><span className="sr-only">Ações</span></th></tr></thead>
+          <tbody>
+            {fatura.envios.map((item) => {
+              const acoes = fatura.persistida && (item.etapa === "relatorio" || (!item.marco && item.status === "a_enviar")) && fatura.status_pagamento === "em_aberto";
+              const destaque = item.etapa === proxima;
+              return (
+                <tr key={`${fatura.id_cobranca}-${item.etapa}`} className={destaque ? "bg-cyan-50" : undefined}>
+                  <td className="whitespace-nowrap font-semibold">
+                    {item.label}
+                    {destaque ? <span className="ml-2 rounded bg-cyan-700 px-1.5 py-0.5 text-[11px] font-bold text-white">Próxima</span> : null}
+                  </td>
+                  <td className="whitespace-nowrap tabular-nums">{dataBr(item.data_prevista)}</td>
+                  <td>{item.marco ? <span className="text-slate-400">—</span> : <Badge value={tomEnvio[item.status]}>{statusEnvio[item.status] ?? item.status}</Badge>}</td>
+                  <td className="text-xs text-slate-500">{item.enviado_em ? `${dataHoraBr(item.enviado_em)}${item.responsavel ? `, ${item.responsavel}` : ""}` : "—"}</td>
+                  <td className="w-px whitespace-nowrap text-right">
+                    {acoes ? (
+                      <div className="flex justify-end gap-2">
+                        {item.etapa === "relatorio" ? (
+                          <button type="button" className="acao acao-cyan" disabled={ocupado} onClick={onEnviarRelatorio}>Enviar relatório</button>
+                        ) : (
+                          <button type="button" className="acao acao-cyan" disabled={ocupado} onClick={() => onEnvio(item.id, "enviado")}>Registrar envio</button>
+                        )}
+                        {item.pendentes && item.etapa !== "encaminhar" ? <button type="button" className="acao acao-rose" disabled={ocupado} onClick={() => onEnvio(item.id, "escalar")}>Escalar</button> : null}
+                        {item.etapa === "encaminhar" ? <button type="button" className="acao acao-rose" disabled={ocupado} onClick={() => onEnvio(item.id, "encaminhado")}>Encaminhar</button> : null}
+                      </div>
+                    ) : null}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function Dado({ rotulo, children }: { rotulo: string; children: React.ReactNode }) {
+  return (
+    <div className="grid gap-0.5">
+      <dt className="text-xs text-slate-500">{rotulo}</dt>
+      <dd className="text-slate-700">{children}</dd>
     </div>
   );
 }

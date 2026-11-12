@@ -1,6 +1,6 @@
 # Agente — Financeiro
 
-> Última revisão: 2026-11-12 (commit 5f1e2d0)
+> Última revisão: 2026-11-12 (commit "Repagina a régua de cobrança")
 
 ## Para que serve
 
@@ -12,7 +12,7 @@
 | --- | --- | --- | --- |
 | `/financeiro/faturamento` | `GerarFaturamentoPage` | `frontend/src/pages/FinanceiroPage.tsx` | Cartões "Valor a receber" (calculado) e "Asaas" (cobranças em aberto no Asaas), filtros (empresa, mês, ano, status), tabela "Matriz (Sem candidatos)", tabela de empresas a faturar com seleção em lote, painel "Relatório" por empresa e os botões "Enviar relatório e boleto" e "Gerar boletos do mês". |
 | `/financeiro/contas-a-receber` | `ContasReceberPage` | `frontend/src/pages/ContasReceberPage.tsx` | Formulário "Gerar cobrança" com pesquisa de empresa (a mesma pesquisa filtra a tabela), filtro por vencimento (De/Até) e status, a tabela de cobranças do Asaas com as ações Relatório, Link, Enviar relatório, Verificar, Baixar, Nota, Excluir e PDF da nota, e os modais "Data do recebimento" e "Emitir nota fiscal". |
-| `/financeiro/regua` | `ReguaCobrancaPage` | `frontend/src/pages/ReguaCobrancaPage.tsx` | Competência (AAAA-MM), botão "Simular o dia", um card por grupo (a matriz com as filiais dentro), faturas com as etapas da régua, as ações Registrar envio, Escalar, Encaminhar, Enviar relatório, Registrar e Validar comprovante, e o "Relatório de candidatos". |
+| `/financeiro/regua` | `ReguaCobrancaPage` | `frontend/src/pages/ReguaCobrancaPage.tsx` | Cabeçalho com competência (AAAA-MM) e "Simular o dia"; "Como a régua funciona" recolhível; resumo do mês (total devido, grupos, pendências, pagos); filtro por situação (Todos, Em aberto, Comprovante a validar, Encaminhados, Pagos) e busca por empresa/filial/CNPJ, feitos na tela; uma linha por grupo (matriz com as filiais) que abre as faturas. Em cada fatura: valor, vencimento, situação, próximo passo e comprovante, links do Asaas, Registrar/Validar comprovante, "Ver candidatos da fatura" e a tabela de etapas com selo de situação e a próxima etapa destacada, com as ações Registrar envio, Escalar, Encaminhar e Enviar relatório. A simulação aparece numa tabela (etapa, e-mail, empresas, valor). |
 | `/financeiro/relatorio-procfy` | `RelatorioProcfyPage` | `frontend/src/pages/FinanceiroPage.tsx` | Título "Contas a Receber DNA + DISC". Filtros: tipo de data, De/Até (mês), status e sistema. Tabela de faturas do sistema antigo, modal "Detalhes" com os candidatos da fatura e o botão "Gerar excel". |
 | `/financeiro/holerite` | `GerarHoleritePage` | `frontend/src/pages/FinanceiroPage.tsx` | Filtros (empresa, mês, ano) e tabela por empresa com a quantidade de candidatos. Não fica no grupo Financeiro: aparece como link solto "Holerite" na barra lateral (`shell.tsx:208`), com a permissão `holerite`. |
 
@@ -161,7 +161,7 @@ Holerite (`legado.service.ts:707`): conta candidatos distintos com `datainicio <
 
 - Faturamento: abra `/financeiro/faturamento`, troque mês, ano e status e clique em Pesquisar. Abra "Relatório" de uma empresa. Não use "Enviar relatório e boleto" nem "Gerar boletos do mês" fora de um ambiente com Asaas sandbox (`ASAAS_API_URL`).
 - Contas a receber: digite parte do nome ou do CNPJ e confira se a tabela filtra. Escolha a empresa na lista, confira "A lista abaixo mostra só ela" e use "Limpar e ver todas". Troque De, Até e Status.
-- Régua: escolha a competência, use "Ver unidades e faturas", "Relatório de candidatos" e "Simular o dia".
+- Régua: escolha a competência, use os filtros de situação e a busca, abra um grupo ("Ver faturas"), "Ver candidatos da fatura" e "Simular o dia". Os botões das etapas ficam desligados enquanto uma ação está sendo gravada.
 - Procfy: troque o tipo de data (o Status some com "Pagamento"), abra "Detalhes" e use "Gerar excel".
 - Holerite: abra `/financeiro/holerite`.
 - Testes automáticos: `backend/test/regua.test.ts` cobre agrupamento, datas, feriados, suspensão, simulação, reserva, consolidação, início e agenda. `backend/test/money.test.ts` cobre `parseMoney`. Não foram encontrados testes de `LegadoService.faturamento`, `AsaasService`, `nota-fiscal.ts` nem das telas.
