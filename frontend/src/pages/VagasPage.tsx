@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Link, useSearchParams } from "react-router-dom";
 import { BuscaOpcao } from "@/components/busca-opcao";
 import { Paginacao, numeroPagina } from "@/components/paginacao";
@@ -66,40 +67,108 @@ export function VagasPage() {
         </Select>
       </Card>
       {result.isLoading ? <Skeleton className="h-64" /> : result.isError ? <p className="text-rose-600">Erro ao listar vagas. Se a migration de quantidade ainda não foi aplicada, a consulta fica indisponível.</p> : lista && (lista.data.length || Number(lista.meta?.total ?? 0) > 0) ? (
-        <div className="grid gap-3">
-          {lista.data.map((item) => (
-            <div key={item.id_vaga} className="relative rounded-2xl border border-slate-200 bg-white shadow-sm hover:border-cyan-200">
-              {/* O status fica fora do link: clicar nele muda a situação, não abre a vaga. */}
-              <Link to={`/vagas/${item.id_vaga}`} className="block p-4 pr-36">
-                <h2 className="font-bold">{item.cargo}</h2>
-                <p className="text-sm text-slate-500">{item.empresa ?? "Sem empresa"}{item.grupo ? ` · ${item.grupo}` : ""} · {money(item.salario)}</p>
-                <p className="mt-3 text-sm font-semibold text-navy-900">{item.quantidade_posicoes ?? "—"} posições · {item.ocupadas} preenchidas · {item.disponiveis ?? "—"} disponíveis</p>
-                <p className="text-xs text-slate-500">
-                  {regimeLabel[item.regime]}
-                  <TempoAberto situacao={item.situacao} abertura={item.dataabertura} />
-                </p>
-              </Link>
-              <StatusEditavel vaga={item} />
-            </div>
-          ))}
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-xs text-slate-500">{lista.meta?.total ?? 0} registros</p>
+        <Card className="p-0">
+          {/* Tela larga: tabela gerencial no padrão de /empresas. */}
+          <div className="hidden overflow-x-auto lg:block">
+            <table className="w-full text-left text-sm">
+              <thead className="text-slate-500">
+                <tr className="border-b">
+                  <th className="px-4 py-3">Cargo</th>
+                  <th className="pr-4">Empresa / Grupo</th>
+                  <th className="pr-4">Modalidade</th>
+                  <th className="pr-4 text-right">Salário</th>
+                  <th className="pr-4">Posições</th>
+                  <th className="pr-4 text-center">Disponíveis</th>
+                  <th className="pr-4">Tempo em aberto</th>
+                  <th className="pr-4">Situação</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lista.data.map((item) => (
+                  <tr key={item.id_vaga} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
+                    <td className="px-4 py-3 font-semibold"><Link className="text-cyan-800" to={`/vagas/${item.id_vaga}`}>{item.cargo}</Link></td>
+                    <td className="py-3 pr-4">
+                      <p className="text-slate-700">{item.empresa ?? "Sem empresa"}</p>
+                      {item.grupo ? <p className="text-xs text-slate-500">{item.grupo}</p> : null}
+                    </td>
+                    <td className="pr-4"><Modalidade regime={item.regime} /></td>
+                    <td className="whitespace-nowrap pr-4 text-right tabular-nums">{money(item.salario)}</td>
+                    <td className="pr-4"><Ocupacao vaga={item} /></td>
+                    <td className="pr-4 text-center"><Disponiveis valor={item.disponiveis} /></td>
+                    <td className="whitespace-nowrap pr-4"><TempoAberto situacao={item.situacao} abertura={item.dataabertura} /></td>
+                    <td className="pr-4"><StatusEditavel vaga={item} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {/* Tela estreita: cada vaga vira um bloco compacto, com as mesmas informações. */}
+          <ul className="divide-y divide-slate-100 lg:hidden">
+            {lista.data.map((item) => (
+              <li key={item.id_vaga} className="grid gap-3 px-4 py-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <Link className="font-semibold text-cyan-800" to={`/vagas/${item.id_vaga}`}>{item.cargo}</Link>
+                    <p className="text-sm text-slate-700">{item.empresa ?? "Sem empresa"}</p>
+                    {item.grupo ? <p className="text-xs text-slate-500">{item.grupo}</p> : null}
+                  </div>
+                  <StatusEditavel vaga={item} />
+                </div>
+                <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-4">
+                  <div><dt className="text-xs text-slate-500">Modalidade</dt><dd><Modalidade regime={item.regime} /></dd></div>
+                  <div><dt className="text-xs text-slate-500">Salário</dt><dd className="tabular-nums">{money(item.salario)}</dd></div>
+                  <div><dt className="text-xs text-slate-500">Posições</dt><dd><Ocupacao vaga={item} /></dd></div>
+                  <div><dt className="text-xs text-slate-500">Disponíveis</dt><dd><Disponiveis valor={item.disponiveis} /></dd></div>
+                  <div className="col-span-2 sm:col-span-4"><dt className="text-xs text-slate-500">Tempo em aberto</dt><dd><TempoAberto situacao={item.situacao} abertura={item.dataabertura} /></dd></div>
+                </dl>
+              </li>
+            ))}
+          </ul>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100">
+            <p className="px-4 py-3 text-xs text-slate-500">{lista.meta?.total ?? 0} registros</p>
             <Paginacao pagina={pagina} tamanho={20} total={Number(lista.meta?.total ?? 0)} onPagina={irPara} />
           </div>
-        </div>
+        </Card>
       ) : <Empty title="Nenhuma vaga" text="Crie uma vaga vinculada a uma empresa existente." />}
     </div>
   );
 }
 
+function Modalidade({ regime }: { regime: string }) {
+  return <Badge value={regime}>{regimeLabel[regime] ?? regime}</Badge>;
+}
+
+/** Preenchidas sobre o total, com uma barra fina de ocupação. */
+function Ocupacao({ vaga }: { vaga: Row }) {
+  const total = vaga.quantidade_posicoes;
+  const pct = total && total > 0 ? Math.min(100, Math.round((vaga.ocupadas / total) * 100)) : 0;
+  const cor = total && vaga.ocupadas > total ? "bg-amber-500" : total && vaga.ocupadas >= total ? "bg-emerald-500" : "bg-cyan-600";
+  return (
+    <div className="grid w-28 gap-1" title={`${vaga.ocupadas} preenchidas de ${total ?? "—"} posições`}>
+      <p className="text-xs text-slate-600"><span className="font-semibold tabular-nums text-navy-900">{vaga.ocupadas}</span>/<span className="tabular-nums">{total ?? "—"}</span> preenchidas</p>
+      {total ? (
+        <div className="h-1.5 overflow-hidden rounded-full bg-slate-100" role="meter" aria-valuemin={0} aria-valuemax={total} aria-valuenow={vaga.ocupadas} aria-label="Ocupação das posições">
+          <div className={`h-full rounded-full ${cor}`} style={{ width: `${pct}%` }} />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function Disponiveis({ valor }: { valor: number | null }) {
+  if (valor == null) return <span className="text-slate-400">—</span>;
+  const estilo = valor > 0 ? "bg-emerald-50 text-emerald-800" : "bg-slate-100 text-slate-500";
+  return <span className={`inline-flex min-w-8 justify-center rounded-md px-2 py-0.5 text-sm font-bold tabular-nums ${estilo}`}>{valor}</span>;
+}
+
 function TempoAberto({ situacao, abertura }: { situacao: string; abertura: string | null }) {
-  if (situacao !== "aberta") return null;
-  const dias = diasEmAberto(abertura);
-  if (dias == null) return null;
+  const dias = situacao === "aberta" ? diasEmAberto(abertura) : null;
+  if (dias == null) return <span className="text-slate-400">—</span>;
   const cor = dias >= 60 ? "text-rose-700" : dias >= 30 ? "text-amber-700" : "text-slate-600";
   return (
-    <span className={`font-semibold ${cor}`} title={`Desde ${dateBr(abertura)}`}>
-      {" · "}em aberto {textoDiasEmAberto(dias)}
+    <span className="grid" title={`Desde ${dateBr(abertura)}`}>
+      <span className={`font-semibold ${cor}`}>{textoDiasEmAberto(dias)}</span>
+      <span className="text-xs text-slate-500">desde {dateBr(abertura)}</span>
     </span>
   );
 }
@@ -108,6 +177,26 @@ function TempoAberto({ situacao, abertura }: { situacao: string; abertura: strin
 function StatusEditavel({ vaga }: { vaga: Row }) {
   const client = useQueryClient();
   const [aberto, setAberto] = useState(false);
+  const botao = useRef<HTMLButtonElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  // O menu flutua fora da tabela (que rola na horizontal) e acompanha o selo ao rolar a página.
+  useEffect(() => {
+    if (!aberto) return;
+    function posicionar() {
+      const rect = botao.current?.getBoundingClientRect();
+      if (!rect) return;
+      const largura = 256;
+      setPos({ top: rect.bottom + 8, left: Math.max(8, Math.min(rect.right - largura, window.innerWidth - largura - 8)) });
+    }
+    posicionar();
+    window.addEventListener("resize", posicionar);
+    window.addEventListener("scroll", posicionar, true);
+    return () => {
+      window.removeEventListener("resize", posicionar);
+      window.removeEventListener("scroll", posicionar, true);
+      setPos(null);
+    };
+  }, [aberto]);
   const [nova, setNova] = useState<string | null>(null);
   const salvar = useMutation({
     mutationFn: (situacao: string) => api(`/api/v1/vagas/${vaga.id_vaga}`, { method: "PATCH", body: JSON.stringify({ situacao }) }),
@@ -122,12 +211,12 @@ function StatusEditavel({ vaga }: { vaga: Row }) {
     salvar.reset();
   }
   return (
-    <div className="absolute right-4 top-4 flex flex-col items-end">
-      <button type="button" title="Mudar a situação" aria-haspopup="menu" aria-expanded={aberto} onClick={() => (aberto ? fechar() : setAberto(true))} className="rounded-full focus:outline-none focus:ring-2 focus:ring-cyan-700/40">
+    <div className="shrink-0">
+      <button ref={botao} type="button" title="Mudar a situação" aria-haspopup="menu" aria-expanded={aberto} onClick={() => (aberto ? fechar() : setAberto(true))} className="rounded-full focus:outline-none focus:ring-2 focus:ring-cyan-700/40">
         <Badge value={vaga.situacao}>{situacaoLabel[vaga.situacao] ?? vaga.situacao} ▾</Badge>
       </button>
-      {aberto ? (
-        <div role="menu" className="z-20 mt-2 w-64 rounded-xl border border-slate-200 bg-white p-3 shadow-lg">
+      {aberto && pos ? createPortal(
+        <div role="menu" className="fixed z-50 w-64 rounded-xl border border-slate-200 bg-white p-3 shadow-lg" style={{ top: pos.top, left: pos.left }}>
           {nova ? (
             <div className="grid gap-3">
               <p className="text-sm text-slate-700">Mudar <strong>{vaga.cargo}</strong> de <strong>{situacaoLabel[vaga.situacao]}</strong> para <strong>{situacaoLabel[nova]}</strong>?</p>
@@ -146,7 +235,9 @@ function StatusEditavel({ vaga }: { vaga: Row }) {
               <button type="button" className="mt-1 rounded-lg px-2 py-1.5 text-left text-xs text-slate-500 hover:bg-slate-100" onClick={fechar}>Cancelar</button>
             </div>
           )}
-        </div>
+        </div>,
+        // Dentro do canvas do app, para herdar o tema claro/escuro.
+        botao.current?.closest(".app-canvas") ?? document.body,
       ) : null}
     </div>
   );
