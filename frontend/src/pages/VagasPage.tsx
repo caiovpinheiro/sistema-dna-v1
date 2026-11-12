@@ -1,9 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ChevronDown, ChevronRight, Plus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useSearchParams } from "react-router-dom";
 import { BuscaOpcao } from "@/components/busca-opcao";
 import { Paginacao, numeroPagina } from "@/components/paginacao";
+import { CabecalhoPagina, CampoFiltro, ResumoResultados } from "@/components/pagina";
 import { Badge, Button, Card, Empty, Select, Skeleton } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 import { STATUS_VAGA, dateBr, diasEmAberto, money, regimeLabel, situacaoLabel, textoDiasEmAberto } from "@/lib/format";
@@ -47,56 +49,77 @@ export function VagasPage() {
     setParams(next);
   }
   const lista = result.data;
+  const filtrando = ["cargo_chave", "grupo_id", "id_empresa", "tipo_vaga", "situacao"].some((chave) => params.get(chave));
+  const total = lista ? Number(lista.meta?.total ?? lista.data.length) : null;
   return (
     <div className="grid gap-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div><h1 className="text-2xl font-extrabold">Vagas</h1><p className="text-sm text-slate-500">Cada vaga tem capacidade própria, mesmo com cargos iguais.</p></div>
-        <Link to="/grupos-empresas?aba=vaga"><Button>Nova vaga</Button></Link>
-      </div>
-      <Card className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-        <BuscaOpcao ariaLabel="Cargo" placeholder="Cargo" value={cargoAtual} opcoes={opcoesCargo} onChange={(id) => { if (id !== cargoAtual) update("cargo_chave", id); }} />
-        <BuscaOpcao ariaLabel="Grupo" placeholder="Grupo" value={grupoAtual} opcoes={opcoesGrupo} onChange={(id) => { if (id !== grupoAtual) trocarGrupo(id); }} />
-        <BuscaOpcao ariaLabel="Empresa" placeholder="Empresa" value={params.get("id_empresa") ?? ""} opcoes={opcoesEmpresa} onChange={(id) => { if (id !== (params.get("id_empresa") ?? "")) update("id_empresa", id); }} />
-        <Select aria-label="Modalidade" defaultValue={params.get("tipo_vaga") ?? ""} onChange={(event) => update("tipo_vaga", event.target.value)}>
-          <option value="">Modalidade</option>
-          {modes.data?.data.map((item) => <option key={item.id} value={item.id}>{item.descricao}</option>)}
-        </Select>
-        <Select aria-label="Situação" defaultValue={params.get("situacao") ?? ""} onChange={(event) => update("situacao", event.target.value)}>
-          <option value="">Situação</option>
-          {STATUS_VAGA.map((item) => <option key={item.id} value={item.id}>{item.nome}</option>)}
-        </Select>
+      <CabecalhoPagina
+        titulo="Vagas"
+        descricao="Cada vaga tem capacidade própria, mesmo com cargos iguais. Clique na situação para mudá-la ou no cargo para abrir a vaga."
+        acoes={<Link to="/grupos-empresas?aba=vaga"><Button><Plus size={16} /> Nova vaga</Button></Link>}
+      />
+      {/* key: ao limpar, os campos voltam ao vazio. */}
+      <Card key={filtrando ? "com-filtro" : "sem-filtro"} className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <CampoFiltro rotulo="Cargo">
+          <BuscaOpcao ariaLabel="Cargo" placeholder="Todos os cargos" value={cargoAtual} opcoes={opcoesCargo} onChange={(id) => { if (id !== cargoAtual) update("cargo_chave", id); }} />
+        </CampoFiltro>
+        <CampoFiltro rotulo="Grupo">
+          <BuscaOpcao ariaLabel="Grupo" placeholder="Todos os grupos" value={grupoAtual} opcoes={opcoesGrupo} onChange={(id) => { if (id !== grupoAtual) trocarGrupo(id); }} />
+        </CampoFiltro>
+        <CampoFiltro rotulo="Empresa">
+          <BuscaOpcao ariaLabel="Empresa" placeholder={grupoAtual ? "Todas do grupo" : "Todas as empresas"} value={params.get("id_empresa") ?? ""} opcoes={opcoesEmpresa} onChange={(id) => { if (id !== (params.get("id_empresa") ?? "")) update("id_empresa", id); }} />
+        </CampoFiltro>
+        <CampoFiltro rotulo="Modalidade">
+          <Select aria-label="Modalidade" defaultValue={params.get("tipo_vaga") ?? ""} onChange={(event) => update("tipo_vaga", event.target.value)}>
+            <option value="">Todas</option>
+            {modes.data?.data.map((item) => <option key={item.id} value={item.id}>{item.descricao}</option>)}
+          </Select>
+        </CampoFiltro>
+        <CampoFiltro rotulo="Situação">
+          <Select aria-label="Situação" defaultValue={params.get("situacao") ?? ""} onChange={(event) => update("situacao", event.target.value)}>
+            <option value="">Todas</option>
+            {STATUS_VAGA.map((item) => <option key={item.id} value={item.id}>{item.nome}</option>)}
+          </Select>
+        </CampoFiltro>
       </Card>
-      {result.isLoading ? <Skeleton className="h-64" /> : result.isError ? <p className="text-rose-600">Erro ao listar vagas. Se a migration de quantidade ainda não foi aplicada, a consulta fica indisponível.</p> : lista && (lista.data.length || Number(lista.meta?.total ?? 0) > 0) ? (
+      <ResumoResultados total={total} singular="vaga" plural="vagas" filtrando={filtrando} carregando={result.isLoading} onLimpar={() => setParams(new URLSearchParams())} />
+      {result.isLoading ? <Skeleton className="h-64" /> : result.isError ? (
+        <p role="alert" className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">Não foi possível listar as vagas. Se a migration de quantidade ainda não foi aplicada, a consulta fica indisponível.</p>
+      ) : lista && (lista.data.length || Number(lista.meta?.total ?? 0) > 0) ? (
         <Card className="p-0">
           {/* Tela larga: tabela gerencial no padrão de /empresas. */}
           <div className="hidden overflow-x-auto lg:block">
-            <table className="w-full text-left text-sm">
-              <thead className="text-slate-500">
-                <tr className="border-b">
-                  <th className="px-4 py-3">Cargo</th>
-                  <th className="pr-4">Empresa / Grupo</th>
-                  <th className="pr-4">Modalidade</th>
-                  <th className="pr-4 text-right">Salário</th>
-                  <th className="pr-4">Posições</th>
-                  <th className="pr-4 text-center">Disponíveis</th>
-                  <th className="pr-4">Tempo em aberto</th>
-                  <th className="pr-4">Situação</th>
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Cargo</th>
+                  <th>Empresa / grupo</th>
+                  <th>Modalidade</th>
+                  <th className="text-right">Salário</th>
+                  <th>Posições</th>
+                  <th className="text-center">Disponíveis</th>
+                  <th>Tempo em aberto</th>
+                  <th>Situação</th>
+                  <th><span className="sr-only">Ações</span></th>
                 </tr>
               </thead>
               <tbody>
                 {lista.data.map((item) => (
-                  <tr key={item.id_vaga} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
-                    <td className="px-4 py-3 font-semibold"><Link className="text-cyan-800" to={`/vagas/${item.id_vaga}`}>{item.cargo}</Link></td>
-                    <td className="py-3 pr-4">
-                      <p className="text-slate-700">{item.empresa ?? "Sem empresa"}</p>
-                      {item.grupo ? <p className="text-xs text-slate-500">{item.grupo}</p> : null}
+                  <tr key={item.id_vaga}>
+                    <td className="max-w-64"><Link className="block truncate" to={`/vagas/${item.id_vaga}`}>{item.cargo}</Link></td>
+                    <td className="max-w-64">
+                      <p className="truncate text-slate-700">{item.empresa ?? "Sem empresa"}</p>
+                      {item.grupo ? <p className="truncate text-xs text-slate-500">{item.grupo}</p> : null}
                     </td>
-                    <td className="pr-4"><Modalidade regime={item.regime} /></td>
-                    <td className="whitespace-nowrap pr-4 text-right tabular-nums">{money(item.salario)}</td>
-                    <td className="pr-4"><Ocupacao vaga={item} /></td>
-                    <td className="pr-4 text-center"><Disponiveis valor={item.disponiveis} /></td>
-                    <td className="whitespace-nowrap pr-4"><TempoAberto situacao={item.situacao} abertura={item.dataabertura} /></td>
-                    <td className="pr-4"><StatusEditavel vaga={item} /></td>
+                    <td><Modalidade regime={item.regime} /></td>
+                    <td className="whitespace-nowrap text-right tabular-nums">{money(item.salario)}</td>
+                    <td><Ocupacao vaga={item} /></td>
+                    <td className="text-center"><Disponiveis valor={item.disponiveis} /></td>
+                    <td className="whitespace-nowrap"><TempoAberto situacao={item.situacao} abertura={item.dataabertura} /></td>
+                    <td><StatusEditavel vaga={item} /></td>
+                    <td className="w-px whitespace-nowrap text-right">
+                      <Link to={`/vagas/${item.id_vaga}`} aria-label={`Abrir ${item.cargo}`} className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs">Abrir <ChevronRight size={14} /></Link>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -124,12 +147,13 @@ export function VagasPage() {
               </li>
             ))}
           </ul>
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100">
-            <p className="px-4 py-3 text-xs text-slate-500">{lista.meta?.total ?? 0} registros</p>
+          <div className="flex flex-wrap items-center justify-end gap-3 border-t border-slate-100">
             <Paginacao pagina={pagina} tamanho={20} total={Number(lista.meta?.total ?? 0)} onPagina={irPara} />
           </div>
         </Card>
-      ) : <Empty title="Nenhuma vaga" text="Crie uma vaga vinculada a uma empresa existente." />}
+      ) : filtrando ? (
+        <Empty title="Nenhuma vaga com esses filtros" text="Troque a situação ou a modalidade, ou limpe os filtros para ver todas." />
+      ) : <Empty title="Nenhuma vaga cadastrada" text="Use “Nova vaga” para criar uma vaga ligada a uma empresa já cadastrada." />}
     </div>
   );
 }
@@ -213,7 +237,7 @@ function StatusEditavel({ vaga }: { vaga: Row }) {
   return (
     <div className="shrink-0">
       <button ref={botao} type="button" title="Mudar a situação" aria-haspopup="menu" aria-expanded={aberto} onClick={() => (aberto ? fechar() : setAberto(true))} className="rounded-full focus:outline-none focus:ring-2 focus:ring-cyan-700/40">
-        <Badge value={vaga.situacao}>{situacaoLabel[vaga.situacao] ?? vaga.situacao} ▾</Badge>
+        <Badge value={vaga.situacao}><span className="inline-flex items-center gap-1">{situacaoLabel[vaga.situacao] ?? vaga.situacao}<ChevronDown size={12} aria-hidden /></span></Badge>
       </button>
       {aberto && pos ? createPortal(
         <div role="menu" className="fixed z-50 w-64 rounded-xl border border-slate-200 bg-white p-3 shadow-lg" style={{ top: pos.top, left: pos.left }}>

@@ -1,9 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
+import { ChevronRight, Plus, Search } from "lucide-react";
 import type { FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { LinhaPreview, PreviewFlutuante, useLinhaPreview } from "@/components/preview";
 import { Paginacao, numeroPagina } from "@/components/paginacao";
-import { Button, Badge, Card, Empty, Input, Select, Skeleton } from "@/components/ui";
+import { CabecalhoPagina, CampoFiltro, ResumoResultados } from "@/components/pagina";
+import { Button, Badge, Card, Empty, Input, Select, Skeleton, cn } from "@/components/ui";
 import { api } from "@/lib/api";
 import { dataHoraBr, formatCnpj, formatPhone } from "@/lib/format";
 
@@ -52,54 +54,91 @@ export function EmpresasPage() {
     setParams(next);
   }
   const lista = result.data;
+  const filtrando = ["q", "cidade", "uf", "status", "acesso"].some((chave) => params.get(chave));
+  const total = lista ? Number(lista.meta?.total ?? lista.data.length) : null;
   return (
     <div className="grid gap-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div><h1 className="text-2xl font-extrabold">Empresas</h1><p className="text-sm text-slate-500">Pesquisa por CNPJ, razão social ou nome fantasia.</p></div>
-        <Link to="/grupos-empresas?aba=empresa"><Button>Nova empresa</Button></Link>
-      </div>
+      <CabecalhoPagina
+        titulo="Empresas"
+        descricao="Empresas clientes com o acesso ao portal. Passe o mouse numa linha para ver o contato; clique no nome para abrir a ficha."
+        acoes={<Link to="/grupos-empresas?aba=empresa"><Button><Plus size={16} /> Nova empresa</Button></Link>}
+      />
       <Card>
-        <form className="grid gap-3 md:grid-cols-[1fr_1fr_5rem_8rem_12rem_auto] md:items-end" onSubmit={pesquisar}>
-          <Input name="q" aria-label="Busca" placeholder="CNPJ, razão ou fantasia" defaultValue={params.get("q") ?? ""} />
-          <Input name="cidade" aria-label="Cidade" placeholder="Cidade" defaultValue={params.get("cidade") ?? ""} />
-          <Input name="uf" aria-label="UF" placeholder="UF" maxLength={2} defaultValue={params.get("uf") ?? ""} />
-          <Select name="status" aria-label="Status" defaultValue={params.get("status") ?? ""}>
-            <option value="">Status</option>
-            <option value="1">Ativo</option>
-            <option value="0">Inativo</option>
-          </Select>
-          <Select name="acesso" aria-label="Acesso ao portal" defaultValue={params.get("acesso") ?? ""}>
-            <option value="">Acesso ao portal</option>
-            <option value="acessou">Já acessou</option>
-            <option value="nunca">Nunca acessou</option>
-            <option value="sem">Sem login</option>
-          </Select>
-          <Button type="submit">Pesquisar</Button>
+        {/* key: ao limpar os filtros, os campos voltam ao vazio. */}
+        <form key={params.toString()} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_minmax(0,1.2fr)_5rem_minmax(0,1fr)_minmax(0,1.2fr)_auto] lg:items-end" onSubmit={pesquisar}>
+          <CampoFiltro rotulo="Buscar" className="sm:col-span-2 lg:col-span-1">
+            <div className="relative">
+              <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <Input name="q" aria-label="Busca" placeholder="CNPJ, razão social ou nome fantasia" defaultValue={params.get("q") ?? ""} className="pl-9" />
+            </div>
+          </CampoFiltro>
+          <CampoFiltro rotulo="Cidade">
+            <Input name="cidade" aria-label="Cidade" placeholder="Todas" defaultValue={params.get("cidade") ?? ""} />
+          </CampoFiltro>
+          <CampoFiltro rotulo="UF">
+            <Input name="uf" aria-label="UF" placeholder="SP" maxLength={2} defaultValue={params.get("uf") ?? ""} className="uppercase" />
+          </CampoFiltro>
+          <CampoFiltro rotulo="Status">
+            <Select name="status" aria-label="Status" defaultValue={params.get("status") ?? ""}>
+              <option value="">Todos</option>
+              <option value="1">Ativo</option>
+              <option value="0">Inativo</option>
+            </Select>
+          </CampoFiltro>
+          <CampoFiltro rotulo="Portal da empresa">
+            <Select name="acesso" aria-label="Acesso ao portal" defaultValue={params.get("acesso") ?? ""}>
+              <option value="">Todos</option>
+              <option value="acessou">Já acessou</option>
+              <option value="nunca">Nunca acessou</option>
+              <option value="sem">Sem login</option>
+            </Select>
+          </CampoFiltro>
+          <Button type="submit" className="h-10 sm:col-span-2 lg:col-span-1"><Search size={16} /> Pesquisar</Button>
         </form>
       </Card>
-      {result.isLoading ? <Skeleton className="h-64" /> : result.isError ? <p className="text-rose-600">Erro ao pesquisar empresas.</p> : lista && (lista.data.length || Number(lista.meta?.total ?? 0) > 0) ? (
+      <ResumoResultados total={total} singular="empresa" plural="empresas" filtrando={filtrando} carregando={result.isLoading} onLimpar={() => setParams(new URLSearchParams())} />
+      {result.isLoading ? <Skeleton className="h-64" /> : result.isError ? (
+        <p role="alert" className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">Não foi possível pesquisar as empresas. Atualize a página; se continuar, avise o suporte.</p>
+      ) : lista && (lista.data.length || Number(lista.meta?.total ?? 0) > 0) ? (
         <Card className="overflow-x-auto p-0">
-          <table className="w-full text-left text-sm">
-            <thead className="text-slate-500"><tr className="border-b"><th className="px-4 py-3">Razão social</th><th>Fantasia</th><th>CNPJ</th><th>Cidade</th><th>Portal</th><th>Último uso</th><th>Status</th></tr></thead>
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Empresa</th>
+                <th>CNPJ</th>
+                <th>Cidade</th>
+                <th>Portal</th>
+                <th>Status</th>
+                <th><span className="sr-only">Ações</span></th>
+              </tr>
+            </thead>
             <tbody>
               {lista.data.map((item) => {
                 const uso = usoDoPortal(item);
                 return (
-                <tr key={item.id_empresa} className="border-b border-slate-100 last:border-0 hover:bg-slate-50" onMouseEnter={(event) => preview.mostrar(item.id_empresa, event)} onMouseLeave={preview.esconder}>
-                  <td className="px-4 py-3 font-semibold"><Link className="text-cyan-800" to={`/empresas/${item.id_empresa}`}>{item.razao_social}</Link></td>
-                  <td>{item.nome_fantasia || "—"}</td>
-                  <td>{formatCnpj(item.cnpj)}</td>
-                  <td>{[item.cidade, item.uf].filter(Boolean).join(" / ") || "—"}</td>
-                  <td><Badge value={item.acesso_portal ? "ativa" : "encerrada"}>{item.acesso_portal ? "Com acesso" : "Sem acesso"}</Badge></td>
-                  <td><Badge value={uso.valor}>{uso.texto}</Badge></td>
-                  <td><Badge value={item.status === 1 ? "ativa" : "encerrada"}>{item.status === 1 ? "Ativo" : item.status === 0 ? "Inativo" : "—"}</Badge></td>
+                <tr key={item.id_empresa} onMouseEnter={(event) => preview.mostrar(item.id_empresa, event)} onMouseLeave={preview.esconder}>
+                  <td className="max-w-80">
+                    <Link className="block truncate" to={`/empresas/${item.id_empresa}`}>{item.nome_fantasia || item.razao_social}</Link>
+                    {item.nome_fantasia ? <p className="truncate text-xs text-slate-500">{item.razao_social}</p> : null}
+                  </td>
+                  <td className="whitespace-nowrap tabular-nums text-slate-600">{formatCnpj(item.cnpj)}</td>
+                  <td className="whitespace-nowrap text-slate-600">{[item.cidade, item.uf].filter(Boolean).join(" / ") || "—"}</td>
+                  <td className="whitespace-nowrap">
+                    <Badge value={!item.acesso_portal && uso.valor === "ativa" ? "encerrada" : uso.valor}>{rotuloPortal(item.acesso_portal, uso.valor)}</Badge>
+                    {uso.valor === "ativa" ? <p className="mt-0.5 text-xs text-slate-500">Último uso {uso.texto}</p> : null}
+                  </td>
+                  <td className="whitespace-nowrap"><StatusEmpresa status={item.status} /></td>
+                  <td className="w-px whitespace-nowrap text-right">
+                    <Link to={`/empresas/${item.id_empresa}`} aria-label={`Abrir ${item.nome_fantasia || item.razao_social}`} className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs">
+                      Abrir <ChevronRight size={14} />
+                    </Link>
+                  </td>
                 </tr>
                 );
               })}
             </tbody>
           </table>
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100">
-            <p className="px-4 py-3 text-xs text-slate-500">{lista.meta?.total ?? 0} registros</p>
+          <div className="flex flex-wrap items-center justify-end gap-3 border-t border-slate-100">
             <Paginacao pagina={pagina} tamanho={20} total={Number(lista.meta?.total ?? 0)} onPagina={irPara} />
           </div>
           <PreviewFlutuante box={preview.box}>
@@ -122,7 +161,26 @@ export function EmpresasPage() {
             ) : null}
           </PreviewFlutuante>
         </Card>
-      ) : <Empty title="Nenhuma empresa" text="Cadastre a primeira empresa cliente." />}
+      ) : filtrando ? (
+        <Empty title="Nenhuma empresa com esses filtros" text="Confira o CNPJ ou o nome digitado, ou limpe os filtros para ver todas." />
+      ) : <Empty title="Nenhuma empresa cadastrada" text="Use “Nova empresa” para cadastrar a primeira empresa cliente." />}
     </div>
+  );
+}
+
+/** Um selo só para o portal: sem login, login criado sem uso, em uso ou acesso removido depois de usar. */
+function rotuloPortal(acesso: boolean | undefined, uso: string) {
+  if (uso === "ativa") return acesso ? "Usa o portal" : "Acesso removido";
+  return uso === "pausada" ? "Nunca acessou" : "Sem login";
+}
+
+/** Ativo/inativo com um ponto colorido: lê rápido sem competir com o selo do portal. */
+function StatusEmpresa({ status }: { status: number | null }) {
+  if (status !== 1 && status !== 0) return <span className="text-slate-400">—</span>;
+  return (
+    <span className={cn("inline-flex items-center gap-1.5 text-sm font-medium", status === 1 ? "text-emerald-800" : "text-slate-500")}>
+      <span aria-hidden className={cn("h-2 w-2 rounded-full", status === 1 ? "bg-emerald-500" : "bg-slate-400")} />
+      {status === 1 ? "Ativo" : "Inativo"}
+    </span>
   );
 }
