@@ -42,6 +42,13 @@ export function presentCandidato(row: CandidatoRow, detail = false) {
     vinculo: row.id_empresa ? "empresa" as const : "dna" as const,
     colaborador: row.colaborador,
     pcd: row.pcd,
+    contrato: row.contrato === undefined ? undefined : row.contrato ? {
+      ativo: row.contrato.ativo === true,
+      cargo: row.contrato.cargo,
+      empresa: row.contrato.empresa,
+      regime: classifyRegime(row.contrato.modalidade),
+      inicio: legacyToIso(row.contrato.datainicio) ?? legacyToIso(row.contrato.data_contratacao),
+    } : null,
     banco: detail ? row.banco : undefined,
     agencia: detail ? row.agencia : undefined,
     numero_conta: detail ? row.numero_conta : undefined,

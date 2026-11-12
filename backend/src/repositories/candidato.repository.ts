@@ -44,6 +44,18 @@ export type CandidatoRow = {
   pcd: string | null;
   atendimento: Record<string, string> | null;
   empresa_nome?: string | null;
+  /** Só na lista: a contratação ativa ou, sem ela, a mais recente. */
+  contrato?: ContratoResumoRow | null;
+};
+
+export type ContratoResumoRow = {
+  id_candidato: string;
+  ativo: boolean;
+  data_contratacao: string | null;
+  datainicio: string | null;
+  cargo: string | null;
+  empresa: string | null;
+  modalidade: string | null;
 };
 
 const COLUMNS = `
@@ -197,7 +209,31 @@ export class CandidatoRepository {
       ORDER BY ${order} NULLS LAST, c.id_candidato
       LIMIT $${params.length + 1} OFFSET $${params.length + 2}
     `, [...params, query.pageSize, (query.page - 1) * query.pageSize]);
-    return { rows, total: totalRow?.total ?? 0 };
+    const contratos = await this.contratosDaLista(db, rows.map((row) => String(row.id_candidato)));
+    return { rows: rows.map((row) => ({ ...row, contrato: contratos.get(String(row.id_candidato)) ?? null })), total: totalRow?.total ?? 0 };
+  }
+
+  /** Contratação de cada candidato da página (a ativa; sem ela, a mais recente). Base sem as tabelas devolve vazio. */
+  private async contratosDaLista(db: Db, ids: string[]): Promise<Map<string, ContratoResumoRow>> {
+    if (!ids.length) return new Map();
+    try {
+      const rows = await many<ContratoResumoRow>(db, `
+        SELECT DISTINCT ON (cv.id_candidato::text)
+               cv.id_candidato::text AS id_candidato, coalesce(cv.status = $2, false) AS ativo, cv.data_contratacao::text AS data_contratacao, cv.datainicio::text AS datainicio,
+               v.cargo, coalesce(e.nome_fantasia, e.razao_social) AS empresa, m.descricao AS modalidade
+        FROM dna_work.conratacaovaga cv
+        LEFT JOIN dna_work.vaga v ON v.id_vaga = cv.id_vaga
+        LEFT JOIN dna_work.empresa e ON e.id_empresa = cv.id_empresa
+        LEFT JOIN dna_work.modalidade_vaga m ON m.id = v.tipo_vaga
+        WHERE cv.id_candidato::text = ANY($1::text[])
+        ORDER BY cv.id_candidato::text, coalesce(cv.status = $2, false) DESC, cv.id_contratacao DESC
+      `, [ids, this.statusAtivo]);
+      return new Map(rows.map((row) => [row.id_candidato, row]));
+    } catch (error) {
+      const code = (error as { code?: string }).code;
+      if (code === "42P01" || code === "42703") return new Map();
+      throw error;
+    }
   }
 
   async curriculo(db: Db, row: CandidatoRow) {
