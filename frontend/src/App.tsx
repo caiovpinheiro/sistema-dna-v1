@@ -7,6 +7,7 @@ import { CandidatoDetailPage } from "@/pages/CandidatoDetailPage";
 import { CandidatoFormPage } from "@/pages/CandidatoFormPage";
 import { CandidatosPage } from "@/pages/CandidatosPage";
 import { ConfiguracoesPage } from "@/pages/ConfiguracoesPage";
+import { MetricasPage } from "@/pages/MetricasPage";
 import { ContratacaoDetailPage } from "@/pages/ContratacaoDetailPage";
 import { ContratacoesPage } from "@/pages/ContratacoesPage";
 import { DashboardPage } from "@/pages/DashboardPage";
@@ -104,6 +105,7 @@ export function App() {
             <Route path="/documentos-pendentes" element={<DocumentosPendentesPage />} />
             <Route path="/emails" element={<EmailsPage />} />
             <Route path="/configuracoes" element={<ConfiguracoesPage />} />
+            <Route path="/metricas" element={<MetricasPage />} />
             <Route path="/instituicoes" element={<ConsultarInstituicoesPage />} />
             <Route path="/instituicoes/nova" element={<CadastrarInstituicaoPage />} />
           </Route>

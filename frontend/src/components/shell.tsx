@@ -1,4 +1,4 @@
-import { Briefcase, Building2, ChevronDown, FileSignature, FileWarning, GraduationCap, Handshake, Layers, LayoutDashboard, ListChecks, LogOut, Mail, Menu, Moon, Percent, Receipt, Search, Settings, Sun, Users, Wallet, X } from "lucide-react";
+import { BarChart3, Briefcase, Building2, ChevronDown, FileSignature, FileWarning, GraduationCap, Handshake, Layers, LayoutDashboard, ListChecks, LogOut, Mail, Menu, Moon, Percent, Receipt, Search, Settings, Sun, Users, Wallet, X } from "lucide-react";
 import { useEffect, useState, type ComponentType } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { api } from "@/lib/api";
@@ -129,6 +129,7 @@ function tituloDaRota(pathname: string) {
   if (pathname === "/") return "Painel";
   const rotas: Array<[string, string]> = [
     ["/configuracoes", "Configurações"],
+    ["/metricas", "Métricas"],
     ["/emails", "E-mails"],
     ["/documentos-pendentes", "Documentos pendentes"],
     ["/financeiro/comissao", "Comissão"],
@@ -221,6 +222,11 @@ export function Shell({ email, admin, paginas, notify }: { email: string; admin:
         </NavLink>
       ) : null}
       {admin ? (
+        <NavLink to="/metricas" onClick={() => setOpen(false)} title="Métricas" className={linkClass}>
+          <BarChart3 size={18} className="shrink-0" /> {label("Métricas")}
+        </NavLink>
+      ) : null}
+      {admin ? (
         <NavLink to="/configuracoes" onClick={() => setOpen(false)} title="Configurações" className={linkClass}>
           <Settings size={18} className="shrink-0" /> {label("Configurações")}
         </NavLink>
@@ -280,7 +286,7 @@ export function Shell({ email, admin, paginas, notify }: { email: string; admin:
           </button>
         </header>
         <main className="min-h-0 w-full flex-1 overflow-y-auto p-4 md:p-6">
-          {pathname.startsWith("/configuracoes") && !admin ? <p className="text-sm text-slate-300">Somente o administrador configura os acessos.</p> : paginaDoCaminho(pathname) && !permitido(paginaDoCaminho(pathname)!) ? <p className="text-sm text-slate-300">Você não tem acesso a esta página.</p> : <Outlet />}
+          {pathname.startsWith("/configuracoes") && !admin ? <p className="text-sm text-slate-300">Somente o administrador configura os acessos.</p> : pathname.startsWith("/metricas") && !admin ? <p className="text-sm text-slate-300">Somente o administrador vê as métricas.</p> : paginaDoCaminho(pathname) && !permitido(paginaDoCaminho(pathname)!) ? <p className="text-sm text-slate-300">Você não tem acesso a esta página.</p> : <Outlet />}
         </main>
       </div>
     </div>

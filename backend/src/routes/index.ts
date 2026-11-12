@@ -22,6 +22,7 @@ import type { ReguaService } from "../services/regua.service.js";
 import type { CandidatoService } from "../services/candidato.service.js";
 import type { ContratacaoService } from "../services/contratacao.service.js";
 import type { DashboardService } from "../services/dashboard.service.js";
+import type { MetricasService } from "../services/metricas.service.js";
 import type { EmpresaService } from "../services/empresa.service.js";
 import { camposFromBody, type TceService } from "../services/tce.service.js";
 import type { TermoService } from "../services/termo.service.js";
@@ -56,6 +57,7 @@ type Services = {
   contratacoes: ContratacaoService;
   processos: ProcessoService;
   dashboard: DashboardService;
+  metricas: MetricasService;
   termos: TermoService;
   tce: TceService;
   asaas: AsaasService;
@@ -144,6 +146,18 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
       }),
     },
   }, async (request) => ok(await services.dashboard.get(request.query)));
+
+  // Só administrador (bloqueio em app.ts). Só leitura de dna_work.conratacaovaga + vaga.
+  api.get("/api/v1/metricas/permanencia-estagio", {
+    schema: {
+      tags: ["metricas"],
+      querystring: z.object({
+        de: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        ate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        modo: z.enum(["inicio", "ativos"]).optional(),
+      }),
+    },
+  }, async (request) => ok(await services.metricas.permanenciaEstagio(request.query)));
 
   api.get("/api/v1/modalidades", { schema: { tags: ["vagas"] } }, async () => {
     const rows = await many<{ id: number; descricao: string | null; descricaomenu: string | null; estudando: number | null }>(
