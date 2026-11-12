@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { DIAS_ESCALA } from "../lib/horario-escala.js";
-import { cnpjSchema, moneySchema, optionalCep, optionalEmail, optionalPhone } from "./common.js";
+import { moneySchema, optionalCnpj, optionalCep, optionalEmail, optionalPhone } from "./common.js";
 
 const contato = { email: optionalEmail, telefone: optionalPhone };
 
@@ -17,7 +17,7 @@ export const grupoCreateSchema = z.object({
 
 export const empresaCadastroSchema = z.object({
   grupo_id: z.string().uuid(),
-  cnpj: cnpjSchema,
+  cnpj: optionalCnpj,
   razao_social: z.string().trim().min(3).max(180),
   nome_fantasia: z.string().trim().min(2).max(180),
   cep: optionalCep.refine((value) => Boolean(value), "Informe o CEP."),

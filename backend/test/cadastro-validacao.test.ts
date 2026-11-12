@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { empresaCadastroSchema, grupoCreateSchema, vagaCadastroSchema } from "../src/schemas/cadastro.js";
+import { empresaParecida } from "../src/services/cadastro.service.js";
 
 const mensagens = (r: { success: boolean; error?: { issues: Array<{ message: string }> } }) => r.error?.issues.map((issue) => issue.message) ?? [];
 
@@ -23,6 +24,35 @@ test("empresa: número e complemento opcionais e basta e-mail ou telefone", () =
   assert.equal(empresaCadastroSchema.safeParse({ ...semContato, numero: _numero, email: "contato@teste.com" }).success, true);
   assert.equal(empresaCadastroSchema.safeParse({ ...semContato, telefone: "11987654321" }).success, true);
   assert.ok(mensagens(empresaCadastroSchema.safeParse(semContato)).includes("Informe e-mail ou telefone."));
+});
+
+test("empresa: CNPJ opcional, mas válido quando informado", () => {
+  const { cnpj: _cnpj, ...semCnpj } = empresa;
+  const semCampo = empresaCadastroSchema.safeParse(semCnpj);
+  assert.equal(semCampo.success, true);
+  assert.equal(semCampo.success && semCampo.data.cnpj, undefined);
+  const emBranco = empresaCadastroSchema.safeParse({ ...empresa, cnpj: "  " });
+  assert.equal(emBranco.success && emBranco.data.cnpj, undefined);
+  const comCnpj = empresaCadastroSchema.safeParse(empresa);
+  assert.equal(comCnpj.success && comCnpj.data.cnpj, "11222333000181");
+  assert.ok(mensagens(empresaCadastroSchema.safeParse({ ...empresa, cnpj: "11.222.333/0001-00" })).includes("CNPJ inválido."));
+});
+
+test("empresa sem CNPJ: trava nome + CEP contra duplicada", () => {
+  const existentes = [
+    { id: "a", razao_social: "Padaria São João Ltda.", nome_fantasia: "Padaria do João", cep: "01310-100" },
+    { id: "b", razao_social: "Mercado Bom Preço", nome_fantasia: null, cep: "04000000" },
+  ];
+  // Mesmo nome (sem acento, caixa ou pontuação) e mesmo CEP → acha.
+  assert.equal(empresaParecida({ razao_social: "PADARIA SAO JOAO LTDA", nome_fantasia: "Outra", cep: "01310100" }, existentes)?.id, "a");
+  // Fantasia da nova igual à fantasia da existente.
+  assert.equal(empresaParecida({ razao_social: "X Comércio", nome_fantasia: "padaria do joão", cep: "01310100" }, existentes)?.id, "a");
+  // Fantasia da nova igual à razão social da existente.
+  assert.equal(empresaParecida({ razao_social: "Y", nome_fantasia: "Mercado Bom Preco", cep: "04000-000" }, existentes)?.id, "b");
+  // Mesmo nome em outro CEP → não é a mesma.
+  assert.equal(empresaParecida({ razao_social: "Padaria São João Ltda.", nome_fantasia: "Padaria do João", cep: "01310200" }, existentes), undefined);
+  // Mesmo CEP com outro nome → não é a mesma.
+  assert.equal(empresaParecida({ razao_social: "Farmácia Central", nome_fantasia: "Farmácia", cep: "01310100" }, existentes), undefined);
 });
 
 test("vaga: idade até obrigatória", () => {

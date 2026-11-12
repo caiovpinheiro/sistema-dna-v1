@@ -43,7 +43,7 @@ export class EmpresaService {
   }
 
   async create(input: EmpresaCreate) {
-    const duplicated = await this.repo.findByCnpj(this.db, input.cnpj);
+    const duplicated = input.cnpj ? await this.repo.findByCnpj(this.db, input.cnpj) : null;
     if (duplicated) {
       throw new AppError(409, "CNPJ_DUPLICADO", "Já existe uma empresa com este CNPJ.", {
         id_empresa: duplicated.id_empresa,

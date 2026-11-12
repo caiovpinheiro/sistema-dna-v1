@@ -1,6 +1,6 @@
 # Agente — Triagem
 
-> Última revisão: 2026-11-12 (foto do cargo ao copiar o texto)
+> Última revisão: 2026-11-12 (empresa sem CNPJ)
 
 ## Para que serve
 
@@ -61,7 +61,7 @@ O menu fica em `frontend/src/components/shell.tsx` (`triagemLinks`, linhas 16-19
 
 **Postgres**
 - `public.vaga`: o que a busca lê (`id`, `vaga_id`, `tipo_vaga` (1 = Estágio, 2 = CLT), `cargo`, `salario`, `beneficios`, `sexo`, `idade`, `idade_ate`, `horario`, `tipo_trabalho`, `latitude`, `longitude`, `empresa_id`). O matching e o dossiê leem também `atividades`, `descricao`, `requisitos`, `escolaridade` e `carga_horaria`. Só entram vagas com latitude e longitude preenchidas (triagem.service.ts:115). Segundo dossie.service.ts:327, "public.vaga só guarda as abertas; o sync tira as fechadas".
-- `public.empresa`: `nome_fantasia`, `local` e `cnpj` (comparado com o Lightsail para achar as empresas pendentes).
+- `public.empresa`: `nome_fantasia`, `local`, `id` e `cnpj`. Para achar as empresas pendentes, a empresa do Lightsail conta como cadastrada se o `id_empresa` estiver em `public.empresa.id` ou se o CNPJ (quando tem) bater. Empresa sem CNPJ só é reconhecida pelo id.
 - `public.cargo`: `descricao` e `requisitos` servem de reserva quando a vaga não tem descrição nem requisitos (matching e dossiê).
 - `dna_work.flex`: `id_flex` → `valor`, que traduz o código de escolaridade da vaga antes de mandar ao JEV.
 - `public.candidatos_dados`: lida pelo dossiê, nunca gravada aqui. Campos: `dealId`, `telefone`, `resumo_cv`, `nome`, `idade`, `escolaridade`, `turno`, `sexo`, `"teste comportamental"`, `info_conducoes`, `resumo_entrevista`, `id_vaga_escolhida`, `id_empresa`, entre outros. A consulta fica em `SQL_CANDIDATO` (dossie.service.ts:74).

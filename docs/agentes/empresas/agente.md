@@ -1,6 +1,6 @@
 # Agente — Empresas
 
-> Última revisão: 2026-11-12 (commit 5f1e2d0)
+> Última revisão: 2026-11-12 (empresa sem CNPJ)
 
 ## Para que serve
 
@@ -13,7 +13,7 @@ Consultar as empresas clientes (cópia do Lightsail em `dna_work.empresa`), ver 
 | `/empresas` | `EmpresasPage` | `frontend/src/pages/EmpresasPage.tsx` | Lista paginada (20, 25, 50 ou 100 por página via `?pageSize=`) com filtros busca (CNPJ, razão social, nome fantasia ou id), cidade, UF, status (ativo/inativo) e portal (já acessou / nunca acessou / sem login). Colunas: empresa, CNPJ, cidade, portal, status. Preview ao passar o mouse. |
 | `/empresas/nova` | `Navigate` | `frontend/src/App.tsx:74` | Redireciona para `/grupos-empresas?aba=empresa`. |
 | `/empresas/:id` | `EmpresaDetailPage` | `frontend/src/pages/EmpresaDetailPage.tsx` | Cabeçalho, cards de cidade/contato/cadastro, cobrança (`CobrancaEmpresa`), "Portal de empresas" (`AcessoPortal`), observações, vagas (ordenadas por situação) e contratações. Botões "Nova vaga" (`/grupos-empresas?aba=vaga`) e "Editar". |
-| `/empresas/:id/editar` | `EmpresaFormPage` | `frontend/src/pages/EmpresaFormPage.tsx` | Formulário de edição (razão social, fantasia, CNPJ, e-mail, telefones, responsável, matriz, endereço, observações). Envia só o que mudou. |
+| `/empresas/:id/editar` | `EmpresaFormPage` | `frontend/src/pages/EmpresaFormPage.tsx` | Formulário de edição (razão social, fantasia, CNPJ opcional, e-mail, telefones, responsável, matriz, endereço, observações). Envia só o que mudou. |
 
 Não há abas.
 
@@ -70,7 +70,7 @@ Serviços externos: nenhum.
 
 ## Regras e comportamentos importantes
 
-- **CNPJ único** (só dígitos, `cnpjSchema` valida): create e update → 409 `CNPJ_DUPLICADO` com `details.id_empresa` (`empresa.service.ts:46`, `:69`).
+- **CNPJ opcional** (`optionalCnpj`): em branco é aceito (empresa sem CNPJ); preenchido tem que ser válido e **único** (só dígitos): create e update → 409 `CNPJ_DUPLICADO` com `details.id_empresa`. No PATCH, CNPJ em branco é ignorado (não apaga o CNPJ que já existe). O formulário aceita o campo vazio ou com 14 dígitos.
 - **E-mail obrigatório no create** do backend (`empresaCreateSchema`); opcional no PATCH.
 - **Matriz**: tem que ser um `id_empresa` existente (422 `MATRIZ_INVALIDA`); a empresa não pode ser matriz de si mesma. No PATCH, `matriz === id` é descartado em silêncio; no formulário, se `matriz` for o próprio id, o campo aparece vazio (`EmpresaFormPage.tsx:59`).
 - **Campos editáveis**: lista `PATCHABLE` (`empresa.service.ts:27`). Sem campo → 400 `NADA_PARA_ATUALIZAR` (o formulário avisa antes, "Nenhum campo foi alterado.").

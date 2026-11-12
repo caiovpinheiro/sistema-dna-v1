@@ -10,7 +10,7 @@ import { ApiError, api } from "@/lib/api";
 const schema = z.object({
   razao_social: z.string().min(3),
   nome_fantasia: z.string().optional(),
-  cnpj: z.string().min(14),
+  cnpj: z.string().trim().refine((value) => !value || value.replace(/\D/g, "").length === 14, "CNPJ deve ter 14 dígitos ou ficar em branco.").optional(),
   email: z.string().trim().refine((value) => !value || z.string().email().safeParse(value).success, "E-mail inválido."),
   telefone: z.string().optional(),
   celular: z.string().optional(),
@@ -78,7 +78,7 @@ export function EmpresaFormPage() {
       <Card className="grid gap-4 md:grid-cols-2">
         <Field label="Razão social" error={form.formState.errors.razao_social?.message}><Input {...form.register("razao_social")} /></Field>
         <Field label="Nome fantasia"><Input {...form.register("nome_fantasia")} /></Field>
-        <Field label="CNPJ" error={form.formState.errors.cnpj?.message}><Input {...form.register("cnpj")} /></Field>
+        <Field label="CNPJ (opcional)" error={form.formState.errors.cnpj?.message}><Input {...form.register("cnpj")} /></Field>
         <Field label="E-mail" error={form.formState.errors.email?.message}><Input type="email" {...form.register("email")} /></Field>
         <Field label="Telefone"><Input {...form.register("telefone")} /></Field>
         <Field label="Celular"><Input {...form.register("celular")} /></Field>

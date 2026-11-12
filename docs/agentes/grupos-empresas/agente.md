@@ -1,6 +1,6 @@
 # Agente — Grupos (Grupos, Empresas e Vagas)
 
-> Última revisão: 2026-11-12 (commit 5f1e2d0)
+> Última revisão: 2026-11-12 (empresa sem CNPJ)
 
 ## Para que serve
 
@@ -12,7 +12,7 @@ Tela de cadastro em cascata: primeiro o grupo, depois a empresa do grupo, depois
 |---|---|---|---|
 | `/grupos-empresas` ou `?aba=grupo` | `GruposEmpresasPage` → `AbaGrupo` | `frontend/src/pages/GruposEmpresasPage.tsx` | Formulário "Novo grupo" + lista pesquisável de grupos (filtro no navegador). |
 | `/grupos-empresas?aba=grupo&grupo=<uuid>` | `AbaGrupo` (selecionado) | idem | Detalhe do grupo: empresas associadas (clique abre `/empresas/:id`) e "Cobrança das empresas" (`CobrancaEmpresa` por empresa). |
-| `/grupos-empresas?aba=empresa[&grupo=<uuid>]` | `AbaEmpresa` | idem | Formulário de empresa nova (grupo, CNPJ, razão social, fantasia, CEP com ViaCEP, endereço, contato). |
+| `/grupos-empresas?aba=empresa[&grupo=<uuid>]` | `AbaEmpresa` | idem | Formulário de empresa nova (grupo, CNPJ opcional, razão social, fantasia, CEP com ViaCEP, endereço, contato). |
 | `/grupos-empresas?aba=vaga[&empresa=<uuid>][&modelo=<vaga_id>]` | `AbaVaga` (modo `vaga`) | idem | Formulário de abertura de vaga: empresa, modelo (opcional), tipo, carga, cargo (lista ou "+ Novo cargo"), salário, horários, dias (fixo/escala/folga), sexo, idade, quantidade, atividades, benefícios. |
 | `/vagas/modelos/novo` | `ModeloFormPage` → `AbaVaga` (modo `modelo`) | idem | Criar modelo global (sem empresa e quantidade). Salvar volta para `/vagas/modelos`. |
 | `/vagas/modelos/:id/editar` | `ModeloFormPage` → `AbaVaga` (modo `modelo`) | idem | Editar modelo global. |
@@ -65,7 +65,7 @@ Backend
 
 Postgres, schema `public` (tabelas criadas/ajustadas por `MIRROR_SQL` em `cadastro.service.ts:34`, executado uma vez por processo em `ensureMirror`):
 - `public.grupo` — `id`, `nome`, `email`, `telefone`, `criado_em`. Gravado por `criarGrupo`.
-- `public.empresa` — `id` (uuid; igual ao `id_empresa` do Lightsail), `grupo_id`, `cnpj` (só dígitos, índice único `empresa_cnpj_digitos`), `razao_social`, `nome_fantasia`, `email`, `telefone`, `cep`, `logradouro`, `numero`, `complemento`, `latitude`, `longitude`, `local` ("bairro - cidade / UF"). Gravado por `criarEmpresa`.
+- `public.empresa` — `id` (uuid; igual ao `id_empresa` do Lightsail), `grupo_id`, `cnpj` (só dígitos ou `NULL` quando a empresa não tem CNPJ; índice único `empresa_cnpj_digitos`, que aceita vários `NULL`; o `MIRROR_SQL` faz `ALTER COLUMN cnpj DROP NOT NULL`), `razao_social`, `nome_fantasia`, `email`, `telefone`, `cep`, `logradouro`, `numero`, `complemento`, `latitude`, `longitude`, `local` ("bairro - cidade / UF"). Gravado por `criarEmpresa`.
 - `public.vaga` — uma linha por posição aberta: `id`, `vaga_id` (agrupador), `grupo_id`, `empresa_id`, `tipo_vaga` (1 estágio, 2 CLT), `cargo`, `cargo_id`, `descricao`, `requisitos`, `salario` (numérico), `carga_horaria`, `sexo`, `idade`, `idade_ate`, `km` (30), `atividades`, `horario` (grade no formato do sync), `beneficios`, `cep`, `latitude`, `longitude`. Gravado por `criarVaga`.
 - `public.vaga_repetida` — modelos globais (sem empresa/grupo): `vaga_id`, `tipo_vaga`, `cargo`, `cargo_id`, `descricao`, `requisitos`, `salario`, `carga_horaria`, `sexo`, `idade`, `idade_ate`, `km`, `atividades`, `horario` (texto por dia), `beneficios`. Lido por `listarModelos`/`obterModelo`, gravado por `criarModelo`/`editarModelo`.
 - `public.cargo` — `id`, `nome` (padronizado), `chave` (única), `descricao`, `requisitos`. Lido sempre; gravado quando a vaga/modelo vem com `novo_cargo` e a chave ainda não existe.
@@ -88,8 +88,10 @@ Serviços externos:
 - **Grupo**: nome 2–180 caracteres e pelo menos e-mail **ou** telefone (`exigeContato`, `schemas/cadastro.ts:7`).
 - **Empresa** (`criarEmpresa`, `cadastro.service.ts:469`):
   - `grupo_id` tem que existir em `public.grupo` (422 `GRUPO_OBRIGATORIO`).
-  - CNPJ válido; se já estiver em `public.empresa` → 409 `CNPJ_JA_CADASTRADO`.
-  - No Lightsail: mais de uma empresa com o CNPJ → 409 `CNPJ_AMBIGUO`; exatamente uma → **reativa** (reusa o `id_empresa`, atualiza dados, `status=1`) e responde `reativada: true`; nenhuma → cria com UUID novo.
+  - **CNPJ opcional** (`optionalCnpj` em `schemas/common.ts`): em branco vira "sem CNPJ"; preenchido tem que ser válido. Sem CNPJ não há checagem de duplicidade nem reativação: é sempre empresa nova (UUID novo), gravada com `cnpj` `NULL` no Postgres (`public.empresa` e `dna_work.empresa`) e `''` no Lightsail (a coluna do legado pode não aceitar `NULL`).
+  - **Trava da empresa sem CNPJ** (`barrarEmpresaSemCnpjRepetida` + `empresaParecida`): recusa com 409 `EMPRESA_JA_CADASTRADA` (`details.id_empresa`) quando já existe empresa com o **mesmo CEP** e a razão social ou o nome fantasia iguais (qualquer combinação entre os dois lados, ignorando acento, caixa, espaço e pontuação; `chaveDoNome`). Procura em `public.empresa` e nas ativas (`status = 1`) de `dna_work.empresa`. Mesmo nome em CEP diferente (filial) passa.
+  - Com CNPJ: se já estiver em `public.empresa` → 409 `CNPJ_JA_CADASTRADO`.
+  - No Lightsail (só com CNPJ): mais de uma empresa com o CNPJ → 409 `CNPJ_AMBIGUO`; exatamente uma → **reativa** (reusa o `id_empresa`, atualiza dados, `status=1`) e responde `reativada: true`; nenhuma → cria com UUID novo.
   - CEP, logradouro, bairro, cidade e UF obrigatórios; número e complemento opcionais; e-mail ou telefone.
   - Gravação "dupla": abre transação no MySQL, grava no Postgres (`public.empresa` + `dna_work.empresa`) em outra transação, faz commit no Postgres e só então no MySQL. Se o MySQL falhar depois do Postgres, `reverterEmpresaPostgres` apaga `public.empresa` e desfaz/restaura `dna_work.empresa` com a prévia lida antes. Não é atômico de verdade (sem 2PC).
 - **Vaga** (`criarVaga`, `cadastro.service.ts:594`):
@@ -123,9 +125,9 @@ Serviços externos:
 
 ## Como testar
 
-- Manual (só em base de teste: empresa e vaga gravam no Lightsail real e no Postgres, e a empresa chama o Google): criar grupo sem e-mail e sem telefone (deve recusar); criar empresa com CNPJ já existente; abrir vaga escolhendo modelo, trocando tipo/carga/horários e marcando escala/folga; abrir vaga com "+ Novo cargo" com nome igual a um cargo existente (aviso de reaproveitamento); em `/vagas/modelos/novo`, criar um modelo e tentar criar outro com o mesmo cargo e tipo (409).
+- Manual (só em base de teste: empresa e vaga gravam no Lightsail real e no Postgres, e a empresa chama o Google): criar grupo sem e-mail e sem telefone (deve recusar); criar empresa com CNPJ já existente; criar empresa com o CNPJ em branco e abrir vaga para ela; abrir vaga escolhendo modelo, trocando tipo/carga/horários e marcando escala/folga; abrir vaga com "+ Novo cargo" com nome igual a um cargo existente (aviso de reaproveitamento); em `/vagas/modelos/novo`, criar um modelo e tentar criar outro com o mesmo cargo e tipo (409).
 - Testes backend:
-  - `backend/test/cadastro-validacao.test.ts`: regras de grupo, empresa e vaga nos schemas.
+  - `backend/test/cadastro-validacao.test.ts`: regras de grupo, empresa (inclusive CNPJ opcional) e vaga nos schemas.
   - `backend/test/cargo.test.ts`: chave/nome padronizado, criação e reaproveitamento de cargo, cargo da lista vs. novo, cargo de modelo antigo.
   - `backend/test/vaga-id.test.ts`: assinatura/reagrupamento de `vaga_id`.
   - `backend/test/horario-escala.test.ts`: texto de horário por dia.

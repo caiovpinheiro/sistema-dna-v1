@@ -1,10 +1,10 @@
 import { z } from "zod";
-import { cnpjSchema, isoDateSchema, optionalCep, optionalEmail, optionalPhone, pageSchema, ufSchema } from "./common.js";
+import { isoDateSchema, optionalCnpj, optionalCep, optionalEmail, optionalPhone, pageSchema, ufSchema } from "./common.js";
 
 const fields = {
   razao_social: z.string().trim().min(3).max(180),
   nome_fantasia: z.string().trim().max(180).optional(),
-  cnpj: cnpjSchema,
+  cnpj: optionalCnpj,
   email: optionalEmail,
   telefone: optionalPhone,
   celular: optionalPhone,

@@ -249,7 +249,7 @@ function AbaEmpresa({ grupoInicial }: { grupoInicial: string }) {
             placeholder="Pesquisar grupo"
           />
         </Field>
-        <Field label="CNPJ"><Input required value={form.cnpj} onChange={(event) => setForm({ ...form, cnpj: event.target.value })} /></Field>
+        <Field label="CNPJ (opcional)"><Input value={form.cnpj} placeholder="Deixe em branco se a empresa não tem CNPJ" onChange={(event) => setForm({ ...form, cnpj: event.target.value })} /></Field>
         <Field label="Razão social"><Input required value={form.razao_social} onChange={(event) => setForm({ ...form, razao_social: event.target.value })} /></Field>
         <Field label="Nome fantasia"><Input required value={form.nome_fantasia} onChange={(event) => setForm({ ...form, nome_fantasia: event.target.value })} /></Field>
         <Field label="CEP"><Input required value={form.cep} onBlur={() => void buscarCep()} onChange={(event) => setForm({ ...form, cep: event.target.value })} /></Field>

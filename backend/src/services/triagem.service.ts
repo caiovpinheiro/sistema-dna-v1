@@ -175,7 +175,7 @@ export class TriagemService {
   async empresasPendentes(): Promise<EmpresaPendente[]> {
     if (!this.mysql) return [];
     const [rows] = await this.mysql.query<RowDataPacket[]>(`
-      SELECT e.nome_fantasia, e.razao_social, e.cnpj, COUNT(*) AS vagas
+      SELECT e.id_empresa, e.nome_fantasia, e.razao_social, e.cnpj, COUNT(*) AS vagas
       FROM empresa e
       JOIN vaga v ON v.id_empresa = e.id_empresa
       WHERE e.sede = 10 AND v.status = 0
@@ -183,11 +183,16 @@ export class TriagemService {
       ORDER BY e.nome_fantasia, e.razao_social
     `);
     if (!rows.length) return [];
-    const cadastradas = new Set(
-      (await this.db.query<{ cnpj: string | null }>("SELECT cnpj FROM public.empresa")).rows.map((row) => digits(row.cnpj)).filter(Boolean),
-    );
+    // Compara pelo id (empresa sem CNPJ) e pelo CNPJ (empresa reativada com outro id).
+    const noPostgres = (await this.db.query<{ id: string; cnpj: string | null }>("SELECT id::text AS id, cnpj FROM public.empresa")).rows;
+    const ids = new Set(noPostgres.map((row) => row.id));
+    const cadastradas = new Set(noPostgres.map((row) => digits(row.cnpj)).filter(Boolean));
     return rows
-      .filter((row) => !cadastradas.has(digits(String(row.cnpj ?? ""))))
+      .filter((row) => !ids.has(String(row.id_empresa)))
+      .filter((row) => {
+        const cnpj = digits(String(row.cnpj ?? ""));
+        return !cnpj || !cadastradas.has(cnpj);
+      })
       .map((row) => ({
         nome: String(row.nome_fantasia || row.razao_social || "").trim(),
         cnpj: String(row.cnpj ?? "").trim(),

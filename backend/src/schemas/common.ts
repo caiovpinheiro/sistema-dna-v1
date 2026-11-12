@@ -7,6 +7,11 @@ export const isoDateSchema = z.string().refine(isRealIsoDate, "Data inválida. U
 
 export const cpfSchema = z.string().transform(onlyDigits).refine(isValidCpf, "CPF inválido.");
 export const cnpjSchema = z.string().transform(onlyDigits).refine(isValidCnpj, "CNPJ inválido.");
+/** CNPJ que pode ficar em branco (empresa sem CNPJ); se vier preenchido, tem que ser válido. */
+export const optionalCnpj = z.preprocess(
+  (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+  cnpjSchema.optional(),
+);
 
 export const optionalPhone = z
   .string()

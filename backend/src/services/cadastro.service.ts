@@ -17,7 +17,7 @@ type GrupoRow = { id: string; nome: string; email: string | null; telefone: stri
 type EmpresaRow = {
   id: string;
   grupo_id: string;
-  cnpj: string;
+  cnpj: string | null;
   razao_social: string;
   nome_fantasia: string;
   email: string | null;
@@ -57,6 +57,8 @@ CREATE TABLE IF NOT EXISTS public.empresa (
   local text
 );
 CREATE UNIQUE INDEX IF NOT EXISTS empresa_cnpj_digitos ON public.empresa (regexp_replace(cnpj, '\\D', '', 'g'));
+-- Empresa sem CNPJ: cnpj fica NULL (o índice único aceita vários NULL).
+ALTER TABLE public.empresa ALTER COLUMN cnpj DROP NOT NULL;
 CREATE TABLE IF NOT EXISTS public.vaga (
   id uuid PRIMARY KEY,
   vaga_id uuid NOT NULL,
@@ -131,6 +133,29 @@ function maskCnpj(digits: string) {
 
 function semAcento(value: string) {
   return value.normalize("NFD").replace(/\p{M}/gu, "");
+}
+
+/** Nome para comparar: sem acento, minúsculo, só letras e números ("Padaria São João Ltda." → "padariasaojoaoltda"). */
+export function chaveDoNome(value: string | null | undefined) {
+  return semAcento(value ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+type EmpresaParaComparar = { id: string; razao_social: string | null; nome_fantasia: string | null; cep: string | null };
+
+/**
+ * Trava da empresa sem CNPJ: é a mesma empresa quando o CEP é igual e a razão social ou o
+ * nome fantasia (de um lado ou do outro) coincidem, ignorando acento, caixa e pontuação.
+ */
+export function empresaParecida(
+  nova: { razao_social: string; nome_fantasia: string; cep: string },
+  existentes: EmpresaParaComparar[],
+) {
+  const cep = nova.cep.replace(/\D/g, "");
+  const nomes = new Set([chaveDoNome(nova.razao_social), chaveDoNome(nova.nome_fantasia)].filter(Boolean));
+  return existentes.find((empresa) =>
+    (empresa.cep ?? "").replace(/\D/g, "") === cep
+    && [chaveDoNome(empresa.razao_social), chaveDoNome(empresa.nome_fantasia)].some((nome) => nome && nomes.has(nome)),
+  );
 }
 
 /** "Rua X, 123 - Bairro, Cidade - UF, 00000-000, Brasil": o endereço inteiro, para o Google achar o ponto certo. */
@@ -471,22 +496,29 @@ export class CadastroService {
     const grupos = await this.db.query("SELECT 1 FROM public.grupo WHERE id::text = $1", [input.grupo_id]);
     if (!grupos.rowCount) throw new AppError(422, "GRUPO_OBRIGATORIO", "Escolha um grupo cadastrado nesta tela.");
 
-    const digits = input.cnpj;
-    const masked = maskCnpj(digits);
-    const jaNoPostgres = await this.db.query<{ id: string }>(
-      "SELECT id FROM public.empresa WHERE regexp_replace(cnpj, '\\D', '', 'g') = $1 LIMIT 1",
-      [digits],
-    );
-    if (jaNoPostgres.rows[0]) {
-      throw new AppError(409, "CNPJ_JA_CADASTRADO", "Este CNPJ já está no Postgres. O cadastro não foi duplicado.");
+    // Empresa sem CNPJ: não há como achar duplicada nem reativar; é sempre cadastro novo.
+    const digits = input.cnpj ?? null;
+    const masked = digits ? maskCnpj(digits) : null;
+    if (digits) {
+      const jaNoPostgres = await this.db.query<{ id: string }>(
+        "SELECT id FROM public.empresa WHERE regexp_replace(cnpj, '\\D', '', 'g') = $1 LIMIT 1",
+        [digits],
+      );
+      if (jaNoPostgres.rows[0]) {
+        throw new AppError(409, "CNPJ_JA_CADASTRADO", "Este CNPJ já está no Postgres. O cadastro não foi duplicado.");
+      }
+    } else {
+      await this.barrarEmpresaSemCnpjRepetida(input);
     }
 
     const mysql = this.mysqlPool();
-    const [existentes] = await mysql.query<RowDataPacket[]>(
-      `SELECT id_empresa FROM empresa
-       WHERE REPLACE(REPLACE(REPLACE(REPLACE(IFNULL(cnpj, ''), '.', ''), '/', ''), '-', ''), ' ', '') = ?`,
-      [digits],
-    );
+    const [existentes] = digits
+      ? await mysql.query<RowDataPacket[]>(
+        `SELECT id_empresa FROM empresa
+         WHERE REPLACE(REPLACE(REPLACE(REPLACE(IFNULL(cnpj, ''), '.', ''), '/', ''), '-', ''), ' ', '') = ?`,
+        [digits],
+      )
+      : [[] as RowDataPacket[]];
     if (existentes.length > 1) {
       throw new AppError(409, "CNPJ_AMBIGUO", "Há mais de uma empresa no Lightsail com este CNPJ. Nada foi gravado.");
     }
@@ -544,7 +576,7 @@ export class CadastroService {
             bairro, cidade, uf, status, sede, tipo_empresa, matriz, usa_agente, lat, lng, razao_sem_acento, fantasia_sem_acento
           ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,1,10,1,?,1,?,?,?,?)`,
           [
-            id, payload.razao_social, payload.nome_fantasia, masked, payload.email, payload.telefone, payload.cep,
+            id, payload.razao_social, payload.nome_fantasia, masked ?? "", payload.email, payload.telefone, payload.cep,
             payload.logradouro, payload.numero, payload.complemento, payload.bairro, payload.cidade, payload.uf, id,
             String(payload.latitude), String(payload.longitude), semAcento(payload.razao_social), semAcento(payload.nome_fantasia),
           ],
@@ -589,6 +621,26 @@ export class CadastroService {
     }
 
     return { ...payload, reativada: reativar };
+  }
+
+  /** Sem CNPJ não dá para achar a duplicada pelo documento: compara nome + CEP com as empresas desta tela e as ativas do espelho. */
+  private async barrarEmpresaSemCnpjRepetida(input: EmpresaCadastro) {
+    const cep = (input.cep ?? "").replace(/\D/g, "");
+    const { rows } = await this.db.query<EmpresaParaComparar>(
+      `SELECT id::text AS id, razao_social, nome_fantasia, cep FROM public.empresa
+        WHERE regexp_replace(coalesce(cep, ''), '\\D', '', 'g') = $1
+       UNION ALL
+       SELECT id_empresa::text, razao_social, nome_fantasia, cep FROM dna_work.empresa
+        WHERE status = 1 AND regexp_replace(coalesce(cep, ''), '\\D', '', 'g') = $1`,
+      [cep],
+    );
+    const igual = empresaParecida({ razao_social: input.razao_social, nome_fantasia: input.nome_fantasia, cep }, rows);
+    if (igual) {
+      const nome = igual.nome_fantasia || igual.razao_social || igual.id;
+      throw new AppError(409, "EMPRESA_JA_CADASTRADA", `Já existe a empresa "${nome}" com esse nome neste CEP. O cadastro não foi duplicado.`, {
+        id_empresa: igual.id,
+      });
+    }
   }
 
   async criarVaga(input: VagaCadastro, usuario: string) {
@@ -856,7 +908,7 @@ export class CadastroService {
       latitude: number;
       longitude: number;
     },
-    cnpjMascarado: string,
+    cnpjMascarado: string | null,
   ) {
     const atual = await pg.query("SELECT id_empresa FROM dna_work.empresa WHERE id_empresa = $1", [payload.id]);
     if (atual.rows[0]) {

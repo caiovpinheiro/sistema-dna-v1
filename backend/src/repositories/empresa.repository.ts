@@ -86,7 +86,7 @@ export class EmpresaRepository {
         $17,$18,$19,$20,$21, now()
       )
     `, [
-      id, input.razao_social, input.nome_fantasia ?? null, input.cnpj, input.email.toLowerCase(),
+      id, input.razao_social, input.nome_fantasia ?? null, input.cnpj ?? null, input.email.toLowerCase(),
       input.telefone ?? null, input.celular ?? null, input.cep ?? null, input.logradouro ?? null,
       input.numero ?? null, input.complemento ?? null, input.bairro ?? null, input.cidade ?? null,
       input.uf ?? null, input.status ?? 1, input.responsavel ?? null, input.tipo_empresa ?? null,
