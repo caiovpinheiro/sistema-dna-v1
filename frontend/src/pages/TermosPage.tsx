@@ -3,6 +3,7 @@ import { Copy, Pencil, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { GeradorTce } from "@/components/gerador-tce";
+import { CabecalhoPagina } from "@/components/pagina";
 import { Badge, Card, Empty, Skeleton } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 
@@ -53,7 +54,7 @@ export function EditarTcePage() {
         <h1 className="text-2xl font-extrabold">Editar termo</h1>
         <p className="text-sm text-slate-500">Altere os dados e salve. O PDF é gerado de novo com o que estiver neste formulário.</p>
       </div>
-      <Card>{id ? <GeradorTce editarId={id} /> : null}</Card>
+      {id ? <GeradorTce editarId={id} /> : null}
     </div>
   );
 }
@@ -61,15 +62,16 @@ export function EditarTcePage() {
 export function GerarTcePage() {
   return (
     <div className="grid gap-5">
-      <div>
-        <h1 className="text-2xl font-extrabold">Gerar TCE</h1>
-        <p className="text-sm text-slate-500">Primeiro o PDF é gerado para conferência. A assinatura só é enviada no passo seguinte.</p>
-      </div>
-      <ol className="flex flex-wrap gap-3 text-sm font-semibold">
-        <li className="rounded-full bg-navy-900 px-3 py-1.5 text-white">1. Gerar o TCE</li>
-        <li className="rounded-full bg-slate-100 px-3 py-1.5 text-slate-500">2. Enviar para assinatura</li>
-      </ol>
-      <Card><GeradorTce /></Card>
+      <CabecalhoPagina
+        titulo="Gerar termo de compromisso de estágio"
+        descricao="Pesquise a empresa, o candidato e a escola para preencher o termo sozinho; depois confira e complete as condições do estágio."
+      >
+        <ol className="mt-2 flex flex-wrap items-center gap-2 text-xs font-semibold">
+          <li className="rounded-full bg-cyan-700 px-3 py-1 text-white">Agora: gerar o PDF para conferir</li>
+          <li className="rounded-full bg-slate-100 px-3 py-1 text-slate-500">Depois: enviar para assinatura</li>
+        </ol>
+      </CabecalhoPagina>
+      <GeradorTce />
     </div>
   );
 }

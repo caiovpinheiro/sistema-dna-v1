@@ -249,6 +249,8 @@ button, a {
 .app-canvas.escuro .placeholder\:text-slate-400::placeholder { color: #6b7280; }
 .app-canvas.escuro :where(input, textarea, select) { color: #f4f6f8; }
 .app-canvas.claro :where(input, textarea, select) { color: #102033; }
+/* Ícone do calendário dos campos de data visível no fundo escuro. */
+.app-canvas.escuro input[type="date"] { color-scheme: dark; }
 
 .app-canvas.claro .bg-\[\#0b0d12\],
 .app-canvas.claro .bg-\[\#0e1014\] { background-color: #ffffff; }

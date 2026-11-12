@@ -1,7 +1,8 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { Check, FileSignature, Search, Sparkles } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Button, Field, Input, Textarea } from "@/components/ui";
+import { Button, Field, Input, Textarea, cn } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 
 type Empresa = {
@@ -133,6 +134,8 @@ export function GeradorTce({ editarId }: { editarId?: string }) {
   const [escolaBusca, setEscolaBusca] = useState("");
   const [escolas, setEscolas] = useState<Escola[]>([]);
   const [escolaErro, setEscolaErro] = useState("");
+  // Só para o selo "Preenchido" do bloco da escola.
+  const [escolaEscolhida, setEscolaEscolhida] = useState("");
   const [responsavel, setResponsavel] = useState(false);
   const [erro, setErro] = useState("");
   const [pronto, setPronto] = useState(!editarId);
@@ -180,7 +183,10 @@ export function GeradorTce({ editarId }: { editarId?: string }) {
       setTerminoEstudo(dados.terminoEstudo ?? "");
       setCampos((atual) => ({ ...atual, ...dados.campos, seguro_apolice: APOLICE }));
       if (dados.campos.nome_responsavel) setResponsavel(true);
-      if (dados.escolaId) setEscolaBusca(dados.campos.nome_escola || "");
+      if (dados.escolaId) {
+        setEscolaBusca(dados.campos.nome_escola || "");
+        setEscolaEscolhida(dados.campos.nome_escola || "");
+      }
       if (dados.concedente) {
         setConcedente({
           razao_social: dados.concedente.razao_social,
@@ -228,6 +234,7 @@ export function GeradorTce({ editarId }: { editarId?: string }) {
 
   async function procurarEscola(valor: string) {
     setEscolaBusca(valor);
+    setEscolaEscolhida("");
     if (valor.trim().length < 2) {
       setEscolas([]);
       setEscolaErro("");
@@ -252,115 +259,263 @@ export function GeradorTce({ editarId }: { editarId?: string }) {
     onError: (error) => setErro(error instanceof ApiError ? error.message : "Não foi possível salvar o TCE."),
   });
 
+  const opcional = (key: string) => key === "data_termo_aditivo";
+  const preenchido = (valor: string | undefined) => Boolean(valor && valor.trim());
+  const progresso = [
+    { id: "tce-concedente", titulo: "Empresa concedente", feitos: CONCEDENTE_PRINCIPAIS.filter((key) => preenchido(concedente[key])).length, total: CONCEDENTE_PRINCIPAIS.length },
+    { id: "tce-candidato", titulo: "Estagiário", feitos: PRINCIPAIS.candidato.filter((key) => preenchido(campos[key])).length, total: PRINCIPAIS.candidato.length },
+    ...(responsavel ? [{ id: "tce-responsavel", titulo: "Responsável legal", feitos: PRINCIPAIS.responsavel.filter((key) => preenchido(campos[key])).length, total: PRINCIPAIS.responsavel.length }] : []),
+    { id: "tce-escola", titulo: "Instituição de ensino", feitos: PRINCIPAIS.escola.filter((key) => preenchido(campos[key])).length, total: PRINCIPAIS.escola.length },
+    { id: "tce-estagio", titulo: "Condições do estágio", feitos: PRINCIPAIS.estagio.filter((key) => preenchido(campos[key])).length, total: PRINCIPAIS.estagio.length },
+  ];
+  const campo = (field: (typeof CAMPOS)[number]) => (
+    <div key={field.key} className={LARGURA[field.key] ?? "sm:col-span-2"}>
+      <Field label={`${field.label}${opcional(field.key) ? " (se houver)" : ""}`}>
+        {field.multiline ? (
+          <Textarea rows={7} placeholder="Descreva as atividades que o estagiário vai realizar" value={campos[field.key] ?? ""} onChange={(event) => setCampos((atual) => ({ ...atual, [field.key]: event.target.value }))} />
+        ) : (
+          <Input
+            type={field.date ? "date" : "text"}
+            readOnly={field.key === "seguro_apolice"}
+            className={field.key === "seguro_apolice" ? "bg-slate-50 text-slate-500" : undefined}
+            placeholder={field.placeholder ?? EXEMPLOS[field.key]}
+            value={field.key === "seguro_apolice" ? APOLICE : campos[field.key] ?? ""}
+            onChange={(event) => setCampos((atual) => ({ ...atual, [field.key]: event.target.value }))}
+          />
+        )}
+        {field.key === "estagio_termino" && terminoEstudo ? <span className="text-xs text-slate-500">Os estudos terminam em {dataBr(terminoEstudo)}; o estágio não pode passar disso.</span> : null}
+        {field.key === "seguro_apolice" ? <span className="text-xs text-slate-500">Fixa para todos os termos.</span> : null}
+      </Field>
+    </div>
+  );
+  const camposDa = (secao: string, chaves?: string[]) => CAMPOS.filter((field) => field.section === secao && (!chaves || chaves.includes(field.key))).map(campo);
+
   return (
-    <form className="grid gap-5" onSubmit={(event) => {
+    <form className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_18rem] xl:items-start" onSubmit={(event) => {
       event.preventDefault();
       const problema = erroDasDatas(campos.estagio_inicio ?? "", campos.estagio_termino ?? "", terminoEstudo);
       setErro(problema);
       if (!problema) gerar.mutate();
     }}>
-      {idContratacao ? <p className="rounded-xl bg-cyan-50 px-3 py-2 text-sm text-cyan-900">Dados carregados da contratação {idContratacao}. Confira antes de gerar.</p> : null}
-      {editarId && dados.data?.data.status && dados.data.data.status !== "gerado" ? (
-        <p className="text-sm text-amber-800">Este termo já foi enviado. Ao salvar, o PDF é refeito e ele volta para Gerado, para ser enviado de novo.</p>
-      ) : null}
-      {editarId && dados.isError ? <p className="text-sm text-rose-600">Este termo não tem dados para editar. Ele foi gerado sem o formulário do TCE.</p> : null}
-      <section className="grid gap-3 md:grid-cols-2">
-        <h2 className="font-bold md:col-span-2">Empresa concedente</h2>
-        {empresas.isError ? <p className="text-sm text-rose-600 md:col-span-2">Não foi possível carregar as empresas. Tente de novo em instantes.</p> : null}
-        <div className="relative md:col-span-2">
-          <Field label="Pesquisar empresa">
-            <Input value={busca} autoComplete="off" placeholder="Razão social, nome fantasia ou CNPJ" onChange={(event) => { setBusca(event.target.value); setAberta(true); }} onFocus={() => setAberta(true)} />
-          </Field>
-          {aberta && termo.length >= 1 ? (
-            <div className="absolute z-10 mt-1 max-h-56 w-full overflow-auto rounded-xl border border-slate-200 bg-white shadow-lg">
-              {visiveis.length === 0 ? <p className="px-3 py-2 text-sm text-slate-500">Nenhuma empresa encontrada.</p> : null}
-              {visiveis.map((empresa) => (
-                <button key={empresa.id} type="button" className="block w-full px-3 py-2 text-left text-sm hover:bg-slate-50" onMouseDown={(event) => event.preventDefault()} onClick={() => {
-                  setEmpresaId(empresa.id);
-                  setConcedente({ razao_social: empresa.razao_social, cnpj: empresa.cnpj, endereco: empresa.endereco, cep: empresa.cep, cidade: empresa.cidade, estado: empresa.estado, email: empresa.email, representante: empresa.representante });
-                  setBusca(`${empresa.razao_social}${empresa.nome_fantasia ? ` (${empresa.nome_fantasia})` : ""} · ${empresa.cnpj}`);
-                  setAberta(false);
-                }}>{empresa.razao_social}{empresa.nome_fantasia ? ` (${empresa.nome_fantasia})` : ""} · {empresa.cnpj}</button>
-              ))}
-            </div>
-          ) : null}
+      <div className="grid min-w-0 gap-4">
+        {idContratacao ? <p className="flex items-center gap-2 rounded-xl bg-cyan-50 px-4 py-3 text-sm text-cyan-800"><Check size={16} /> Dados carregados da contratação {idContratacao}. Confira cada bloco antes de gerar.</p> : null}
+        {editarId && dados.data?.data.status && dados.data.data.status !== "gerado" ? (
+          <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">Este termo já foi enviado. Ao salvar, o PDF é refeito e ele volta para Gerado, para ser enviado de novo.</p>
+        ) : null}
+        {editarId && dados.isError ? <p className="rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">Este termo não tem dados para editar. Ele foi gerado sem o formulário do TCE.</p> : null}
+
+        <Bloco id="tce-concedente" numero={1} titulo="Empresa concedente" texto="Quem oferece o estágio.">
+          <Busca rotulo="Preencher pela empresa cadastrada" origem={empresaId && concedente.razao_social ? concedente.razao_social : ""}>
+            <Input value={busca} autoComplete="off" placeholder="Digite a razão social, o nome fantasia ou o CNPJ" className="pl-9" onChange={(event) => { setBusca(event.target.value); setAberta(true); }} onFocus={() => setAberta(true)} onBlur={() => window.setTimeout(() => setAberta(false), 150)} />
+            {aberta && termo.length >= 1 ? (
+              <Sugestoes>
+                {visiveis.length === 0 ? <p className="px-3 py-2 text-sm text-slate-500">Nenhuma empresa com esse nome ou CNPJ.</p> : null}
+                {visiveis.map((empresa) => (
+                  <Sugestao key={empresa.id} titulo={empresa.nome_fantasia || empresa.razao_social} detalhe={[empresa.nome_fantasia ? empresa.razao_social : null, empresa.cnpj].filter(Boolean).join(" — ")} onEscolher={() => {
+                    setEmpresaId(empresa.id);
+                    setConcedente({ razao_social: empresa.razao_social, cnpj: empresa.cnpj, endereco: empresa.endereco, cep: empresa.cep, cidade: empresa.cidade, estado: empresa.estado, email: empresa.email, representante: empresa.representante });
+                    setBusca(`${empresa.razao_social}${empresa.nome_fantasia ? ` (${empresa.nome_fantasia})` : ""} · ${empresa.cnpj}`);
+                    setAberta(false);
+                  }} />
+                ))}
+              </Sugestoes>
+            ) : null}
+            {empresas.isError ? <p className="mt-1 text-sm text-rose-600">Não foi possível carregar as empresas. Atualize a página em instantes.</p> : null}
+          </Busca>
+          <Grade>
+            {CONCEDENTE_CAMPOS.map(([key, label, largura]) => (
+              <div key={key} className={largura}>
+                <Field label={label}>
+                  <Input value={concedente[key]} placeholder={EXEMPLOS[key]} onChange={(event) => setConcedente((atual) => ({ ...atual, [key]: event.target.value }))} />
+                </Field>
+              </div>
+            ))}
+          </Grade>
+        </Bloco>
+
+        <Bloco id="tce-candidato" numero={2} titulo="Estagiário" texto="Dados pessoais e do curso. Ao escolher o candidato, a escola e a empresa da contratação também são preenchidas.">
+          <Busca rotulo="Preencher pelo candidato cadastrado" origem={candidatoId ? campos.nome ?? "" : ""}>
+            <Input value={candidatoBusca} autoComplete="off" placeholder="Digite o nome, o CPF ou a empresa" className="pl-9" onChange={(event) => void procurarCandidato(event.target.value)} />
+            {candidatos.length ? (
+              <Sugestoes>
+                {candidatos.map((pessoa) => (
+                  <Sugestao key={pessoa.id} titulo={pessoa.nome} detalhe={[pessoa.cpf, pessoa.empresa].filter(Boolean).join(" — ")} onEscolher={() => void escolherCandidato(pessoa)} />
+                ))}
+              </Sugestoes>
+            ) : null}
+          </Busca>
+          <Subtitulo>Dados pessoais</Subtitulo>
+          <Grade>{camposDa("candidato", ["nome", "data_nascimento", "cpf", "rg", "email", "telefone"])}</Grade>
+          <Subtitulo>Endereço</Subtitulo>
+          <Grade>{camposDa("candidato", ["endereco", "cep", "cidade", "estado"])}</Grade>
+          <Subtitulo>Curso</Subtitulo>
+          <Grade>{camposDa("candidato", ["curso", "periodo", "ano", "turno", "tipo_estagio"])}</Grade>
+        </Bloco>
+
+        <Bloco id="tce-responsavel" numero={3} titulo="Responsável legal" texto="Só para estagiário menor de idade, quando aplicável.">
+          <label className={cn("flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 text-sm font-semibold", responsavel ? "border-cyan-500/40 bg-cyan-50 text-cyan-800" : "border-slate-200 text-slate-700")}>
+            <input type="checkbox" className="h-4 w-4 accent-cyan-700" checked={responsavel} onChange={(event) => setResponsavel(event.target.checked)} />
+            Incluir responsável legal no termo
+          </label>
+          {responsavel ? <Grade>{camposDa("responsavel")}</Grade> : null}
+        </Bloco>
+
+        <Bloco id="tce-escola" numero={4} titulo="Instituição de ensino" texto="Onde o estagiário estuda.">
+          <Busca rotulo="Preencher pela escola cadastrada" origem={escolaEscolhida}>
+            <Input value={escolaBusca} autoComplete="off" placeholder="Digite o nome ou o CNPJ da escola" className="pl-9" onChange={(event) => void procurarEscola(event.target.value)} />
+            {escolas.length > 0 || escolaErro ? (
+              <Sugestoes>
+                {escolaErro ? <p className="px-3 py-2 text-sm text-rose-600">{escolaErro}</p> : null}
+                {escolas.map((escola) => (
+                  <Sugestao key={escola.id} titulo={escola.rotulo} onEscolher={() => {
+                    setCampos((atual) => ({ ...atual, ...escola.campos }));
+                    setEscolaBusca(escola.rotulo);
+                    setEscolaEscolhida(escola.campos.nome_escola || escola.rotulo);
+                    setEscolas([]);
+                  }} />
+                ))}
+              </Sugestoes>
+            ) : null}
+          </Busca>
+          <Grade>{camposDa("escola")}</Grade>
+        </Bloco>
+
+        <Bloco id="tce-estagio" numero={5} titulo="Condições do estágio" texto="Vão no Anexo I do termo.">
+          <Subtitulo>Período</Subtitulo>
+          <Grade>{camposDa("estagio", ["estagio_inicio", "estagio_termino", "emissao_cidade_data", "data_termo_aditivo"])}</Grade>
+          <Subtitulo>Jornada e supervisão</Subtitulo>
+          <Grade>{camposDa("estagio", ["carga_horaria_diaria", "carga_horaria_semanal", "jornada", "supervisor"])}</Grade>
+          <Subtitulo>Bolsa, benefícios e seguro</Subtitulo>
+          <Grade>{camposDa("estagio", ["bolsa", "beneficios", "seguro_apolice"])}</Grade>
+          <Grade>{camposDa("estagio", ["plano_atividades"])}</Grade>
+        </Bloco>
+      </div>
+
+      <aside className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 xl:sticky xl:top-0">
+        <div>
+          <p className="text-[15px] font-bold text-navy-900">{editarId ? "Salvar o termo" : "Gerar o termo"}</p>
+          <p className="text-sm text-slate-500">Campos principais preenchidos em cada bloco. Clique para ir até ele.</p>
         </div>
-        {([
-          ["razao_social", "Razão social", true],
-          ["cnpj", "CNPJ", false],
-          ["cep", "CEP", false],
-          ["endereco", "Endereço", true],
-          ["cidade", "Cidade", false],
-          ["estado", "Estado", false],
-          ["email", "E-mail", false],
-          ["representante", "Representante", false],
-        ] as const).map(([key, label, full]) => (
-          <Field key={key} label={label}>
-            <Input className={full ? "" : undefined} value={concedente[key]} onChange={(event) => setConcedente((atual) => ({ ...atual, [key]: event.target.value }))} />
-          </Field>
-        ))}
-      </section>
-      {SECOES.map((secao) => (
-        <section key={secao.id} className="grid gap-3 md:grid-cols-2">
-          <h2 className="font-bold md:col-span-2">{secao.title}</h2>
-          {secao.id === "candidato" ? (
-            <div className="relative md:col-span-2">
-              <Field label="Pesquisar candidato já cadastrado">
-                <Input value={candidatoBusca} autoComplete="off" placeholder="Nome, CPF ou empresa" onChange={(event) => void procurarCandidato(event.target.value)} />
-              </Field>
-              {candidatos.length ? (
-                <div className="absolute z-10 mt-1 max-h-56 w-full overflow-auto rounded-xl border border-slate-200 bg-white shadow-lg">
-                  {candidatos.map((pessoa) => (
-                    <button key={pessoa.id} type="button" className="block w-full px-3 py-2 text-left text-sm hover:bg-slate-50" onMouseDown={(event) => event.preventDefault()} onClick={() => void escolherCandidato(pessoa)}>
-                      <span className="font-semibold">{pessoa.nome}</span>
-                      <span className="ml-2 text-slate-500">{[pessoa.cpf, pessoa.empresa].filter(Boolean).join(" · ")}</span>
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-          {secao.id === "responsavel" ? (
-            <label className="flex items-center gap-2 text-sm font-semibold md:col-span-2">
-              <input type="checkbox" checked={responsavel} onChange={(event) => setResponsavel(event.target.checked)} />
-              Incluir responsável legal
-            </label>
-          ) : null}
-          {secao.id === "escola" ? (
-            <div className="relative md:col-span-2">
-              <Field label="Pesquisar escola">
-                <Input value={escolaBusca} autoComplete="off" placeholder="Nome ou CNPJ" onChange={(event) => void procurarEscola(event.target.value)} />
-              </Field>
-              {escolas.length > 0 || escolaErro ? (
-                <div className="absolute z-10 mt-1 max-h-56 w-full overflow-auto rounded-xl border border-slate-200 bg-white shadow-lg">
-                  {escolaErro ? <p className="px-3 py-2 text-sm text-rose-600">{escolaErro}</p> : null}
-                  {escolas.map((escola) => (
-                    <button key={escola.id} type="button" className="block w-full px-3 py-2 text-left text-sm hover:bg-slate-50" onMouseDown={(event) => event.preventDefault()} onClick={() => {
-                      setCampos((atual) => ({ ...atual, ...escola.campos }));
-                      setEscolaBusca(escola.rotulo);
-                      setEscolas([]);
-                    }}>{escola.rotulo}</button>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-          {secao.id === "responsavel" && !responsavel ? null : CAMPOS.filter((field) => field.section === secao.id).map((field) => (
-            <div key={field.key} className={field.full ? "md:col-span-2" : undefined}>
-              <Field label={field.label}>
-                {field.multiline ? (
-                  <Textarea rows={6} value={campos[field.key] ?? ""} onChange={(event) => setCampos((atual) => ({ ...atual, [field.key]: event.target.value }))} />
-                ) : (
-                  <Input type={field.date ? "date" : "text"} readOnly={field.key === "seguro_apolice"} placeholder={field.placeholder} value={field.key === "seguro_apolice" ? APOLICE : campos[field.key] ?? ""} onChange={(event) => setCampos((atual) => ({ ...atual, [field.key]: event.target.value }))} />
-                )}
-                {field.key === "estagio_termino" && terminoEstudo ? <span className="text-xs text-slate-500">Término dos estudos: {dataBr(terminoEstudo)}</span> : null}
-              </Field>
-            </div>
-          ))}
-        </section>
-      ))}
-      {erro ? <p className="text-sm text-rose-600">{erro}</p> : null}
-      <Button type="submit" disabled={gerar.isPending || !pronto || (!editarId && !empresaId)}>{gerar.isPending ? "Salvando…" : editarId ? "Salvar e atualizar o PDF" : "Gerar TCE"}</Button>
+        <ol className="grid gap-1">
+          {progresso.map((item) => {
+            const completo = item.feitos === item.total;
+            return (
+              <li key={item.id}>
+                <a href={`#${item.id}`} className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm hover:bg-slate-50">
+                  <span className={cn("grid h-5 w-5 shrink-0 place-items-center rounded-full text-[11px] font-bold", completo ? "bg-emerald-500 text-white" : "bg-slate-100 text-slate-500")}>
+                    {completo ? <Check size={12} /> : null}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-slate-700">{item.titulo}</span>
+                  <span className="tabular-nums text-xs text-slate-500">{item.feitos}/{item.total}</span>
+                </a>
+              </li>
+            );
+          })}
+        </ol>
+        {!editarId && !empresaId ? <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">Escolha a empresa concedente na pesquisa do bloco 1 para liberar o botão.</p> : null}
+        {erro ? <p role="alert" className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{erro}</p> : null}
+        <Button type="submit" className="h-11 w-full" disabled={gerar.isPending || !pronto || (!editarId && !empresaId)}>
+          <FileSignature size={16} /> {gerar.isPending ? "Salvando…" : editarId ? "Salvar e atualizar o PDF" : "Gerar TCE"}
+        </Button>
+        <p className="text-xs text-slate-500">{editarId ? "O PDF é refeito com o que estiver no formulário." : "O PDF abre para conferência. A assinatura só é enviada no passo seguinte."}</p>
+      </aside>
     </form>
+  );
+}
+
+/** Campos principais de cada bloco, só para o andamento do painel lateral (não bloqueiam a geração). */
+const CONCEDENTE_PRINCIPAIS = ["razao_social", "cnpj", "endereco", "cep", "cidade", "estado", "email", "representante"] as const;
+const PRINCIPAIS: Record<string, string[]> = {
+  candidato: ["nome", "data_nascimento", "cpf", "rg", "endereco", "cep", "cidade", "estado", "curso", "turno", "tipo_estagio"],
+  responsavel: ["nome_responsavel", "cpf_responsavel", "telefone_responsavel"],
+  escola: ["nome_escola", "escola_cnpj_inep", "escola_endereco", "escola_cidade", "escola_estado"],
+  estagio: ["estagio_inicio", "estagio_termino", "carga_horaria_diaria", "carga_horaria_semanal", "jornada", "supervisor", "bolsa", "plano_atividades"],
+};
+
+const CONCEDENTE_CAMPOS = [
+  ["razao_social", "Razão social", "sm:col-span-4"],
+  ["cnpj", "CNPJ", "sm:col-span-2"],
+  ["endereco", "Endereço", "sm:col-span-4"],
+  ["cep", "CEP", "sm:col-span-2"],
+  ["cidade", "Cidade", "sm:col-span-3"],
+  ["estado", "Estado", "sm:col-span-1"],
+  ["email", "E-mail de contato", "sm:col-span-2"],
+  ["representante", "Representante legal", "sm:col-span-6"],
+] as const;
+
+/** Largura de cada campo na grade de 6 colunas: curto para CEP e UF, largo para nome e endereço. */
+const LARGURA: Record<string, string> = {
+  nome: "sm:col-span-4", data_nascimento: "sm:col-span-2", cpf: "sm:col-span-3", rg: "sm:col-span-3", email: "sm:col-span-4",
+  endereco: "sm:col-span-4", cep: "sm:col-span-2", cidade: "sm:col-span-4", estado: "sm:col-span-2",
+  curso: "sm:col-span-4", turno: "sm:col-span-4", tipo_estagio: "sm:col-span-6",
+  nome_responsavel: "sm:col-span-4", nascimento_responsavel: "sm:col-span-2", cpf_responsavel: "sm:col-span-3", rg_responsavel: "sm:col-span-3", email_responsavel: "sm:col-span-4",
+  endereco_responsavel: "sm:col-span-4", cep_responsavel: "sm:col-span-2", cidade_responsavel: "sm:col-span-4", estado_responsavel: "sm:col-span-2",
+  nome_escola: "sm:col-span-4", escola_cnpj_inep: "sm:col-span-2", escola_representante: "sm:col-span-3", escola_email: "sm:col-span-3",
+  escola_endereco: "sm:col-span-4", escola_cep: "sm:col-span-2", escola_cidade: "sm:col-span-4", escola_estado: "sm:col-span-2",
+  estagio_inicio: "sm:col-span-2", estagio_termino: "sm:col-span-2", data_termo_aditivo: "sm:col-span-2", emissao_cidade_data: "sm:col-span-6",
+  carga_horaria_diaria: "sm:col-span-3", carga_horaria_semanal: "sm:col-span-3", jornada: "sm:col-span-4", supervisor: "sm:col-span-2",
+  bolsa: "sm:col-span-2", beneficios: "sm:col-span-4", seguro_apolice: "sm:col-span-6",
+  plano_atividades: "sm:col-span-6",
+};
+
+/** Exemplos de formato nos campos vazios. */
+const EXEMPLOS: Record<string, string> = {
+  cnpj: "00.000.000/0000-00", cep: "00000-000", estado: "SP", email: "contato@empresa.com.br",
+  cpf: "000.000.000-00", telefone: "(11) 90000-0000", periodo: "Ex.: 3º semestre", ano: "Ex.: 2º ano", turno: "Manhã, tarde, noite ou integral",
+  cpf_responsavel: "000.000.000-00", telefone_responsavel: "(11) 90000-0000", cep_responsavel: "00000-000",
+  escola_cnpj_inep: "CNPJ ou código INEP", escola_cep: "00000-000",
+  emissao_cidade_data: "Ex.: São Paulo, 12 de novembro de 2026", carga_horaria_diaria: "Ex.: 6 horas", carga_horaria_semanal: "Ex.: 30 horas",
+  jornada: "Ex.: Segunda a sexta, das 9h às 15h", bolsa: "Ex.: R$ 1.200,00", beneficios: "Ex.: Vale-transporte",
+};
+
+function Bloco({ id, numero, titulo, texto, children }: { id: string; numero: number; titulo: string; texto: string; children: ReactNode }) {
+  return (
+    <section id={id} className="grid scroll-mt-4 gap-4 rounded-xl border border-slate-200 bg-white p-4 md:p-5">
+      <header className="flex items-start gap-3">
+        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-cyan-700 text-sm font-bold text-white">{numero}</span>
+        <div>
+          <h2 className="text-base font-bold text-navy-900">{titulo}</h2>
+          <p className="text-sm text-slate-500">{texto}</p>
+        </div>
+      </header>
+      {children}
+    </section>
+  );
+}
+
+function Grade({ children }: { children: ReactNode }) {
+  return <div className="grid gap-3 sm:grid-cols-6">{children}</div>;
+}
+
+function Subtitulo({ children }: { children: ReactNode }) {
+  return <p className="-mb-1 border-b border-slate-200 pb-1.5 text-sm font-semibold text-slate-700">{children}</p>;
+}
+
+/** Busca de preenchimento automático, em destaque no topo do bloco. */
+function Busca({ rotulo, origem, children }: { rotulo: string; origem: string; children: ReactNode }) {
+  return (
+    <div className="grid gap-1.5 rounded-lg bg-slate-50 p-3">
+      <span className="flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-700">
+        <Sparkles size={15} className="text-cyan-700" /> {rotulo}
+        {origem ? <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-800"><Check size={12} /> Preenchido: {origem}</span> : null}
+      </span>
+      <div className="relative">
+        <Search size={16} className="pointer-events-none absolute left-3 top-[1.25rem] -translate-y-1/2 text-slate-400" />
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function Sugestoes({ children }: { children: ReactNode }) {
+  return <div className="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-xl border border-slate-200 bg-white py-1 shadow-lg">{children}</div>;
+}
+
+function Sugestao({ titulo, detalhe, onEscolher }: { titulo: string; detalhe?: string; onEscolher: () => void }) {
+  return (
+    <button type="button" className="grid w-full px-3 py-2 text-left hover:bg-slate-50" onMouseDown={(event) => event.preventDefault()} onClick={onEscolher}>
+      <span className="text-sm font-semibold text-navy-900">{titulo}</span>
+      {detalhe ? <span className="text-xs text-slate-500">{detalhe}</span> : null}
+    </button>
   );
 }
