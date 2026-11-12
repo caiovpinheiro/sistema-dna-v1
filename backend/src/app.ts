@@ -23,6 +23,7 @@ import { registerRoutes } from "./routes/index.js";
 import { CandidatoService } from "./services/candidato.service.js";
 import { ContratacaoService } from "./services/contratacao.service.js";
 import { DashboardService } from "./services/dashboard.service.js";
+import { MetricasService } from "./services/metricas.service.js";
 import { EmpresaService } from "./services/empresa.service.js";
 import { AsaasService } from "./services/asaas.service.js";
 import { ReguaService } from "./services/regua.service.js";
@@ -129,6 +130,7 @@ export async function buildApp(context: AppContext): Promise<FastifyInstance> {
     contratacoes: new ContratacaoService(context.db, contratacoes, vagas, candidatos, context.config, context.capabilities, processos),
     processos,
     dashboard: new DashboardService(context.db, contratacoes, context.config),
+    metricas: new MetricasService(context.db),
     termos,
     tce: new TceService(context.db, context.config, termos),
     asaas: new AsaasService(context.db, context.config),
@@ -157,6 +159,10 @@ export async function buildApp(context: AppContext): Promise<FastifyInstance> {
     const sessao = await services.acesso.daSessao(request.user.sub, request.user.email);
     if (path.startsWith("/api/v1/configuracoes")) {
       if (!sessao.admin) throw new AppError(403, "ACESSO_NEGADO", "Somente o administrador configura os acessos.");
+      return;
+    }
+    if (path.startsWith("/api/v1/metricas")) {
+      if (!sessao.admin) throw new AppError(403, "ACESSO_NEGADO", "Somente o administrador vê as métricas.");
       return;
     }
     if (!sessao.admin && !sessao.ativo) throw new AppError(403, "SEM_ACESSO", "Seu acesso está desativado.");

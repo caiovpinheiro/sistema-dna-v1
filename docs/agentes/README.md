@@ -21,6 +21,7 @@ O script `scripts/conferir-agentes.mjs` lê esta tabela. Mantenha o formato: uma
 | DashboardPage.tsx | [painel](painel/agente.md) |
 | LoginPage.tsx | [login](login/agente.md) |
 | ConfiguracoesPage.tsx | [configuracoes](configuracoes/agente.md) |
+| MetricasPage.tsx | [metricas](metricas/agente.md) |
 | EmailsPage.tsx | [emails](emails/agente.md) |
 | CandidatosPage.tsx | [candidatos](candidatos/agente.md) |
 | CandidatoFormPage.tsx | [candidatos](candidatos/agente.md) |
