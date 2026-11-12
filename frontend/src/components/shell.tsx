@@ -8,10 +8,14 @@ type LinkItem = { id: string; to: string; label: string; end?: boolean };
 
 const items = [
   { id: "painel", to: "/", label: "Painel", icon: LayoutDashboard, end: true },
-  { id: "triagem", to: "/triagem", label: "Triagem", icon: Search },
   { id: "candidatos", to: "/candidatos", label: "Candidatos", icon: Users },
   { id: "empresas", to: "/empresas", label: "Empresas", icon: Building2 },
   { id: "empresas", to: "/grupos-empresas", label: "Grupos", icon: Layers },
+];
+
+const triagemLinks: LinkItem[] = [
+  { id: "triagem", to: "/triagem", label: "Pesquisar vagas + CEP", end: true },
+  { id: "triagem", to: "/triagem/dossie", label: "Gerador de dossiês" },
 ];
 
 const afterVagas = [
@@ -137,6 +141,7 @@ function tituloDaRota(pathname: string) {
     ["/vagas", "Vagas"],
     ["/contratacoes", "Contratações"],
     ["/candidatos", "Candidatos"],
+    ["/triagem/dossie", "Gerador de dossiês"],
     ["/triagem", "Triagem"],
     ["/grupos-empresas", "Grupos"],
     ["/empresas", "Empresas"],
@@ -159,6 +164,7 @@ export function Shell({ email, admin, paginas, notify }: { email: string; admin:
   const financeiroActive = pathname.startsWith("/financeiro") && !pathname.startsWith("/financeiro/comissao") && !pathname.startsWith("/financeiro/holerite");
   const comissaoActive = pathname.startsWith("/financeiro/comissao");
   const vagaActive = pathname.startsWith("/vagas");
+  const triagemActive = pathname.startsWith("/triagem");
   const instituicaoActive = pathname.startsWith("/instituicoes");
   const termoActive = pathname.startsWith("/termos");
   const contratacaoActive = pathname.startsWith("/contratacoes");
@@ -176,12 +182,17 @@ export function Shell({ email, admin, paginas, notify }: { email: string; admin:
   }
 
   const permitido = (id: string) => admin || paginas.includes(id);
+  const triagem = <SideGroup label="Triagem" icon={Search} active={triagemActive} expanded={expanded} links={triagemLinks.filter((link) => permitido(link.id))} onNavigate={() => setOpen(false)} />;
   const nav = (
     <nav className="grid gap-1">
-      {items.filter((item) => permitido(item.id)).map((item) => (
-        <NavLink key={item.to} to={item.to} end={item.end} onClick={() => setOpen(false)} title={item.label} className={linkClass}>
-          <item.icon size={18} className="shrink-0" /> {label(item.label)}
-        </NavLink>
+      {!permitido("painel") ? triagem : null}
+      {items.filter((item) => permitido(item.id)).map((item, indice) => (
+        <div key={item.to} className="contents">
+          <NavLink to={item.to} end={item.end} onClick={() => setOpen(false)} title={item.label} className={linkClass}>
+            <item.icon size={18} className="shrink-0" /> {label(item.label)}
+          </NavLink>
+          {indice === 0 && item.id === "painel" ? triagem : null}
+        </div>
       ))}
       <SideGroup label="Vagas" icon={Briefcase} active={vagaActive} expanded={expanded} links={vagaLinks.filter((item) => permitido(item.id))} onNavigate={() => setOpen(false)} />
       {afterVagas.filter((item) => permitido(item.id)).map((item) => (

@@ -22,9 +22,11 @@ function resolveCrmUrl(raw: string): string {
 }
 
 function getCrmConfig() {
+  // CRM_BASE_URL/CRM_API_KEY são os nomes usados em outros apps; a URL deles já termina em /api, e aqui os caminhos começam com /api.
+  const base = readEnv('CRM_DNA_API_URL') || readEnv('CRM_BASE_URL').trim().replace(/\/+$/, '').replace(/\/api$/i, '');
   return {
-    url: resolveCrmUrl(readEnv('CRM_DNA_API_URL')),
-    token: readEnv('CRM_DNA_API_TOKEN'),
+    url: resolveCrmUrl(base),
+    token: readEnv('CRM_DNA_API_TOKEN') || readEnv('CRM_API_KEY'),
   };
 }
 
