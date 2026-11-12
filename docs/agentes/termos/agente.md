@@ -1,6 +1,6 @@
 # Agente — Termos e documentos
 
-> Última revisão: 2026-11-12 (commit "Preenche o TCE pela vaga de estágio e fixa a carga horária")
+> Última revisão: 2026-11-12 (commit "TCE: cidade de emissão na tela e data do dia gerada sozinha")
 
 ## Para que serve
 
@@ -84,6 +84,7 @@ Serviços externos:
 ## Regras e comportamentos importantes
 
 TCE (`tce.service.ts`):
+- Cidade e data de emissão (`emissao_cidade_data`): a tela pede só a cidade ("Cidade de emissão"); o backend (`montar` → `emissaoComData` em `lib/tce-fields.ts`) tira qualquer data que venha no fim e põe sempre a data do dia em que o PDF é gerado ou salvo, por extenso e no fuso de São Paulo ("São Paulo, 12 de novembro de 2026"). Termos antigos com a data no texto mostram só a cidade ao editar; salvar de novo troca a data para o dia da edição.
 - Carga horária é fixa: 6 horas por dia e 30 por semana (`CARGA_HORARIA_DIARIA`/`CARGA_HORARIA_SEMANAL` em `lib/tce-fields.ts`, repetidas em `FIXOS` no `gerador-tce.tsx`). Os campos são só leitura na tela; o backend sobrescreve ao gerar/salvar e o pré-preenchimento por candidato/contratação também usa esses valores.
 - Pesquisa de vaga (bloco 5): ao escolher, preenche `jornada` (texto do horário da vaga, senão `vaga.jornada`), `bolsa` (salário em R$, se maior que zero), `beneficios` e `plano_atividades` (`vaga.atividades`); só os que a vaga tem. Se a empresa concedente ainda não foi escolhida, preenche com a empresa da vaga (mesmo id de `public.empresa`); se já houver outra, só avisa que a vaga é de outra empresa.
 - Apólice de seguro é fixa (`APOLICE_SEGURO` em `lib/tce-fields.ts`, repetida como `APOLICE` em `gerador-tce.tsx`); o campo é somente leitura e o backend sempre sobrescreve.

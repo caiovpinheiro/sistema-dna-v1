@@ -53,3 +53,27 @@ export function emptyManual(): ManualData {
   for (const key of MANUAL_FIELDS) data[key] = "";
   return data;
 }
+
+const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
+
+/** "12 de novembro de 2026", no dia de São Paulo. */
+export function dataPorExtenso(agora: Date): string {
+  const partes = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(agora);
+  const valor = (tipo: string) => Number(partes.find((parte) => parte.type === tipo)?.value);
+  return `${valor("day")} de ${MESES[valor("month") - 1]} de ${valor("year")}`;
+}
+
+/** Só a cidade do campo de emissão: tira a data do fim ("São Paulo, 12 de novembro de 2026" ou "São Paulo, 12/11/2026"). */
+export function cidadeDaEmissao(valor: string | null | undefined): string {
+  return String(valor ?? "")
+    .replace(/[\s,–-]*\d{1,2}\s+de\s+[a-zç]+\s+de\s+\d{4}\.?\s*$/i, "")
+    .replace(/[\s,–-]*\d{1,2}\/\d{1,2}\/\d{2,4}\.?\s*$/, "")
+    .trim();
+}
+
+/** Cidade e data de emissão do TCE: a cidade digitada e sempre a data do dia em que o PDF é gerado. */
+export function emissaoComData(valor: string | null | undefined, agora: Date): string {
+  const cidade = cidadeDaEmissao(valor);
+  const data = dataPorExtenso(agora);
+  return cidade ? `${cidade}, ${data}` : data;
+}

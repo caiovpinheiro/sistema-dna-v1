@@ -9,7 +9,7 @@ import { AppError } from "../lib/errors.js";
 import { getEscola, mensagemEscola, searchEscolas } from "../lib/escolas.js";
 import { getEmpresaCadastro, listEmpresasCadastro } from "../lib/empresas-cadastro.js";
 import { fillTceTemplate } from "../lib/tce-pdf.js";
-import { APOLICE_SEGURO, CARGA_HORARIA_DIARIA, CARGA_HORARIA_SEMANAL, CAMPOS_DATA, dataParaPdf, emptyManual, ESCOLA_KEYS, type Concedente, type ManualData } from "../lib/tce-fields.js";
+import { APOLICE_SEGURO, emissaoComData, CARGA_HORARIA_DIARIA, CARGA_HORARIA_SEMANAL, CAMPOS_DATA, dataParaPdf, emptyManual, ESCOLA_KEYS, type Concedente, type ManualData } from "../lib/tce-fields.js";
 import { preenchimentoDoCandidato, vagaParaTce, type CandidatoTce, type LinhaVagaTce, type VagaTce } from "../lib/tce-candidato.js";
 import { one } from "../repositories/sql.js";
 import { enviarModelo, textoHtml } from "../lib/email-modelo.js";
@@ -242,6 +242,8 @@ export class TceService {
       }
     }
     if (!texto(campos.nome)) throw new AppError(422, "NOME_OBRIGATORIO", "Nome do candidato é obrigatório.");
+    // A data de emissão é sempre a do dia em que o PDF é gerado; da tela só vem a cidade.
+    campos.emissao_cidade_data = emissaoComData(campos.emissao_cidade_data, new Date());
     const inicioIso = texto(campos.estagio_inicio);
     const terminoIso = texto(campos.estagio_termino);
     if (/^\d{4}-\d{2}-\d{2}$/.test(inicioIso) && /^\d{4}-\d{2}-\d{2}$/.test(terminoIso)) {

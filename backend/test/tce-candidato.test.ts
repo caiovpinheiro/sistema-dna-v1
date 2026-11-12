@@ -116,3 +116,13 @@ test("vaga de estágio preenche jornada, bolsa, benefícios e plano de atividade
   assert.deepEqual(semDados.campos, { jornada: "Seg a sex" });
   assert.equal(semDados.cargo, "Vaga de estágio");
 });
+
+test("emissão do TCE: a cidade digitada e sempre a data do dia (São Paulo)", async () => {
+  const { cidadeDaEmissao, emissaoComData } = await import("../src/lib/tce-fields.js");
+  const meiaNoiteUtc = new Date("2026-11-13T01:30:00Z"); // ainda dia 12 em São Paulo
+  assert.equal(emissaoComData("São Paulo", meiaNoiteUtc), "São Paulo, 12 de novembro de 2026");
+  assert.equal(emissaoComData("São Paulo, 3 de março de 2025", new Date("2026-01-05T15:00:00Z")), "São Paulo, 5 de janeiro de 2026");
+  assert.equal(emissaoComData("", new Date("2026-03-01T15:00:00Z")), "1 de março de 2026");
+  assert.equal(cidadeDaEmissao("Guarulhos, 10/11/2026"), "Guarulhos");
+  assert.equal(cidadeDaEmissao("São José dos Campos"), "São José dos Campos");
+});

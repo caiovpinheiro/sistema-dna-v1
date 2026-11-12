@@ -42,6 +42,20 @@ const AVISO_FIXO: Record<string, string> = {
   carga_horaria_semanal: "Padrão de todo estágio.",
 };
 
+const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
+
+/** Termos antigos guardam "Cidade, 12 de novembro de 2026": na tela fica só a cidade (o backend põe a data do dia). */
+function cidadeDaEmissao(valor: string | undefined) {
+  return (valor ?? "")
+    .replace(/[\s,–-]*\d{1,2}\s+de\s+[a-zç]+\s+de\s+\d{4}\.?\s*$/i, "")
+    .replace(/[\s,–-]*\d{1,2}\/\d{1,2}\/\d{2,4}\.?\s*$/, "");
+}
+
+function hojePorExtenso() {
+  const hoje = new Date();
+  return `${hoje.getDate()} de ${MESES[hoje.getMonth()]} de ${hoje.getFullYear()}`;
+}
+
 type VagaEstagio = { id: string; cargo: string; empresa: string; empresaId: string; local: string; campos: Record<string, string> };
 
 const CAMPOS: Array<{ key: string; label: string; section: string; full?: boolean; multiline?: boolean; placeholder?: string; date?: boolean }> = [
@@ -78,7 +92,7 @@ const CAMPOS: Array<{ key: string; label: string; section: string; full?: boolea
   { key: "escola_cep", label: "CEP", section: "escola" },
   { key: "escola_cidade", label: "Cidade", section: "escola" },
   { key: "escola_estado", label: "Estado", section: "escola", placeholder: "UF" },
-  { key: "emissao_cidade_data", label: "Cidade e data de emissão", section: "estagio", full: true },
+  { key: "emissao_cidade_data", label: "Cidade de emissão", section: "estagio", full: true },
   { key: "estagio_inicio", label: "Início", section: "estagio", date: true },
   { key: "estagio_termino", label: "Término", section: "estagio", date: true },
   { key: "carga_horaria_diaria", label: "Carga horária diária", section: "estagio" },
@@ -328,11 +342,12 @@ export function GeradorTce({ editarId }: { editarId?: string }) {
             readOnly={field.key in FIXOS}
             className={field.key in FIXOS ? "bg-slate-50 text-slate-500" : undefined}
             placeholder={field.placeholder ?? EXEMPLOS[field.key]}
-            value={FIXOS[field.key] ?? campos[field.key] ?? ""}
+            value={FIXOS[field.key] ?? (field.key === "emissao_cidade_data" ? cidadeDaEmissao(campos[field.key]) : campos[field.key]) ?? ""}
             onChange={(event) => setCampos((atual) => ({ ...atual, [field.key]: event.target.value }))}
           />
         )}
         {field.key === "estagio_termino" && terminoEstudo ? <span className="text-xs text-slate-500">Os estudos terminam em {dataBr(terminoEstudo)}; o estágio não pode passar disso.</span> : null}
+        {field.key === "emissao_cidade_data" ? <span className="text-xs text-slate-500">A data entra sozinha: o dia em que o PDF é gerado{editarId ? " ou salvo" : ""} (hoje, {hojePorExtenso()}).</span> : null}
         {AVISO_FIXO[field.key] ? <span className="text-xs text-slate-500">{AVISO_FIXO[field.key]}</span> : null}
       </Field>
     </div>
@@ -513,7 +528,7 @@ const LARGURA: Record<string, string> = {
   endereco_responsavel: "sm:col-span-4", cep_responsavel: "sm:col-span-2", cidade_responsavel: "sm:col-span-4", estado_responsavel: "sm:col-span-2",
   nome_escola: "sm:col-span-4", escola_cnpj_inep: "sm:col-span-2", escola_representante: "sm:col-span-3", escola_email: "sm:col-span-3",
   escola_endereco: "sm:col-span-4", escola_cep: "sm:col-span-2", escola_cidade: "sm:col-span-4", escola_estado: "sm:col-span-2",
-  estagio_inicio: "sm:col-span-2", estagio_termino: "sm:col-span-2", data_termo_aditivo: "sm:col-span-2", emissao_cidade_data: "sm:col-span-6",
+  estagio_inicio: "sm:col-span-2", estagio_termino: "sm:col-span-2", data_termo_aditivo: "sm:col-span-2", emissao_cidade_data: "sm:col-span-2",
   carga_horaria_diaria: "sm:col-span-3", carga_horaria_semanal: "sm:col-span-3", jornada: "sm:col-span-4", supervisor: "sm:col-span-2",
   bolsa: "sm:col-span-2", beneficios: "sm:col-span-4", seguro_apolice: "sm:col-span-6",
   plano_atividades: "sm:col-span-6",
@@ -525,7 +540,7 @@ const EXEMPLOS: Record<string, string> = {
   cpf: "000.000.000-00", telefone: "(11) 90000-0000", periodo: "Ex.: 3º semestre", ano: "Ex.: 2º ano", turno: "Manhã, tarde, noite ou integral",
   cpf_responsavel: "000.000.000-00", telefone_responsavel: "(11) 90000-0000", cep_responsavel: "00000-000",
   escola_cnpj_inep: "CNPJ ou código INEP", escola_cep: "00000-000",
-  emissao_cidade_data: "Ex.: São Paulo, 12 de novembro de 2026", carga_horaria_diaria: "Ex.: 6 horas", carga_horaria_semanal: "Ex.: 30 horas",
+  emissao_cidade_data: "Ex.: São Paulo", carga_horaria_diaria: "Ex.: 6 horas", carga_horaria_semanal: "Ex.: 30 horas",
   jornada: "Ex.: Segunda a sexta, das 9h às 15h", bolsa: "Ex.: R$ 1.200,00", beneficios: "Ex.: Vale-transporte",
 };
 
