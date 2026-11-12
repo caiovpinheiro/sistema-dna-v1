@@ -14,7 +14,8 @@
     "lint": "npm run lint -w backend && npm run lint -w frontend",
     "db:local": "npm run db:local -w backend",
     "db:migrate": "prisma migrate deploy",
-    "hash-password": "npm run hash-password -w backend"
+    "hash-password": "npm run hash-password -w backend",
+    "agentes:conferir": "node scripts/conferir-agentes.mjs"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"
