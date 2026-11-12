@@ -45,9 +45,14 @@ const texto = (valor: string | null | undefined) =>
 
 export type EnderecoComparado = { cep: string | null; logradouro: string | null; numero: string | null };
 
+/** Ficha com CEP, rua e cidade: dá para geocodificar e serve de referência. */
+export function fichaCompleta(ficha: { cep: string | null; logradouro: string | null; cidade: string | null }): boolean {
+  return digitos(ficha.cep).length === 8 && Boolean(texto(ficha.logradouro)) && Boolean(texto(ficha.cidade));
+}
+
 /** A ficha (dna_work.empresa) tem outro endereço que o da triagem (public.empresa)? Ficha incompleta não conta. */
 export function enderecoMudou(triagem: EnderecoComparado, ficha: EnderecoComparado & { cidade: string | null }): boolean {
-  if (digitos(ficha.cep).length !== 8 || !texto(ficha.logradouro) || !texto(ficha.cidade)) return false;
+  if (!fichaCompleta(ficha)) return false;
   return digitos(triagem.cep) !== digitos(ficha.cep)
     || texto(triagem.logradouro) !== texto(ficha.logradouro)
     || texto(triagem.numero) !== texto(ficha.numero);
@@ -65,7 +70,13 @@ type Linha = {
   bairro: string | null;
   cidade: string | null;
   uf: string | null;
+  /** Alguma vaga da empresa em public.vaga está com outro CEP que o da ficha. */
+  vaga_divergente: boolean;
 };
+
+/** Empresa que o Google não localizou: não tenta de novo por 1 hora (a triagem chama isto a cada busca). */
+const PAUSA_FALHA_MS = 60 * 60 * 1000;
+const falhas = new Map<string, number>();
 
 export type EnderecoAtualizado = { id: string; antes: string; depois: string; lat: number; lng: number; vagas: number };
 type Log = { info: (obj: object, msg: string) => void; warn: (obj: object, msg: string) => void; error: (obj: object, msg: string) => void };
@@ -84,7 +95,12 @@ export async function sincronizarEnderecoEmpresas(
   const filtro = opcoes.ids?.length ? "AND p.id::text = ANY($1::text[])" : "";
   const { rows } = await db.query<Linha>(
     `SELECT p.id::text AS id, p.cep AS cep_triagem, p.logradouro AS logradouro_triagem, p.numero AS numero_triagem,
-            e.cep, e.logradouro, e.numero, e.complemento, e.bairro, e.cidade, e.uf
+            e.cep, e.logradouro, e.numero, e.complemento, e.bairro, e.cidade, e.uf,
+            EXISTS (
+              SELECT 1 FROM public.vaga v
+              WHERE v.empresa_id::text = p.id::text
+                AND regexp_replace(coalesce(v.cep, ''), '\\D', '', 'g') <> regexp_replace(coalesce(e.cep, ''), '\\D', '', 'g')
+            ) AS vaga_divergente
      FROM public.empresa p
      JOIN dna_work.empresa e ON e.id_empresa::text = p.id::text
      WHERE true ${filtro}`,
@@ -93,20 +109,24 @@ export async function sincronizarEnderecoEmpresas(
   const mudaram = rows.filter((linha) => enderecoMudou(
     { cep: linha.cep_triagem, logradouro: linha.logradouro_triagem, numero: linha.numero_triagem },
     linha,
-  ));
-  if (!mudaram.length) return [];
+  ) || (linha.vaga_divergente && fichaCompleta(linha)));
+  const agora = Date.now();
+  const pendentes = mudaram.filter((linha) => (falhas.get(linha.id) ?? 0) <= agora - PAUSA_FALHA_MS);
+  if (!pendentes.length) return [];
   if (!apiKey) {
-    log.warn({ empresas: mudaram.map((linha) => linha.id) }, "endereço da empresa: GOOGLE_MAPS_API_KEY ausente, distância da triagem segue no endereço antigo");
+    log.warn({ empresas: pendentes.map((linha) => linha.id) }, "endereço da empresa: GOOGLE_MAPS_API_KEY ausente, distância da triagem segue no endereço antigo");
+    for (const linha of pendentes) falhas.set(linha.id, agora);
     return [];
   }
 
   const atualizadas: EnderecoAtualizado[] = [];
-  for (const linha of mudaram) {
+  for (const linha of pendentes) {
     const antes = [linha.logradouro_triagem, linha.numero_triagem, linha.cep_triagem].filter(Boolean).join(", ");
     const depois = [linha.logradouro, linha.numero, linha.cep].filter(Boolean).join(", ");
     try {
       const ponto = await geocodeEndereco(apiKey, digitos(linha.cep), linha);
       if (!ponto) {
+        falhas.set(linha.id, Date.now());
         log.warn({ id_empresa: linha.id, depois }, "endereço da empresa: Google não localizou o endereço da ficha");
         continue;
       }
@@ -136,9 +156,11 @@ export async function sincronizarEnderecoEmpresas(
           cliente.release();
         }
       }
+      falhas.delete(linha.id);
       atualizadas.push({ id: linha.id, antes, depois, lat: ponto.lat, lng: ponto.lng, vagas });
       log.info({ dry: Boolean(opcoes.dry), id_empresa: linha.id, antes, depois, vagas }, "endereço da empresa: triagem atualizada");
     } catch (error) {
+      falhas.set(linha.id, Date.now());
       log.error({ id_empresa: linha.id, erro: error instanceof Error ? error.message : String(error) }, "endereço da empresa: falha ao atualizar");
     }
   }

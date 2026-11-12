@@ -1,6 +1,6 @@
 # Agente — Empresas
 
-> Última revisão: 2026-11-12 (empresa sem CNPJ)
+> Última revisão: 2026-11-12 (endereço editado vai para a triagem)
 
 ## Para que serve
 
@@ -64,7 +64,7 @@ Postgres, schema `dna_work` (cópia do Lightsail):
 Postgres, schema `public`:
 - `public.valor_empresas` — condições de cobrança (CLT/estágio, ciclo, fechamento, vencimento, notas, alertas, documentos). Só leitura; quem grava não foi encontrado no backend.
 
-Lightsail MySQL: **não** é tocado pelas rotas desta seção. Editar aqui muda só `dna_work.empresa` no Postgres.
+Lightsail MySQL: **não** é tocado pelas rotas desta seção. Editar aqui muda `dna_work.empresa` no Postgres e, quando algum campo de endereço vem no PATCH, também a cópia usada pela Triagem: `public.empresa` (endereço, `local`, `latitude`, `longitude`) e `public.vaga` (`cep`, `latitude`, `longitude`) da empresa, com coordenada nova pelo Google (`sincronizarEnderecoEmpresas` em `backend/src/lib/empresa-endereco.ts`).
 
 Serviços externos: nenhum.
 
@@ -89,7 +89,7 @@ Serviços externos: nenhum.
 
 ## Cuidados ao mudar
 
-- Esta tela e a aba Empresa de `/grupos-empresas` gravam em lugares **diferentes**: aqui só `dna_work.empresa`; lá Lightsail + `public.empresa` + `dna_work.empresa`. Editar aqui não atualiza `public.empresa` nem o Lightsail.
+- Esta tela e a aba Empresa de `/grupos-empresas` gravam em lugares **diferentes**: aqui só `dna_work.empresa`; lá Lightsail + `public.empresa` + `dna_work.empresa`. Editar aqui não atualiza o Lightsail. Em `public.empresa` só o endereço e a coordenada acompanham a ficha (nome, CNPJ e contato não). Se o Google falhar, a edição é salva mesmo assim e a triagem corrige na próxima busca ou no próximo sync.
 - `GET /api/v1/empresas?q=` também é usado pelo formulário de candidato (busca de empresa) — não mude o formato de resposta.
 - `CobrancaEmpresa` é compartilhado com a aba Grupo.
 - O hash MD5 em `senha_u` existe por compatibilidade com o portal legado; não remova sem saber como o portal autentica.

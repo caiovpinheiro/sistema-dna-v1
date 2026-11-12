@@ -1,6 +1,6 @@
 # Agente — Triagem
 
-> Última revisão: 2026-11-12 (empresa sem CNPJ)
+> Última revisão: 2026-11-12 (distância pelo endereço atual da empresa)
 
 ## Para que serve
 
@@ -37,6 +37,7 @@ O menu fica em `frontend/src/components/shell.tsx` (`triagemLinks`, linhas 16-19
 - `backend/src/lib/jev/explicacao.ts`: comparação de termos feita pelo DNA Work, que não entra no score.
 - `backend/src/lib/curriculo/arquivo.ts` (`prepararCurriculo`: valida o tipo pelos bytes, limite de 5 MB, DOCX vira texto), `perfil.ts` (schema JSON da Luna, normalização, `perfilSuficiente`, `textoDoCurriculo`) e `cep.ts` (`cepDoCurriculo`: CEP escrito no currículo ou procurado no ViaCEP pelo endereço).
 - `backend/src/lib/dossie/prompts.ts`: `PROMPT_DOSSIE_CLT` e `PROMPT_DOSSIE_ESTAGIO`, copiados do workflow "gerador-dossies" do n8n.
+- `backend/src/lib/empresa-endereco.ts`: `sincronizarEnderecoEmpresas` (leva o endereço da ficha para `public.empresa` e `public.vaga`, com coordenada nova), `enderecoMudou`, `fichaCompleta`, `geocodeEndereco` (Google, endereço completo e depois CEP) e `enderecoParaGeocode`. Também usado pelo cadastro de empresa, pela edição da empresa e pelo sync de vagas.
 - `backend/src/lib/triagem-geo.ts`: `distanciaKm` (haversine), `geocodeCepServidor` (AwesomeAPI e depois Google Geocoding) e `rotuloDoCep` (ViaCEP).
 - `backend/src/lib/horario-escala.ts`: `DIAS_ESCALA` e `textoDoHorario`, usados por `horarioDoEspelho`.
 - `backend/src/origem/crm-dna.ts`: `crmRequest` (CRM DNA).
@@ -60,8 +61,8 @@ O menu fica em `frontend/src/components/shell.tsx` (`triagemLinks`, linhas 16-19
 ## Dados
 
 **Postgres**
-- `public.vaga`: o que a busca lê (`id`, `vaga_id`, `tipo_vaga` (1 = Estágio, 2 = CLT), `cargo`, `salario`, `beneficios`, `sexo`, `idade`, `idade_ate`, `horario`, `tipo_trabalho`, `latitude`, `longitude`, `empresa_id`). O matching e o dossiê leem também `atividades`, `descricao`, `requisitos`, `escolaridade` e `carga_horaria`. Só entram vagas com latitude e longitude preenchidas (triagem.service.ts:115). Segundo dossie.service.ts:327, "public.vaga só guarda as abertas; o sync tira as fechadas".
-- `public.empresa`: `nome_fantasia`, `local`, `id` e `cnpj`. Para achar as empresas pendentes, a empresa do Lightsail conta como cadastrada se o `id_empresa` estiver em `public.empresa.id` ou se o CNPJ (quando tem) bater. Empresa sem CNPJ só é reconhecida pelo id.
+- `public.vaga`: o que a busca lê (`id`, `vaga_id`, `tipo_vaga` (1 = Estágio, 2 = CLT), `cargo`, `salario`, `beneficios`, `sexo`, `idade`, `idade_ate`, `horario`, `tipo_trabalho`, `latitude`, `longitude`, `empresa_id`). O matching e o dossiê leem também `atividades`, `descricao`, `requisitos`, `escolaridade` e `carga_horaria`. Só entram vagas com latitude e longitude preenchidas ou com `cep` igual ao CEP pesquisado (`vagasAbertas`). Segundo dossie.service.ts:327, "public.vaga só guarda as abertas; o sync tira as fechadas".
+- `public.empresa`: `nome_fantasia`, `local`, `id` e `cnpj`. O endereço (`cep`, `logradouro`, `numero`, `complemento`, `local`) e a coordenada são uma cópia do cadastro, conferida contra `dna_work.empresa` (a ficha) a cada busca. Para achar as empresas pendentes, a empresa do Lightsail conta como cadastrada se o `id_empresa` estiver em `public.empresa.id` ou se o CNPJ (quando tem) bater. Empresa sem CNPJ só é reconhecida pelo id.
 - `public.cargo`: `descricao` e `requisitos` servem de reserva quando a vaga não tem descrição nem requisitos (matching e dossiê).
 - `dna_work.flex`: `id_flex` → `valor`, que traduz o código de escolaridade da vaga antes de mandar ao JEV.
 - `public.candidatos_dados`: lida pelo dossiê, nunca gravada aqui. Campos: `dealId`, `telefone`, `resumo_cv`, `nome`, `idade`, `escolaridade`, `turno`, `sexo`, `"teste comportamental"`, `info_conducoes`, `resumo_entrevista`, `id_vaga_escolhida`, `id_empresa`, entre outros. A consulta fica em `SQL_CANDIDATO` (dossie.service.ts:74).
@@ -76,7 +77,7 @@ O menu fica em `frontend/src/components/shell.tsx` (`triagemLinks`, linhas 16-19
 - **Geocodificação**: no navegador, ViaCEP, AwesomeAPI, BrasilAPI e Photon. No servidor, quando a tela não manda lat/lng, AwesomeAPI e depois Google (`GOOGLE_MAPS_API_KEY`). O rótulo da origem vem do ViaCEP. Para o CEP do currículo, ViaCEP por endereço.
 - **n8n**: não é chamado. A lógica copia os workflows "gerador-dossies", "enviar vagas automaticas" (nó Jev) e "resumo cv + match".
 
-**Gravações**: a busca, o currículo e a compatibilidade não gravam nada (comentário em routes/index.ts:788). A única escrita da seção é a nota no CRM (`/dossie/nota`).
+**Gravações**: o currículo e a compatibilidade não gravam nada. A busca só grava quando o endereço da ficha (`dna_work.empresa`) diverge da cópia da triagem: aí atualiza `public.empresa` (endereço, `local`, `latitude`, `longitude`) e `public.vaga` (`cep`, `latitude`, `longitude`) daquela empresa. A outra escrita da seção é a nota no CRM (`/dossie/nota`).
 
 ## Regras e comportamentos importantes
 
@@ -89,6 +90,11 @@ O menu fica em `frontend/src/components/shell.tsx` (`triagemLinks`, linhas 16-19
 - **Salário**: zero ou vazio vira "salário a combinar". `beneficios` preenchido acrescenta "+ benefícios" ao texto.
 - **Horário do espelho** (`horarioDoEspelho`, triagem.service.ts:68): se `horario` tem `texto=…`, usa esse texto. Senão, monta a grade a partir de `1=HH:MM-HH:MM;2=…` (1 = domingo … 7 = sábado) com `textoDoHorario`.
 - **Geocodificação**: o navegador manda lat/lng. Se não conseguir, o servidor tenta. Sem ponto, a resposta é 422 `CEP_NAO_LOCALIZADO`.
+- **Mesmo CEP = 0 km** (`distanciaDaVaga`): vaga com `cep` igual ao CEP pesquisado fica a 0 km, mesmo sem coordenada. O ponto da pessoa é o centro do CEP (AwesomeAPI/BrasilAPI) e o da empresa é o endereço completo (Google); para o mesmo endereço os dois chegam a divergir mais de 1 km.
+- **Endereço atual da empresa** (`sincronizarEnderecoEmpresas`, chamado no começo de `buscar`, na edição da empresa e no começo do sync de vagas): a coordenada da vaga é copiada da empresa quando a vaga entra em `public.vaga`. Se o endereço mudar depois na ficha, a busca media pela unidade antiga. Agora, quando a ficha (CEP, rua e número, ignorando máscara, acento e caixa) diverge de `public.empresa`, ou alguma vaga da empresa tem outro CEP, o endereço é geocodificado de novo pelo Google e gravado na empresa e em todas as vagas dela.
+  - Ficha incompleta (sem CEP de 8 dígitos, rua ou cidade) não sobrescreve nada.
+  - Sem `GOOGLE_MAPS_API_KEY`, ou se o Google não achar o endereço, nada muda e a empresa só é tentada de novo depois de 1 hora (memória do processo). Logs: "endereço da empresa: …".
+  - Só vale para empresa que está nos dois lados com o mesmo id (`public.empresa.id` = `dna_work.empresa.id_empresa`).
 - **Busca inteligente**:
   - exige currículo com pelo menos 30 caracteres ou habilidades com pelo menos 3, e o turno de estudo quando a escolaridade é `cursando_medio` (front: `problemaDoPerfil`; back: refine no zod e `perfilSuficiente`);
   - depois da busca, a tela analisa o primeiro lote (`JEV_LOTE`) e o resto fica em "Ainda não analisadas", com o botão "Analisar mais N";
@@ -118,6 +124,7 @@ O menu fica em `frontend/src/components/shell.tsx` (`triagemLinks`, linhas 16-19
 ## Cuidados ao mudar
 
 - `horarioDoEspelho`, `localDaEmpresa` e `semHomeOffice` são exportados de `triagem.service.ts` e usados por `triagem-matching.service.ts` e `dossie.service.ts`. Mudar o formato de `public.vaga.horario` (gravado pelos syncs e pelo cadastro de vaga) afeta as três telas.
+- A busca depende de `public.empresa` e `public.vaga` terem o endereço da ficha. Quem grava endereço de empresa em outro lugar deve chamar `sincronizarEnderecoEmpresas` (ou deixar o próximo ciclo/busca corrigir).
 - O contrato de `POST /triagem/vagas` (`{ originLabel, jobs: [{ id, title, company, location, contractType, salaryLabel, hasBenefits, homeOffice, schedule, schedules, distanceKm }] }`) é coberto por `triagem-rotas.test.ts`. Não renomeie campos.
 - `textoParaCandidato` define a mensagem que vai ao candidato (emojis, numeração, fechamento). Ela é testada em `frontend/test/triagem-matching.test.ts`.
 - As regras de perfil suficiente existem em dois lugares: `perfilPreenchido` no front e `perfilSuficiente` no back. Mudou um, mude o outro.

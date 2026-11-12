@@ -5,6 +5,8 @@ import { AppError } from "../lib/errors.js";
 import { distanciaKm, geocodeCepServidor, rotuloDoCep, type Ponto } from "../lib/triagem-geo.js";
 import type { Pool } from "pg";
 import { DIAS_ESCALA, textoDoHorario } from "../lib/horario-escala.js";
+import { sincronizarEnderecoEmpresas } from "../lib/empresa-endereco.js";
+import type { Logger } from "./notion-sync.service.js";
 
 export type TipoVaga = "CLT" | "Estágio";
 
@@ -114,7 +116,19 @@ export class TriagemService {
     private readonly db: Pool,
     private readonly mysql: MysqlPool | null,
     private readonly config: AppConfig,
+    private readonly log?: Logger,
   ) {}
+
+  /**
+   * Antes de medir, traz para public.empresa e public.vaga o endereço atual da ficha (dna_work.empresa).
+   * Sem divergência é só uma consulta; com divergência, geocodifica só as empresas que mudaram.
+   * Falha aqui não impede a busca.
+   */
+  private async enderecosAtualizados() {
+    if (!this.log) return;
+    await sincronizarEnderecoEmpresas(this.db, this.config.GOOGLE_MAPS_API_KEY, this.log).catch((error: unknown) =>
+      this.log!.error({ erro: error instanceof Error ? error.message : String(error) }, "triagem: falha ao conferir o endereço das empresas"));
+  }
 
   /** Vagas abertas do Postgres (public.vaga) com a empresa: só as dos tipos pedidos e com coordenada (ou no mesmo CEP da pessoa). */
   private async vagasAbertas(tipos: TipoVaga[], cep: string) {
@@ -139,6 +153,7 @@ export class TriagemService {
   }
 
   async buscar(input: BuscaTriagem) {
+    await this.enderecosAtualizados();
     const [origem, originLabel, vagas] = await Promise.all([
       this.origem(input),
       rotuloDoCep(input.cep),

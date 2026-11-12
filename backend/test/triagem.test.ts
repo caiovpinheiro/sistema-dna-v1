@@ -238,3 +238,11 @@ test("endereço da ficha diferente do da triagem pede coordenada nova", async ()
   assert.equal(localDaEmpresa("Jardim Ana Maria", "Carapicuíba", "sp"), "Jardim Ana Maria - Carapicuíba / SP");
   assert.equal(localDaEmpresa("", "Carapicuíba", "SP"), "Carapicuíba / SP");
 });
+
+test("ficha completa tem CEP de 8 dígitos, rua e cidade", async () => {
+  const { fichaCompleta } = await import("../src/lib/empresa-endereco.js");
+  assert.equal(fichaCompleta({ cep: "06386-590", logradouro: "Rua Ana Maria", cidade: "Carapicuíba" }), true);
+  assert.equal(fichaCompleta({ cep: "0638659", logradouro: "Rua Ana Maria", cidade: "Carapicuíba" }), false);
+  assert.equal(fichaCompleta({ cep: "06386590", logradouro: " ", cidade: "Carapicuíba" }), false);
+  assert.equal(fichaCompleta({ cep: "06386590", logradouro: "Rua Ana Maria", cidade: null }), false);
+});

@@ -138,7 +138,7 @@ export async function buildApp(context: AppContext): Promise<FastifyInstance> {
     acesso: new AcessoService(context.db, context.config),
     cadastro: new CadastroService(context.db, context.mysql ?? null, context.config, cargos),
     cargos,
-    triagem: new TriagemService(context.db, context.mysql ?? null, context.config),
+    triagem: new TriagemService(context.db, context.mysql ?? null, context.config, app.log),
     curriculo: new CurriculoService(context.config),
     matching: new TriagemMatchingService(context.db, context.config, criarTransporteJev(context.config)),
     dossie: new DossieService(context.db, context.config),
