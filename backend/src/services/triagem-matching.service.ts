@@ -3,6 +3,7 @@ import type { AppConfig } from "../config.js";
 import { perfilSuficiente, textoDoCurriculo, type PerfilProfissional } from "../lib/curriculo/perfil.js";
 import { explicarCompatibilidade, type Explicacao } from "../lib/jev/explicacao.js";
 import {
+  ErroJev,
   PERGUNTA_COMPATIBILIDADE,
   RespostaJevInvalida,
   escalaDa,
@@ -165,7 +166,8 @@ export class TriagemMatchingService {
     } catch (error) {
       if (error instanceof RespostaJevInvalida) return { id, status: "resposta_invalida", motivo: `Resposta do JEV descartada: ${error.message}`, jev: null, explicacao };
       const timeout = (error as { name?: string })?.name === "TimeoutError";
-      return { id, status: "falhou", motivo: timeout ? "O JEV não respondeu a tempo." : "Falha ao consultar o JEV.", jev: null, explicacao };
+      const motivo = timeout ? "O JEV não respondeu a tempo." : error instanceof ErroJev ? error.message : "Falha ao consultar o JEV.";
+      return { id, status: "falhou", motivo, jev: null, explicacao };
     }
   }
 

@@ -1,14 +1,18 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { ChevronDown, ChevronUp, FileText, Loader2, Sparkles, Upload } from "lucide-react";
+import { ChevronDown, ChevronUp, FileText, Loader2, Upload, X } from "lucide-react";
 import { useRef, useState, type ChangeEvent } from "react";
-import { Button, Field, Input, Textarea, cn } from "@/components/ui";
+import { Button, Field, Input, Select, cn } from "@/components/ui";
 import { api } from "@/lib/api";
 import {
+  ESCOLARIDADES,
   ROTULO_STATUS,
+  TURNOS,
   rotuloConfianca,
   rotuloScore,
   type AvaliacaoVaga,
+  type Escolaridade,
   type PerfilProfissional,
+  type Turno,
 } from "@/lib/triagem-matching";
 
 export type StatusIa = {
@@ -51,31 +55,40 @@ function Aviso({ tom, children }: { tom: "info" | "alerta"; children: React.Reac
   );
 }
 
-/** Currículo do candidato: envio opcional para a Luna e campos sempre editáveis pelo operador. */
+/**
+ * Dados do candidato para a busca inteligente: currículo (opcional, analisado pela Luna), escolaridade,
+ * tempo total, habilidades e turnos. Tudo editável; o texto do currículo analisado só é exibido.
+ */
 export function PerfilCandidato({
   perfil,
   onPerfil,
-  turno,
-  onTurno,
   status,
 }: {
   perfil: PerfilProfissional;
   onPerfil: (perfil: PerfilProfissional) => void;
-  turno: string;
-  onTurno: (turno: string) => void;
   status: StatusIa | undefined;
 }) {
   const arquivoRef = useRef<HTMLInputElement>(null);
   const [erro, setErro] = useState("");
   const [extraido, setExtraido] = useState<Extraido | null>(null);
+  const [verCurriculo, setVerCurriculo] = useState(false);
   const lunaPronta = status?.luna.configurada ?? false;
 
   const analise = useMutation({
-    mutationFn: (body: { arquivo?: { nome: string; base64: string }; texto?: string }) =>
+    mutationFn: (body: { arquivo: { nome: string; base64: string } }) =>
       api<AnaliseCurriculo>("/api/v1/triagem/curriculo", { method: "POST", body: JSON.stringify(body) }),
     onSuccess: (resposta) => {
       setExtraido(resposta.data.extraido);
-      onPerfil(resposta.data.perfil);
+      // O que o operador já escolheu à mão (turnos) continua valendo; o resto vem do currículo e pode ser corrigido.
+      const novo = resposta.data.perfil;
+      onPerfil({
+        ...novo,
+        escolaridade: novo.escolaridade || perfil.escolaridade,
+        turnoEstudo: perfil.turnoEstudo,
+        turno: perfil.turno,
+        tempoExperiencia: novo.tempoExperiencia || perfil.tempoExperiencia,
+        habilidades: novo.habilidades || perfil.habilidades,
+      });
     },
     onError: (error) => setErro(error.message),
   });
@@ -94,71 +107,77 @@ export function PerfilCandidato({
     }
   }
 
-  function organizarTexto() {
-    setErro("");
-    const texto = perfil.resumo.trim();
-    if (texto.length < 30) return setErro("Cole o texto do currículo no resumo (pelo menos 30 caracteres) para organizar com IA.");
-    analise.mutate({ texto });
+  function removerCurriculo() {
+    setExtraido(null);
+    setVerCurriculo(false);
+    onPerfil({ ...perfil, curriculo: "" });
   }
 
-  const campo = (chave: keyof PerfilProfissional) => ({
-    value: perfil[chave],
-    onChange: (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => onPerfil({ ...perfil, [chave]: event.target.value }),
-  });
+  function escolaridade(valor: string) {
+    const nova = valor as Escolaridade | "";
+    onPerfil({ ...perfil, escolaridade: nova, turnoEstudo: nova === "cursando_medio" ? perfil.turnoEstudo : "" });
+  }
 
   return (
     <div className="grid gap-4">
       <div className="flex flex-wrap items-center gap-2">
         <input ref={arquivoRef} type="file" accept={ACEITOS} className="hidden" onChange={(event) => void enviarArquivo(event)} />
         <Button type="button" variant="ghost" disabled={!lunaPronta || analise.isPending} onClick={() => arquivoRef.current?.click()}>
-          <Upload size={16} /> Enviar currículo
-        </Button>
-        <Button type="button" variant="ghost" disabled={!lunaPronta || analise.isPending} onClick={organizarTexto}>
-          <Sparkles size={16} /> Organizar texto colado com IA
+          <Upload size={16} /> {perfil.curriculo ? "Trocar currículo" : "Enviar currículo"}
         </Button>
         {analise.isPending ? <span className="flex items-center gap-1.5 text-sm text-slate-500"><Loader2 size={15} className="animate-spin" /> Analisando currículo…</span> : null}
-        <span className="text-xs text-slate-500">PDF, DOCX, PNG, JPG ou WEBP até 5 MB. A IA é opcional: você pode preencher tudo à mão.</span>
+        <span className="text-xs text-slate-500">PDF, DOCX, PNG, JPG ou WEBP até 5 MB. Opcional: sem currículo, informe as habilidades.</span>
       </div>
-      {status && !lunaPronta ? <Aviso tom="alerta">Análise de currículo por IA indisponível (Luna não configurada). Preencha ou cole o resumo manualmente.</Aviso> : null}
+      {status && !lunaPronta ? <Aviso tom="alerta">Análise de currículo por IA indisponível (Luna não configurada). Preencha os campos manualmente.</Aviso> : null}
       {erro ? <p className="text-sm text-rose-600">{erro}</p> : null}
-      {extraido ? (
-        <Aviso tom="info">
-          <FileText size={13} className="mr-1 inline" />
-          Dados extraídos por {status?.luna.modelo ?? "IA"}. Revise antes de analisar as vagas.
-          {extraido.nome || extraido.localizacao ? ` Identificação: ${[extraido.nome, extraido.localizacao].filter(Boolean).join(" · ")} (não vai para o JEV).` : ""}
-          {` Tempo total calculado: ${extraido.tempoTotal.texto}.`}
-        </Aviso>
+      {perfil.curriculo ? (
+        <div className="grid gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
+          <div className="flex flex-wrap items-center gap-2">
+            <FileText size={13} />
+            <span>
+              Currículo analisado por {status?.luna.modelo ?? "IA"}
+              {extraido && (extraido.nome || extraido.localizacao) ? ` · ${[extraido.nome, extraido.localizacao].filter(Boolean).join(" · ")} (não vai para o JEV)` : ""}.
+              {" "}Revise os campos abaixo antes de analisar as vagas.
+            </span>
+            <button type="button" className="ml-auto flex items-center gap-1 font-semibold text-cyan-700 hover:underline" onClick={() => setVerCurriculo((valor) => !valor)}>
+              {verCurriculo ? <ChevronUp size={14} /> : <ChevronDown size={14} />} {verCurriculo ? "Ocultar" : "Ver o que vai para o JEV"}
+            </button>
+            <button type="button" className="flex items-center gap-1 font-semibold text-slate-500 hover:text-rose-600" onClick={removerCurriculo}>
+              <X size={14} /> Remover
+            </button>
+          </div>
+          {verCurriculo ? <pre className="max-h-64 overflow-auto whitespace-pre-wrap font-sans text-slate-700">{perfil.curriculo}</pre> : null}
+        </div>
       ) : null}
-      <Field label="Resumo profissional">
-        <Textarea rows={3} placeholder="Cole aqui um resumo existente ou escreva em até três frases." {...campo("resumo")} />
-      </Field>
       <div className="grid gap-4 md:grid-cols-2">
-        <Field label="Escolaridade / formação">
-          <Textarea rows={2} placeholder="Não informado" {...campo("escolaridade")} />
+        <Field label="Escolaridade">
+          <Select value={perfil.escolaridade} onChange={(event) => escolaridade(event.target.value)}>
+            <option value="">Selecione</option>
+            {Object.entries(ESCOLARIDADES).map(([valor, rotulo]) => <option key={valor} value={valor}>{rotulo}</option>)}
+          </Select>
         </Field>
-        <Field label="Experiências (uma por linha)">
-          <Textarea rows={2} placeholder="Cargo — Empresa — tempo" {...campo("experiencias")} />
-        </Field>
-        <Field label="Último cargo">
-          <Input placeholder="Não informado" {...campo("ultimoCargo")} />
-        </Field>
+        {perfil.escolaridade === "cursando_medio" ? (
+          <Field label="Turno em que estuda">
+            <Select value={perfil.turnoEstudo} onChange={(event) => onPerfil({ ...perfil, turnoEstudo: event.target.value as Turno | "" })}>
+              <option value="">Selecione</option>
+              {Object.entries(TURNOS).map(([valor, rotulo]) => <option key={valor} value={valor}>{rotulo}</option>)}
+            </Select>
+          </Field>
+        ) : null}
         <Field label="Tempo total de experiência">
-          <Input placeholder="Não informado" {...campo("tempoExperiencia")} />
+          <Input placeholder="Ex.: 2 anos e 3 meses" value={perfil.tempoExperiencia} onChange={(event) => onPerfil({ ...perfil, tempoExperiencia: event.target.value })} />
         </Field>
         <Field label="Habilidades e conhecimentos">
-          <Input placeholder="Separe por vírgula" {...campo("habilidades")} />
-        </Field>
-        <Field label="Cursos e certificações">
-          <Input placeholder="Não informado" {...campo("cursos")} />
-        </Field>
-        <Field label="Objetivo profissional">
-          <Input placeholder="Não informado" {...campo("objetivo")} />
+          <Input placeholder="Separe por vírgula" value={perfil.habilidades} onChange={(event) => onPerfil({ ...perfil, habilidades: event.target.value })} />
         </Field>
         <Field label="Turno disponível">
-          <Input placeholder="Ex.: manhã, tarde, noite" value={turno} onChange={(event) => onTurno(event.target.value)} />
+          <Select value={perfil.turno} onChange={(event) => onPerfil({ ...perfil, turno: event.target.value as Turno | "" })}>
+            <option value="">Selecione</option>
+            {Object.entries(TURNOS).map(([valor, rotulo]) => <option key={valor} value={valor}>{rotulo}</option>)}
+          </Select>
         </Field>
       </div>
-      <p className="text-xs text-slate-500">Turno, sexo e idade ficam fora do score profissional. O turno aparece ao lado do horário de cada vaga, para a sua decisão.</p>
+      <p className="text-xs text-slate-500">Turnos, sexo e idade ficam fora do score profissional. Os turnos aparecem ao lado do horário de cada vaga, para a sua decisão.</p>
     </div>
   );
 }
@@ -200,7 +219,16 @@ export function AnaliseDaVaga({ avaliacao, analisando }: { avaliacao: AvaliacaoV
           {jev ? (
             <div className="grid gap-1">
               <p className="font-semibold text-navy-900">JEV ({jev.modelo ?? "modelo não informado"})</p>
-              <p>Nível atribuído: <strong>{jev.nivel ?? "não informado"}</strong>{jev.descricaoNivel ? ` — régua: ${jev.descricaoNivel}` : ""}</p>
+              <p>
+                Nível mais provável: <strong>{jev.nivel ?? "não informado"}</strong>
+                {jev.probabilidadeNivel != null ? ` (probabilidade ${jev.probabilidadeNivel.toLocaleString("pt-BR", { maximumFractionDigits: 2 })})` : ""}
+                {jev.descricaoNivel ? ` — régua: ${jev.descricaoNivel}` : ""}
+              </p>
+              {jev.probabilidades ? (
+                <p className="text-slate-500">
+                  Probabilidade por nível: {Object.entries(jev.probabilidades).map(([nivel, p]) => `${nivel}: ${p.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}`).join(" · ")}
+                </p>
+              ) : null}
               {jev.justificativa ? <p>Justificativa do JEV: {jev.justificativa}</p> : <p className="text-slate-500">O JEV não devolve justificativa em texto; abaixo, só a comparação feita pelo DNA Work.</p>}
               {jev.evidencias.length ? <ul className="list-disc pl-4">{jev.evidencias.map((item) => <li key={item}>{item}</li>)}</ul> : null}
               {jev.lacunas.length ? <ul className="list-disc pl-4">{jev.lacunas.map((item) => <li key={item}>{item}</li>)}</ul> : null}

@@ -4,9 +4,9 @@ import JSZip from "jszip";
 import sharp from "sharp";
 import type { Pool } from "pg";
 import { detectarTipo, prepararCurriculo, TAMANHO_MAXIMO_CURRICULO } from "../src/lib/curriculo/arquivo.js";
-import { ateTresFrases, mesesSemSobreposicao, normalizarCurriculo, perfilParaEdicao, perfilSuficiente, textoDoCurriculo } from "../src/lib/curriculo/perfil.js";
+import { ateTresFrases, escolaridadeSugerida, mesesSemSobreposicao, normalizarCurriculo, perfilParaEdicao, perfilSuficiente, textoDoCurriculo } from "../src/lib/curriculo/perfil.js";
 import { CurriculoService, type FetchLike } from "../src/services/curriculo.service.js";
-import { criarTransporteJev, escalaDa, interpretarRespostaJev, montarEstadoJev, PERGUNTA_COMPATIBILIDADE, type RequisicaoJev } from "../src/lib/jev/jev.js";
+import { corpoSystemOne, criarTransporteJev, ErroJev, escalaDa, interpretarRespostaJev, montarEstadoJev, PERGUNTA_COMPATIBILIDADE, type RequisicaoJev } from "../src/lib/jev/jev.js";
 import { explicarCompatibilidade, ORIGEM_EXPLICACAO } from "../src/lib/jev/explicacao.js";
 import { mapComLimite, TriagemMatchingService } from "../src/services/triagem-matching.service.js";
 import { TriagemService } from "../src/services/triagem.service.js";
@@ -139,13 +139,30 @@ test("currículo: resposta fora do formato é recusada", () => {
   assert.throws(() => normalizarCurriculo(null, REFERENCIA));
 });
 
-test("currículo: texto para o JEV só leva dados profissionais", () => {
+test("currículo: perfil da tela vem preenchido e o texto para o JEV só leva dados profissionais", () => {
   const perfil = perfilParaEdicao(normalizarCurriculo({ ...LUNA_OK, idade: 30, sexo: "F" }, REFERENCIA));
-  const texto = textoDoCurriculo(perfil);
-  assert.doesNotMatch(texto, /Maria|São Paulo|\bidade\b|\bsexo\b/i);
-  assert.match(texto, /Atendente — Loja A/);
+  assert.equal(perfil.escolaridade, "medio_completo");
+  assert.equal(perfil.tempoExperiencia, "5 anos e 6 meses");
+  assert.equal(perfil.habilidades, "Atendimento, WhatsApp");
+  assert.equal(perfil.turno, "");
+  const texto = textoDoCurriculo({ ...perfil, turno: "noite", turnoEstudo: "manha" });
+  assert.doesNotMatch(texto, /Maria|São Paulo|\bidade\b|\bsexo\b|noite|manhã|manha/i);
+  assert.match(texto, /^Escolaridade: Ensino médio completo\nTempo total de experiência: 5 anos e 6 meses\nHabilidades e conhecimentos: Atendimento, WhatsApp\n\nCurrículo analisado:\n/);
+  assert.match(texto, /- Atendente — Loja A — 4 anos e 11 meses: Atendimento ao cliente e vendas/);
   assert.equal(perfilSuficiente(perfil), true);
-  assert.equal(perfilSuficiente({ resumo: "curto" }), false);
+  assert.equal(perfilSuficiente({ escolaridade: "medio_completo", tempoExperiencia: "2 anos" }), false);
+  assert.equal(perfilSuficiente({ habilidades: "Excel, caixa" }), true);
+});
+
+test("currículo: escolaridade sugerida só quando o texto é claro", () => {
+  assert.equal(escolaridadeSugerida("Ensino médio completo"), "medio_completo");
+  assert.equal(escolaridadeSugerida("Ensino Médio incompleto"), "medio_incompleto");
+  assert.equal(escolaridadeSugerida("Cursando o 2º ano do ensino médio"), "cursando_medio");
+  assert.equal(escolaridadeSugerida("Superior em Administração (cursando, 3º semestre)"), "cursando_superior");
+  assert.equal(escolaridadeSugerida("Graduação em Pedagogia — concluído"), "superior_completo");
+  assert.equal(escolaridadeSugerida("Superior incompleto"), "");
+  assert.equal(escolaridadeSugerida("Curso técnico"), "");
+  assert.equal(escolaridadeSugerida(null), "");
 });
 
 // ---------- Luna ----------
@@ -170,7 +187,8 @@ test("Luna: envia PDF inline para gpt-6-luna sem guardar e devolve perfil editá
   assert.equal(enviado.store, false);
   assert.match(JSON.stringify(enviado.input), /data:application\/pdf;base64,/);
   assert.equal((enviado.text as { format: { type: string } }).format.type, "json_schema");
-  assert.equal(analise.perfil.ultimoCargo, "Atendente");
+  assert.equal(analise.perfil.escolaridade, "medio_completo");
+  assert.match(analise.perfil.curriculo, /Experiência profissional:/);
   assert.equal(analise.extraido.tempoTotal.meses, 66);
 });
 
@@ -183,7 +201,7 @@ test("Luna: sem suporte a structured output repete com o schema no texto", async
   const analise = await new CurriculoService(configLuna, fetcher, () => REFERENCIA).analisar({ tipo: "texto", texto: "Atendente na Loja A desde 2022" });
   assert.equal(corpos.length, 2);
   assert.equal(corpos[1].text, undefined);
-  assert.equal(analise.perfil.ultimoCargo, "Atendente");
+  assert.match(analise.perfil.curriculo, /Atendente/);
 });
 
 test("Luna: falhas viram erros claros sem conteúdo do currículo", async () => {
@@ -211,42 +229,100 @@ test("Luna: confere a disponibilidade do modelo", async () => {
 
 // ---------- JEV ----------
 
-const RESPOSTA_JEV_REAL = {
-  compatibilidade_profissional: 2.32,
-  compatibilidade_profissional_level: "Moderada: possui algumas experiências ou habilidades transferíveis relevantes.",
-  compatibilidade_profissional_confidence: 0.7,
-  _model: "jev-1.14.0",
-};
+/** Formato da resposta do POST /v1/systemone segundo a OpenAPI oficial (answers por nome da pergunta). */
+const LEGENDA = Object.fromEntries(PERGUNTA_COMPATIBILIDADE.scoreLevels.map((nivel, indice) => [String(indice), nivel]));
+function respostaApi(score: number, probabilidades: number[], extra: Record<string, unknown> = {}) {
+  return {
+    model: "jev-1.14.0",
+    answers: {
+      compatibilidade_profissional: {
+        type: "score", score, confidence: 0.7, legend: LEGENDA,
+        probabilities: Object.fromEntries(probabilidades.map((p, indice) => [String(indice), p])), ...extra,
+      },
+    },
+    usage: { input_tokens: 900, output_tokens: 12 },
+  };
+}
+const RESPOSTA_JEV = respostaApi(2.32, [0.02, 0.12, 0.43, 0.33, 0.1]);
 
-test("JEV: escala real 0–4 e leitura do formato confirmado", () => {
+test("JEV: escala real 0–4 e leitura da resposta oficial", () => {
   assert.deepEqual(escalaDa(PERGUNTA_COMPATIBILIDADE), { min: 0, max: 4 });
-  const avaliacao = interpretarRespostaJev(RESPOSTA_JEV_REAL);
+  const avaliacao = interpretarRespostaJev(RESPOSTA_JEV);
   assert.equal(avaliacao.score, 2.32);
   assert.equal(avaliacao.confianca, 0.7);
   assert.equal(avaliacao.nivel, "Moderada");
+  assert.equal(avaliacao.probabilidadeNivel, 0.43);
   assert.equal(avaliacao.descricaoNivel, "possui algumas experiências ou habilidades transferíveis relevantes.");
   assert.equal(avaliacao.modelo, "jev-1.14.0");
   // A API não devolve motivo: nada é atribuído ao JEV.
   assert.equal(avaliacao.justificativa, null);
   assert.deepEqual(avaliacao.evidencias, []);
-  assert.deepEqual(avaliacao.lacunas, []);
 });
 
 test("JEV: respostas inválidas são descartadas, não corrigidas", () => {
   assert.throws(() => interpretarRespostaJev(null));
   assert.throws(() => interpretarRespostaJev([]));
-  assert.throws(() => interpretarRespostaJev({ compatibilidade_profissional: "abc" }));
-  assert.throws(() => interpretarRespostaJev({ compatibilidade_profissional: 87 }), /fora da escala/);
-  assert.throws(() => interpretarRespostaJev({ compatibilidade_profissional: -1 }));
-  assert.throws(() => interpretarRespostaJev({ ...RESPOSTA_JEV_REAL, compatibilidade_profissional_confidence: 1.4 }));
-  assert.equal(interpretarRespostaJev({ compatibilidade_profissional: "3,5" }).score, 3.5);
-  assert.equal(interpretarRespostaJev({ compatibilidade_profissional: 4 }).confianca, null);
+  assert.throws(() => interpretarRespostaJev({ answers: {} }), /não respondeu/);
+  assert.throws(() => interpretarRespostaJev({ answers: { compatibilidade_profissional: { type: "choice", choice: "x" } } }), /outro tipo/);
+  assert.throws(() => interpretarRespostaJev(respostaApi(Number.NaN, [1, 0, 0, 0, 0])), /score numérico/);
+  assert.throws(() => interpretarRespostaJev(respostaApi(87, [1, 0, 0, 0, 0])), /fora da escala/);
+  assert.throws(() => interpretarRespostaJev(respostaApi(-1, [1, 0, 0, 0, 0])));
+  assert.throws(() => interpretarRespostaJev(respostaApi(2, [0, 0, 1, 0, 0], { confidence: 1.4 })));
+  // Probabilidades malformadas não derrubam o score, mas o nível fica sem valor em vez de inventado.
+  const semNivel = interpretarRespostaJev(respostaApi(3, [0.5, 0.5, 0.5, 0, 0]));
+  assert.equal(semNivel.score, 3);
+  assert.equal(semNivel.nivel, null);
 });
 
-test("JEV: sem credenciais ou sem contrato confirmado não fica pronto", () => {
+test("JEV: corpo do POST segue a OpenAPI (questions por nome, criteria em ordem)", () => {
+  const corpo = corpoSystemOne({ modelo: "jev-latest", estado: "CURRÍCULO…", perguntas: [PERGUNTA_COMPATIBILIDADE] });
+  assert.deepEqual(Object.keys(corpo), ["model", "state", "questions"]);
+  assert.equal(corpo.questions.compatibilidade_profissional.type, "score");
+  assert.deepEqual(corpo.questions.compatibilidade_profissional.criteria, PERGUNTA_COMPATIBILIDADE.scoreLevels);
+});
+
+test("JEV: sem credenciais não fica pronto", () => {
   assert.deepEqual(criarTransporteJev({ JEV_API_URL: "", JEV_API_KEY: "" }), { pronto: false, motivo: "JEV não configurado: defina JEV_API_URL e JEV_API_KEY." });
-  const comChave = criarTransporteJev({ JEV_API_URL: "https://exemplo", JEV_API_KEY: "k" });
-  assert.equal(comChave.pronto, false);
+  assert.equal(criarTransporteJev({ JEV_API_URL: "https://api.typesafe.ai", JEV_API_KEY: "" }).pronto, false);
+});
+
+function transporteCom(fetcher: (url: string, init?: RequestInit) => Promise<Response>, url = "https://api.typesafe.ai") {
+  const estado = criarTransporteJev({ JEV_API_URL: url, JEV_API_KEY: "chave-teste" }, fetcher, [1, 1]);
+  assert.equal(estado.pronto, true);
+  return (estado as { transporte: (r: RequisicaoJev, s: AbortSignal) => Promise<unknown> }).transporte;
+}
+const REQ: RequisicaoJev = { modelo: "jev-latest", estado: "estado", perguntas: [PERGUNTA_COMPATIBILIDADE] };
+
+test("JEV: chama POST /v1/systemone com Bearer e devolve a resposta", async () => {
+  const chamadas: Array<{ url: string; init?: RequestInit }> = [];
+  const transporte = transporteCom(async (url, init) => { chamadas.push({ url, init }); return respostaJson(200, RESPOSTA_JEV); }, "https://api.typesafe.ai/v1/");
+  const bruto = await transporte(REQ, new AbortController().signal);
+  assert.equal(interpretarRespostaJev(bruto).score, 2.32);
+  assert.equal(chamadas[0].url, "https://api.typesafe.ai/v1/systemone");
+  assert.equal(chamadas[0].init?.method, "POST");
+  assert.equal((chamadas[0].init?.headers as Record<string, string>).Authorization, "Bearer chave-teste");
+  assert.equal(JSON.parse(String(chamadas[0].init?.body)).model, "jev-latest");
+});
+
+test("JEV: repete em 429/529 e para em erro definitivo, sem expor a chave", async () => {
+  let n = 0;
+  const comRetry = transporteCom(async () => (++n < 3 ? respostaJson(n === 1 ? 429 : 529, {}) : respostaJson(200, RESPOSTA_JEV)));
+  assert.equal(interpretarRespostaJev(await comRetry(REQ, new AbortController().signal)).score, 2.32);
+  assert.equal(n, 3);
+
+  let m = 0;
+  const sempre429 = transporteCom(async () => { m += 1; return respostaJson(429, {}); });
+  await assert.rejects(sempre429(REQ, new AbortController().signal), (error: unknown) => error instanceof ErroJev && error.status === 429);
+  assert.equal(m, 3);
+
+  for (const [status, trecho] of [[401, /recusou a chave/], [422, /recusou a requisição/], [500, /erro \(500\)/]] as const) {
+    let chamadas = 0;
+    const transporte = transporteCom(async () => { chamadas += 1; return respostaJson(status, { detail: "x" }); });
+    await assert.rejects(transporte(REQ, new AbortController().signal), (error: unknown) => error instanceof ErroJev && trecho.test(error.message) && !error.message.includes("chave-teste"));
+    assert.equal(chamadas, 1);
+  }
+  const rede = transporteCom(async () => { throw new Error("ECONNRESET"); });
+  await assert.rejects(rede(REQ, new AbortController().signal), /Não foi possível falar com o JEV/);
 });
 
 const VAGA_JEV = {
@@ -301,7 +377,7 @@ function vaga(id: string, extra: Linha = {}): Linha {
   };
 }
 
-const PERFIL = { resumo: "Atendente com experiência em vendas e atendimento pelo WhatsApp em loja de varejo.", habilidades: "WhatsApp, vendas" };
+const PERFIL = { escolaridade: "medio_completo" as const, habilidades: "WhatsApp, vendas", curriculo: "Experiência profissional:\n- Atendente — Loja A — 2 anos: atendimento e vendas pelo WhatsApp em loja de varejo." };
 const configMatching = { JEV_MODEL: "jev-latest", JEV_TIMEOUT_MS: 200, JEV_CONCORRENCIA: 2 } as Pick<AppConfig, "JEV_MODEL" | "JEV_TIMEOUT_MS" | "JEV_CONCORRENCIA">;
 
 test("matching: sem JEV configurado nenhuma vaga é descartada e nenhum score é inventado", async () => {
@@ -328,11 +404,11 @@ test("matching: respostas válidas, inválidas, falhas, timeout, vaga sumida e d
       pico = Math.max(pico, simultaneas);
       try {
         await new Promise((resolver) => setTimeout(resolver, 10));
-        if (requisicao.estado.includes("Cargo: Cargo ok")) return RESPOSTA_JEV_REAL;
-        if (requisicao.estado.includes("Cargo: Cargo invalida")) return { compatibilidade_profissional: 99 };
-        if (requisicao.estado.includes("Cargo: Cargo erro")) throw new Error("500");
+        if (requisicao.estado.includes("Cargo: Cargo ok")) return RESPOSTA_JEV;
+        if (requisicao.estado.includes("Cargo: Cargo invalida")) return respostaApi(99, [1, 0, 0, 0, 0]);
+        if (requisicao.estado.includes("Cargo: Cargo erro")) throw new ErroJev("Limite de uso do JEV atingido. Tente em instantes.", 429, true);
         await new Promise((resolver) => setTimeout(resolver, 1_000));
-        return RESPOSTA_JEV_REAL;
+        return RESPOSTA_JEV;
       } finally {
         simultaneas -= 1;
       }
@@ -343,6 +419,7 @@ test("matching: respostas válidas, inválidas, falhas, timeout, vaga sumida e d
     ["ok", "avaliada"], ["invalida", "resposta_invalida"], ["erro", "falhou"], ["lenta", "falhou"], ["sumiu", "nao_encontrada"], ["vazia", "dados_insuficientes"],
   ]);
   assert.equal(resultado.avaliacoes[0].jev?.score, 2.32);
+  assert.equal(resultado.avaliacoes[2].motivo, "Limite de uso do JEV atingido. Tente em instantes.");
   assert.equal(resultado.avaliacoes[3].motivo, "O JEV não respondeu a tempo.");
   assert.equal(pedidos.length, 4, "duplicada, sumida e vaga sem dados não chamam o JEV");
   assert.ok(pico <= 2, `concorrência passou do limite: ${pico}`);
@@ -353,8 +430,8 @@ test("matching: respostas válidas, inválidas, falhas, timeout, vaga sumida e d
 test("matching: currículo insuficiente não chama o JEV; idade e sexo nunca entram no estado", async () => {
   const { pool } = poolFalso([vaga("a", { escolaridade: "31" })]);
   const pedidos: RequisicaoJev[] = [];
-  const service = new TriagemMatchingService(pool, configMatching, { pronto: true, transporte: async (requisicao) => { pedidos.push(requisicao); return RESPOSTA_JEV_REAL; } });
-  const pouco = await service.avaliar({ perfil: { resumo: "oi" }, vagaIds: ["a"] });
+  const service = new TriagemMatchingService(pool, configMatching, { pronto: true, transporte: async (requisicao) => { pedidos.push(requisicao); return RESPOSTA_JEV; } });
+  const pouco = await service.avaliar({ perfil: { escolaridade: "medio_completo", tempoExperiencia: "1 ano" }, vagaIds: ["a"] });
   assert.equal(pouco.avaliacoes[0].status, "dados_insuficientes");
   assert.equal(pedidos.length, 0);
   const perfilComExtras = { ...PERFIL, idade: "30", sexo: "F", nome: "Maria" } as unknown as typeof PERFIL;

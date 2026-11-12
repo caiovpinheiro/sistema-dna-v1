@@ -808,21 +808,22 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
     const preparado = request.body.arquivo ? await prepararCurriculo(request.body.arquivo) : { tipo: "texto" as const, texto: request.body.texto! };
     return ok(await services.curriculo.analisar(preparado));
   });
-  const campoPerfil = z.string().max(4000).optional().default("");
+  const turnoSchema = z.enum(["manha", "tarde", "noite"]).or(z.literal("")).optional().default("");
   api.post("/api/v1/triagem/compatibilidade", {
     config: { rateLimit: { max: 30, timeWindow: "1 minute" } },
     schema: {
       tags: ["triagem"],
       body: z.object({
         perfil: z.object({
-          resumo: campoPerfil,
-          escolaridade: campoPerfil,
-          ultimoCargo: campoPerfil,
-          experiencias: campoPerfil,
-          tempoExperiencia: campoPerfil,
-          habilidades: campoPerfil,
-          cursos: campoPerfil,
-          objetivo: campoPerfil,
+          escolaridade: z.enum(["medio_incompleto", "medio_completo", "cursando_medio", "cursando_superior", "superior_completo"]).or(z.literal("")).optional().default(""),
+          turnoEstudo: turnoSchema,
+          tempoExperiencia: z.string().trim().max(200).optional().default(""),
+          habilidades: z.string().trim().max(2000).optional().default(""),
+          turno: turnoSchema,
+          curriculo: z.string().trim().max(12_000).optional().default(""),
+        }).refine((perfil) => perfil.escolaridade !== "cursando_medio" || perfil.turnoEstudo !== "", {
+          message: "Informe o turno em que a pessoa estuda.",
+          path: ["turnoEstudo"],
         }),
         vagaIds: z.array(z.string().trim().min(1).max(64)).min(1).max(30),
       }),

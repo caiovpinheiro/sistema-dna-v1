@@ -11,8 +11,9 @@ import {
   mesclarAvaliacoes,
   ordemDeExibicao,
   organizarVagas,
-  perfilPreenchido,
+  problemaDoPerfil,
   proximoLote,
+  rotuloTurnos,
   selecaoValida,
   selecionadasNaOrdem,
   textoParaCandidato,
@@ -91,7 +92,7 @@ function CartaoVaga({ vaga, marcada, onAlternar, turno, children }: { vaga: Vaga
         </div>
         <p className="text-sm text-slate-600">📍 {vaga.location || "Local não informado"}</p>
         {vaga.schedules.map((horario) => <p key={horario} className="whitespace-pre-line text-sm text-slate-600">🕒 {horario}</p>)}
-        {turno ? <p className="text-xs text-slate-500">Turno informado pela pessoa: {turno}</p> : null}
+        {turno ? <p className="text-xs text-slate-500">{turno}</p> : null}
         {vaga.homeOffice ? <p className="text-sm text-slate-600">🏠 Home office</p> : null}
         <p className="text-sm text-slate-600">💰 {vaga.salaryLabel}{vaga.hasBenefits ? " + benefícios" : ""}</p>
         {children}
@@ -123,7 +124,6 @@ export function TriagemPage() {
   const [copiado, setCopiado] = useState(false);
   const [modo, setModo] = useState<Modo>("rapida");
   const [perfil, setPerfil] = useState<PerfilProfissional>(PERFIL_VAZIO);
-  const [turno, setTurno] = useState("");
   const [avaliacoes, setAvaliacoes] = useState<Avaliacoes>({});
   const [emAnalise, setEmAnalise] = useState<string[]>([]);
   const [erroAnalise, setErroAnalise] = useState("");
@@ -157,7 +157,7 @@ export function TriagemPage() {
       setAvaliacoes({});
       setErroAnalise("");
       // Busca inteligente: avalia o primeiro lote logo depois da busca geográfica. A busca rápida nunca chama IA nem JEV.
-      if (dados.inteligente && perfilPreenchido(perfil) && resposta.data.jobs.length) {
+      if (dados.inteligente && !problemaDoPerfil(perfil) && resposta.data.jobs.length) {
         compatibilidade.mutate(proximoLote(resposta.data.jobs, {}, lote));
       }
     },
@@ -188,7 +188,8 @@ export function TriagemPage() {
     if (!tipos.length) return setErro("Escolha CLT, Estágio ou os dois.");
     const idadeNumero = idade ? Number(idade) : undefined;
     if (idadeNumero != null && (!Number.isInteger(idadeNumero) || idadeNumero < 1 || idadeNumero > 120)) return setErro("Informe uma idade entre 1 e 120.");
-    if (inteligente && !perfilPreenchido(perfil)) return setErro("Na busca inteligente, preencha o resumo, as experiências ou as habilidades (pelo menos 30 caracteres), ou volte para a busca rápida.");
+    const problema = inteligente ? problemaDoPerfil(perfil) : null;
+    if (problema) return setErro(problema);
     setErro("");
     busca.mutate({
       cep: digitos,
@@ -213,7 +214,7 @@ export function TriagemPage() {
   }
 
   const cartao = (vaga: Vaga & { avaliacao?: AvaliacaoVaga | null }) => (
-    <CartaoVaga key={vaga.id} vaga={vaga} marcada={marcadasValidas.includes(vaga.id)} onAlternar={() => alternarVaga(vaga.id)} turno={analisouAlgo ? turno.trim() : undefined}>
+    <CartaoVaga key={vaga.id} vaga={vaga} marcada={marcadasValidas.includes(vaga.id)} onAlternar={() => alternarVaga(vaga.id)} turno={analisouAlgo ? rotuloTurnos(perfil) ?? undefined : undefined}>
       {analisouAlgo ? <AnaliseDaVaga avaliacao={vaga.avaliacao ?? null} analisando={emAnalise.includes(vaga.id)} /> : null}
     </CartaoVaga>
   );
@@ -279,7 +280,7 @@ export function TriagemPage() {
                     Score JEV indisponível: {statusIa.jev.motivo} As vagas aparecem sem score, com a comparação de termos do DNA Work.
                   </p>
                 ) : null}
-                <PerfilCandidato perfil={perfil} onPerfil={setPerfil} turno={turno} onTurno={setTurno} status={statusIa} />
+                <PerfilCandidato perfil={perfil} onPerfil={setPerfil} status={statusIa} />
               </>
             ) : null}
           </div>
@@ -305,7 +306,7 @@ export function TriagemPage() {
             {!vagas.length ? <Empty title="Não há vagas próximas" text="Nenhuma vaga dentro do raio escolhido. Tente um raio maior ou outro tipo." /> : !analisouAlgo ? (
               <>
                 {inteligente ? (
-                  <Button type="button" variant="ghost" className="w-fit" disabled={!perfilPreenchido(perfil) || compatibilidade.isPending} onClick={analisarMais}>
+                  <Button type="button" variant="ghost" className="w-fit" disabled={problemaDoPerfil(perfil) != null || compatibilidade.isPending} onClick={analisarMais}>
                     <Sparkles size={15} /> Analisar compatibilidade destas vagas
                   </Button>
                 ) : null}

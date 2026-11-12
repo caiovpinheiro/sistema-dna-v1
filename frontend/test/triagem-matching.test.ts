@@ -7,7 +7,9 @@ import {
   organizarVagas,
   perfilPreenchido,
   PERFIL_VAZIO,
+  problemaDoPerfil,
   proximoLote,
+  rotuloTurnos,
   rotuloConfianca,
   rotuloScore,
   selecaoValida,
@@ -24,7 +26,8 @@ const vaga = (id: string, distanceKm: number, extra: Partial<Vaga> = {}): Vaga =
 });
 
 const jev = (score: number, escala = { min: 0, max: 4 }): AvaliacaoJev => ({
-  score, escala, confianca: 0.7, nivel: "Moderada", descricaoNivel: null, modelo: "jev-1.14.0", justificativa: null, evidencias: [], lacunas: [],
+  score, escala, confianca: 0.7, nivel: "Moderada", descricaoNivel: null, probabilidadeNivel: null, probabilidades: null, modelo: "jev-1.14.0",
+  justificativa: null, evidencias: [], lacunas: [],
 });
 
 const avaliada = (id: string, score: number): AvaliacaoVaga => ({ id, status: "avaliada", motivo: null, jev: jev(score), explicacao: null });
@@ -84,9 +87,20 @@ test("score aparece na escala do JEV, sem virar porcentagem", () => {
   assert.equal(rotuloConfianca(null), null);
 });
 
-test("perfil precisa de conteúdo profissional para a busca inteligente", () => {
+test("perfil: precisa de currículo analisado ou habilidades; cursando médio exige turno de estudo", () => {
   assert.equal(perfilPreenchido(PERFIL_VAZIO), false);
-  assert.equal(perfilPreenchido({ ...PERFIL_VAZIO, resumo: "Atendente com três anos de experiência em varejo." }), true);
+  assert.equal(perfilPreenchido({ ...PERFIL_VAZIO, escolaridade: "medio_completo", tempoExperiencia: "2 anos" }), false);
+  assert.equal(perfilPreenchido({ ...PERFIL_VAZIO, habilidades: "Excel" }), true);
+  assert.equal(perfilPreenchido({ ...PERFIL_VAZIO, curriculo: "Experiência profissional:\n- Atendente — Loja A — 2 anos" }), true);
+  assert.equal(problemaDoPerfil({ ...PERFIL_VAZIO, habilidades: "Excel", escolaridade: "cursando_medio" }), "Informe o turno em que a pessoa estuda.");
+  assert.equal(problemaDoPerfil({ ...PERFIL_VAZIO, habilidades: "Excel", escolaridade: "cursando_medio", turnoEstudo: "manha" }), null);
+  assert.match(problemaDoPerfil(PERFIL_VAZIO) ?? "", /envie o currículo ou informe as habilidades/);
+});
+
+test("turnos aparecem na vaga só como informação", () => {
+  assert.equal(rotuloTurnos(PERFIL_VAZIO), null);
+  assert.equal(rotuloTurnos({ ...PERFIL_VAZIO, turno: "tarde", escolaridade: "cursando_medio", turnoEstudo: "manha" }), "Turno da pessoa — disponível: tarde · estuda: manhã");
+  assert.equal(rotuloTurnos({ ...PERFIL_VAZIO, turno: "noite", escolaridade: "medio_completo", turnoEstudo: "manha" }), "Turno da pessoa — disponível: noite");
 });
 
 test("mensagem ao candidato é a mesma de antes", () => {

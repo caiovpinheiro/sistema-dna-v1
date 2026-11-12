@@ -16,19 +16,31 @@ export type Vaga = {
   distanceKm: number;
 };
 
+export const ESCOLARIDADES = {
+  medio_incompleto: "Ensino médio incompleto",
+  medio_completo: "Ensino médio completo",
+  cursando_medio: "Cursando ensino médio",
+  cursando_superior: "Cursando ensino superior",
+  superior_completo: "Ensino superior completo",
+} as const;
+export type Escolaridade = keyof typeof ESCOLARIDADES;
+
+export const TURNOS = { manha: "Manhã", tarde: "Tarde", noite: "Noite" } as const;
+export type Turno = keyof typeof TURNOS;
+
 export type PerfilProfissional = {
-  resumo: string;
-  escolaridade: string;
-  ultimoCargo: string;
-  experiencias: string;
+  escolaridade: Escolaridade | "";
+  /** Só quando a escolaridade é "cursando ensino médio". */
+  turnoEstudo: Turno | "";
   tempoExperiencia: string;
   habilidades: string;
-  cursos: string;
-  objetivo: string;
+  turno: Turno | "";
+  /** Texto do currículo analisado pela Luna. Vai para o JEV; não é editado na tela. */
+  curriculo: string;
 };
 
 export const PERFIL_VAZIO: PerfilProfissional = {
-  resumo: "", escolaridade: "", ultimoCargo: "", experiencias: "", tempoExperiencia: "", habilidades: "", cursos: "", objetivo: "",
+  escolaridade: "", turnoEstudo: "", tempoExperiencia: "", habilidades: "", turno: "", curriculo: "",
 };
 
 export type Escala = { min: number; max: number };
@@ -39,6 +51,8 @@ export type AvaliacaoJev = {
   confianca: number | null;
   nivel: string | null;
   descricaoNivel: string | null;
+  probabilidadeNivel: number | null;
+  probabilidades: Record<string, number> | null;
   modelo: string | null;
   justificativa: string | null;
   evidencias: string[];
@@ -137,8 +151,24 @@ export function selecionadasNaOrdem<T extends Vaga>(ordem: T[], marcadas: string
   return ordem.filter((vaga) => conjunto.has(vaga.id));
 }
 
+/** Mesma regra do backend: currículo analisado ou, sem ele, habilidades informadas. */
 export function perfilPreenchido(perfil: PerfilProfissional): boolean {
-  return [perfil.resumo, perfil.experiencias, perfil.habilidades, perfil.ultimoCargo, perfil.cursos].join(" ").replace(/\s+/g, " ").trim().length >= 30;
+  return perfil.curriculo.trim().length >= 30 || perfil.habilidades.trim().length >= 3;
+}
+
+/** Problema que impede a busca inteligente, ou null. */
+export function problemaDoPerfil(perfil: PerfilProfissional): string | null {
+  if (perfil.escolaridade === "cursando_medio" && !perfil.turnoEstudo) return "Informe o turno em que a pessoa estuda.";
+  if (!perfilPreenchido(perfil)) return "Na busca inteligente, envie o currículo ou informe as habilidades, ou volte para a busca rápida.";
+  return null;
+}
+
+/** Turnos da pessoa para mostrar ao lado do horário da vaga. Não entram no score. */
+export function rotuloTurnos(perfil: PerfilProfissional): string | null {
+  const partes = [];
+  if (perfil.turno) partes.push(`disponível: ${TURNOS[perfil.turno].toLowerCase()}`);
+  if (perfil.escolaridade === "cursando_medio" && perfil.turnoEstudo) partes.push(`estuda: ${TURNOS[perfil.turnoEstudo].toLowerCase()}`);
+  return partes.length ? `Turno da pessoa — ${partes.join(" · ")}` : null;
 }
 
 const decimal = (valor: number, casas = 2) => valor.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: casas });

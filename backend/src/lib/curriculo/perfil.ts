@@ -116,16 +116,31 @@ export type CurriculoExtraido = {
   resumo: string | null;
 };
 
-/** O que o operador revisa na tela e o que vai para o JEV. Só dados profissionais. */
+export const ESCOLARIDADES = {
+  medio_incompleto: "Ensino médio incompleto",
+  medio_completo: "Ensino médio completo",
+  cursando_medio: "Cursando ensino médio",
+  cursando_superior: "Cursando ensino superior",
+  superior_completo: "Ensino superior completo",
+} as const;
+export type Escolaridade = keyof typeof ESCOLARIDADES;
+
+export const TURNOS = { manha: "Manhã", tarde: "Tarde", noite: "Noite" } as const;
+export type Turno = keyof typeof TURNOS;
+
+/**
+ * O que o operador revisa na tela. Escolaridade, tempo total, habilidades e o texto do currículo analisado vão
+ * para o JEV; os turnos (disponível e de estudo) são dados operacionais e ficam fora do score.
+ */
 export type PerfilProfissional = {
-  resumo: string;
-  escolaridade: string;
-  ultimoCargo: string;
-  experiencias: string;
+  escolaridade: Escolaridade | "";
+  /** Obrigatório quando a escolaridade é "cursando ensino médio". */
+  turnoEstudo: Turno | "";
   tempoExperiencia: string;
   habilidades: string;
-  cursos: string;
-  objetivo: string;
+  turno: Turno | "";
+  /** Texto do currículo analisado pela Luna (experiências, formação, cursos). Só leitura na tela. */
+  curriculo: string;
 };
 
 const NAO_INFORMADO = /^(n[ãa]o\s+informad[oa]s?|n\/?a|null|undefined|-+|—)$/i;
@@ -288,48 +303,87 @@ function linhaDaExperiencia(item: ExperienciaExtraida): string {
   return item.atividades ? `${linha}: ${item.atividades}` : linha;
 }
 
-/** Campos editáveis a partir do que foi extraído. */
+const sem = (texto: string | null | undefined) => semAcento(String(texto ?? ""));
+
+function semAcento(texto: string) {
+  return texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
+/**
+ * Sugere a opção de escolaridade a partir do texto extraído. Só sugere quando o texto é inequívoco;
+ * "superior incompleto" (pode ser trancado) e textos vagos ficam em branco para o operador escolher.
+ */
+export function escolaridadeSugerida(texto: string | null): Escolaridade | "" {
+  const t = sem(texto);
+  if (!t) return "";
+  const cursando = /cursando|em andamento|andamento|atualmente|previs[aã]o|\d+[ºo°]?\s*(ano|semestre|periodo)/.test(t);
+  const superior = /superior|gradua|bacharel|licenciatura|tecnologo|faculdade|universidade/.test(t);
+  const medio = /medio|2[ºo°]?\s*grau|colegial/.test(t);
+  if (superior) {
+    if (/incomplet|trancad/.test(t)) return "";
+    if (cursando) return "cursando_superior";
+    if (/complet|conclu|formad/.test(t)) return "superior_completo";
+    return "";
+  }
+  if (medio) {
+    if (/incomplet/.test(t)) return "medio_incompleto";
+    if (cursando) return "cursando_medio";
+    if (/complet|conclu/.test(t)) return "medio_completo";
+  }
+  return "";
+}
+
+/** Texto do currículo analisado que vai para o JEV, como o resumo_cv do workflow. Sem nome nem localização. */
+export function textoDoCurriculoAnalisado(extraido: CurriculoExtraido): string {
+  const formacao = [extraido.escolaridade, ...extraido.formacoes.map((item) => [item.curso, item.instituicao, item.situacao, item.periodo].filter(Boolean).join(" — "))]
+    .filter((item): item is string => Boolean(item));
+  const blocos: Array<[string, string]> = [
+    ["Resumo", extraido.resumo ?? ""],
+    ["Formação", [...new Set(formacao)].join("\n")],
+    ["Último cargo", extraido.ultimoCargo ?? ""],
+    ["Experiência profissional", extraido.experiencias.map((item) => `- ${linhaDaExperiencia(item)}`).join("\n")],
+    ["Tempo total de experiência", extraido.tempoTotal.texto],
+    ["Habilidades", extraido.habilidades.join(", ")],
+    ["Cursos/Certificações", extraido.cursos.join(", ")],
+    ["Objetivo profissional", extraido.objetivo ?? ""],
+  ];
+  return blocos.filter(([, valor]) => valor.trim()).map(([rotulo, valor]) => `${rotulo}:\n${valor}`).join("\n\n");
+}
+
+/** Campos da tela preenchidos a partir do que a Luna extraiu. Turnos ficam para o operador. */
 export function perfilParaEdicao(extraido: CurriculoExtraido): PerfilProfissional {
-  const formacao = extraido.formacoes
-    .map((item) => [item.curso, item.instituicao, item.situacao].filter(Boolean).join(" — "))
-    .filter(Boolean);
   return {
-    resumo: extraido.resumo ?? "",
-    escolaridade: [extraido.escolaridade, ...formacao.filter((item) => item !== extraido.escolaridade)].filter(Boolean).join("\n"),
-    ultimoCargo: extraido.ultimoCargo ?? "",
-    experiencias: extraido.experiencias.map(linhaDaExperiencia).join("\n"),
+    escolaridade: escolaridadeSugerida(extraido.escolaridade ?? extraido.formacoes.map((item) => [item.curso, item.situacao].join(" ")).join(" ")),
+    turnoEstudo: "",
     tempoExperiencia: extraido.tempoTotal.meses == null ? "" : extraido.tempoTotal.texto,
     habilidades: extraido.habilidades.join(", "),
-    cursos: extraido.cursos.join(", "),
-    objetivo: extraido.objetivo ?? "",
+    turno: "",
+    curriculo: textoDoCurriculoAnalisado(extraido),
   };
 }
 
-/** Texto do currículo enviado ao JEV. Só campos profissionais preenchidos; nada pessoal. */
+/** Texto do currículo enviado ao JEV: escolaridade, tempo total, habilidades e o currículo analisado. Turnos ficam fora. */
 export function textoDoCurriculo(perfil: Partial<PerfilProfissional>): string {
+  const escolaridade = perfil.escolaridade ? ESCOLARIDADES[perfil.escolaridade] : "";
   const campos: Array<[string, string | undefined]> = [
-    ["Resumo profissional", perfil.resumo],
-    ["Formação/escolaridade", perfil.escolaridade],
-    ["Último cargo", perfil.ultimoCargo],
-    ["Experiências", perfil.experiencias],
+    ["Escolaridade", escolaridade],
     ["Tempo total de experiência", perfil.tempoExperiencia],
     ["Habilidades e conhecimentos", perfil.habilidades],
-    ["Cursos e certificações", perfil.cursos],
-    ["Objetivo profissional", perfil.objetivo],
   ];
-  return campos
+  const linhas = campos
     .map(([rotulo, valor]) => [rotulo, String(valor ?? "").trim()] as const)
     .filter(([, valor]) => valor)
-    .map(([rotulo, valor]) => `${rotulo}: ${valor}`)
-    .join("\n");
+    .map(([rotulo, valor]) => `${rotulo}: ${valor}`);
+  const curriculo = String(perfil.curriculo ?? "").trim();
+  if (curriculo) linhas.push("", "Currículo analisado:", curriculo);
+  return linhas.join("\n");
 }
 
 /** Com menos que isso não há o que comparar com a vaga. */
 const MINIMO_CURRICULO = 30;
 
+/** Precisa do currículo analisado ou, sem ele, das habilidades informadas à mão. */
 export function perfilSuficiente(perfil: Partial<PerfilProfissional>): boolean {
-  const essencial = [perfil.resumo, perfil.experiencias, perfil.habilidades, perfil.ultimoCargo, perfil.cursos]
-    .map((valor) => String(valor ?? "").trim())
-    .join(" ");
-  return essencial.replace(/\s+/g, " ").trim().length >= MINIMO_CURRICULO;
+  if (String(perfil.curriculo ?? "").trim().length >= MINIMO_CURRICULO) return true;
+  return String(perfil.habilidades ?? "").trim().length >= 3;
 }

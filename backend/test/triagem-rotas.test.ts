@@ -96,13 +96,23 @@ test("compatibilidade: sem JEV devolve vagas como indisponíveis, sem score", as
     method: "POST",
     url: "/api/v1/triagem/compatibilidade",
     headers: { cookie: admin() },
-    payload: { perfil: { resumo: "Atendente com três anos de atendimento ao cliente em loja." }, vagaIds: ["v1"] },
+    payload: { perfil: { escolaridade: "medio_completo", turno: "tarde", curriculo: "Experiência profissional:\n- Atendente — Loja A — 3 anos: atendimento ao cliente." }, vagaIds: ["v1"] },
   });
   assert.equal(resposta.statusCode, 200);
   const avaliacao = resposta.json().data.avaliacoes[0];
   assert.equal(avaliacao.status, "indisponivel");
   assert.equal(avaliacao.jev, null);
   assert.equal(avaliacao.explicacao.origem, "dna_work_comparacao_textual");
+  const semTurnoDeEstudo = await app.inject({
+    method: "POST",
+    url: "/api/v1/triagem/compatibilidade",
+    headers: { cookie: admin() },
+    payload: { perfil: { escolaridade: "cursando_medio", habilidades: "Excel" }, vagaIds: ["v1"] },
+  });
+  assert.equal(semTurnoDeEstudo.statusCode, 422);
+  assert.match(semTurnoDeEstudo.json().error.message, /turno em que a pessoa estuda/);
+  const escolaridadeInvalida = await app.inject({ method: "POST", url: "/api/v1/triagem/compatibilidade", headers: { cookie: admin() }, payload: { perfil: { escolaridade: "doutorado", habilidades: "Excel" }, vagaIds: ["v1"] } });
+  assert.equal(escolaridadeInvalida.statusCode, 422);
   const semVagas = await app.inject({ method: "POST", url: "/api/v1/triagem/compatibilidade", headers: { cookie: admin() }, payload: { perfil: {}, vagaIds: [] } });
   assert.equal(semVagas.statusCode, 422);
 });
