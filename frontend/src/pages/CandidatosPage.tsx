@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Briefcase, ChevronDown, ChevronRight, GraduationCap, Mail, MapPin, Phone, Plus, Search } from "lucide-react";
+import { Briefcase, ChevronDown, ChevronRight, GraduationCap, Loader2, Mail, MapPin, Phone, Plus, Search } from "lucide-react";
 import type { FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { CabecalhoPagina, CampoFiltro, ResumoResultados } from "@/components/pagina";
@@ -110,7 +110,9 @@ export function CandidatosPage() {
       const value = String(data.get(key) ?? "").trim();
       if (value) next.set(key, value);
     }
-    setParams(next);
+    // Mesma busca de novo: recarrega a lista (senão o clique não faria nada).
+    if (next.toString() === params.toString()) void result.refetch();
+    else setParams(next);
   }
   function irPara(paginaDestino: number) {
     const next = new URLSearchParams(params);
@@ -146,7 +148,7 @@ export function CandidatosPage() {
             <CampoFiltro rotulo="Telefone">
               <Input name="telefone" aria-label="Telefone" inputMode="tel" placeholder="DDD + número" defaultValue={params.get("telefone") ?? ""} />
             </CampoFiltro>
-            <Button type="submit" className="h-10 sm:col-span-2 lg:col-span-1"><Search size={16} /> Pesquisar</Button>
+            <Button type="submit" className="h-10 sm:col-span-2 lg:col-span-1">{result.isFetching ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />} {result.isFetching ? "Pesquisando…" : "Pesquisar"}</Button>
           </div>
           <details open={extrasAtivos > 0} className="group">
             <summary className="flex w-fit cursor-pointer list-none items-center gap-1.5 rounded-lg px-1 py-1 text-sm font-semibold text-cyan-700 [&::-webkit-details-marker]:hidden">

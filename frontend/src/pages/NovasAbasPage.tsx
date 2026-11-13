@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, ExternalLink, Pencil, Plus, Save, Search, Trash2 } from "lucide-react";
+import { Check, ExternalLink, Loader2, Pencil, Plus, Save, Search, Trash2 } from "lucide-react";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Paginacao } from "@/components/paginacao";
@@ -34,6 +34,12 @@ function temFiltro(busca: Record<string, string>) {
 }
 
 /** Título de seção dos formulários e fichas, com uma frase do que vai nela. */
+/** Mesma busca na página 1: recarrega; senão aplica os filtros novos. Assim todo clique em Pesquisar tem efeito. */
+function repetirOuBuscar(novo: Record<string, string>, atual: Record<string, string>, pagina: number, recarregar: () => void, aplicar: (novo: Record<string, string>) => void) {
+  if (pagina === 1 && JSON.stringify(novo) === JSON.stringify(atual)) recarregar();
+  else aplicar(novo);
+}
+
 function Secao({ titulo, texto, children }: { titulo: string; texto?: string; children: ReactNode }) {
   return (
     <Card className="grid gap-4 md:p-5">
@@ -132,7 +138,7 @@ export function DocumentosPendentesPage() {
         <form
           key={versao}
           className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_minmax(0,1.6fr)_minmax(0,1.3fr)_9.5rem_9.5rem_auto] xl:items-end"
-          onSubmit={(event) => { event.preventDefault(); setBusca(lerFiltros(event, ["modalidade", "empresa", "documento", "candidato", "de", "ate"])); setPagina(1); }}
+          onSubmit={(event) => { event.preventDefault(); repetirOuBuscar(lerFiltros(event, ["modalidade", "empresa", "documento", "candidato", "de", "ate"]), busca, pagina, () => void result.refetch(), (novo) => { setBusca(novo); setPagina(1); }); }}
         >
           <CampoFiltro rotulo="Modalidade da vaga">
             <Select name="modalidade" aria-label="Modalidade da vaga" defaultValue="Todos">
@@ -160,7 +166,7 @@ export function DocumentosPendentesPage() {
           <CampoFiltro rotulo="Vencimento até">
             <Input name="ate" aria-label="Vencimento até" type="date" />
           </CampoFiltro>
-          <Button type="submit" className="h-10 sm:col-span-2 lg:col-span-1"><Search size={16} /> Pesquisar</Button>
+          <Button type="submit" className="h-10 sm:col-span-2 lg:col-span-1">{result.isFetching ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />} {result.isFetching ? "Pesquisando…" : "Pesquisar"}</Button>
         </form>
       </Card>
       <ResumoResultados total={result.isLoading ? null : total} singular="documento pendente" plural="documentos pendentes" filtrando={filtrando} carregando={result.isLoading} onLimpar={limpar} />
@@ -363,7 +369,8 @@ export function ConsultarModelosPage() {
     if (cargo.trim()) next.set("cargo", cargo.trim());
     const tipo = form.get("tipo");
     if (typeof tipo === "string" && tipo && tipo !== "todos") next.set("tipo", tipo);
-    setParams(next);
+    if (next.toString() === params.toString()) void result.refetch();
+    else setParams(next);
   }
   function confirmarApagar(item: ModeloConsulta) {
     if (window.confirm(`Apagar o modelo ${item.cargo} (${item.tipo_vaga})? As vagas já abertas não mudam.`)) apagar.mutate(item.vaga_id);
@@ -394,7 +401,7 @@ export function ConsultarModelosPage() {
               <option value="estagio">Estágio</option>
             </Select>
           </CampoFiltro>
-          <Button type="submit" className="h-10"><Search size={16} /> Pesquisar</Button>
+          <Button type="submit" className="h-10">{result.isFetching ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />} {result.isFetching ? "Pesquisando…" : "Pesquisar"}</Button>
         </form>
       </Card>
       <ResumoResultados total={result.isLoading ? null : linhas.length} singular="modelo" plural="modelos" filtrando={filtrando} carregando={result.isLoading} onLimpar={() => setParams(new URLSearchParams())} />
@@ -588,7 +595,7 @@ export function ConsultarInstituicoesPage() {
         <form
           key={versao}
           className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,2.2fr)_minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1.2fr)_5rem_auto] lg:items-end"
-          onSubmit={(event) => { event.preventDefault(); setBusca(lerFiltros(event, ["q", "ensino", "conveniada", "cidade", "uf"])); setPagina(1); }}
+          onSubmit={(event) => { event.preventDefault(); repetirOuBuscar(lerFiltros(event, ["q", "ensino", "conveniada", "cidade", "uf"]), busca, pagina, () => void result.refetch(), (novo) => { setBusca(novo); setPagina(1); }); }}
         >
           <CampoFiltro rotulo="Buscar" className="sm:col-span-2 lg:col-span-1">
             <BuscaComIcone>
@@ -617,7 +624,7 @@ export function ConsultarInstituicoesPage() {
           <CampoFiltro rotulo="UF">
             <Input name="uf" aria-label="UF" placeholder="SP" maxLength={2} className="uppercase" />
           </CampoFiltro>
-          <Button type="submit" className="h-10 sm:col-span-2 lg:col-span-1"><Search size={16} /> Pesquisar</Button>
+          <Button type="submit" className="h-10 sm:col-span-2 lg:col-span-1">{result.isFetching ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />} {result.isFetching ? "Pesquisando…" : "Pesquisar"}</Button>
         </form>
       </Card>
       <ResumoResultados total={result.isLoading ? null : total} singular="instituição" plural="instituições" filtrando={filtrando} carregando={result.isLoading} onLimpar={limpar} />

@@ -1,6 +1,6 @@
 # Agente — Financeiro
 
-> Última revisão: 2026-11-13 (commit "Corrige faturamento Todas, nomes com &amp;, rescisão pela ficha e cadastro de instituição")
+> Última revisão: 2026-11-13 (commit "Botões com retorno de clique e Pesquisar sempre recarrega")
 
 ## Para que serve
 
@@ -101,6 +101,7 @@ Serviços externos:
 
 ## Regras e comportamentos importantes
 
+- **Pesquisar sempre tem efeito:** com os mesmos filtros, recarrega a lista (`refetch`, ou a chave `rodada` no Financeiro); o botão mostra "Pesquisando…" com ícone girando enquanto carrega. Todo botão do sistema afunda e muda o tom ao ser pressionado (`index.css`, `.app-canvas button:active`).
 Permissões (`backend/src/lib/paginas.ts:28-56`; o hook fica em `app.ts:163`). O administrador passa em tudo. Os outros usuários precisam do id da página:
 - `/api/v1/asaas/regua*` precisa de `regua`. O resto de `/api/v1/asaas*` precisa de `contas` ou `faturamento`.
 - `GET /api/v1/faturamento/relatorio` aceita `faturamento` ou `contas`. Já `POST /api/v1/faturamento/relatorios` não casa com esse prefixo (o código compara com o prefixo seguido de `/`), cai em `/api/v1/faturamento` e exige `faturamento`.

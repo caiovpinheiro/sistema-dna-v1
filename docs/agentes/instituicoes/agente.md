@@ -1,6 +1,6 @@
 # Agente — Instituições
 
-> Última revisão: 2026-11-13 (commit "Corrige faturamento Todas, nomes com &amp;, rescisão pela ficha e cadastro de instituição")
+> Última revisão: 2026-11-13 (commit "Botões com retorno de clique e Pesquisar sempre recarrega")
 
 ## Para que serve
 
@@ -46,6 +46,7 @@ Gravação (só em "Cadastrar"): `INSERT` em `dna_work.instituicao` (`backend/sr
 
 ## Regras e comportamentos importantes
 
+- **Pesquisar sempre tem efeito:** com os mesmos filtros, recarrega a lista (`refetch`, ou a chave `rodada` no Financeiro); o botão mostra "Pesquisando…" com ícone girando enquanto carrega. Todo botão do sistema afunda e muda o tom ao ser pressionado (`index.css`, `.app-canvas button:active`).
 - Filtros (`legado.service.ts:882-889`): `q` com `%texto%` em razão social, fantasia, CNPJ, telefone e e-mail; Tipo Ensino por **igualdade exata** com `tipo_encino` ("Todos" ignora); Conveniada "Sim" → `convenio = '1'`, "Não"/"Nao" → `'0'` ou sem convênio ("Todas" ignora); Cidade e UF com `%texto%`.
 - Ordem: `nome_fantasia` (nulos no fim), depois `razao_social`.
 - Na tabela (`Convenio` e `Experiencia`, `NovasAbasPage.tsx:546-562`): o selo "Conveniada" aparece só quando `convenio = "1"` (senão "Sem convênio"); término vazio com convênio ativo aparece como "prazo indeterminado"; Experiência repete "★" pelo número em `parece` ("—" quando 0 ou vazio).

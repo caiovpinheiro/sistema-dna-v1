@@ -152,7 +152,16 @@ button, a {
 }
 
 .acao:hover { background-color: #e0f2fe; }
-.acao:active { transform: none; }
+/* Retorno de clique em todo botão: afunda um pixel e muda o tom enquanto está pressionado. */
+.app-canvas button:not(:disabled):active,
+.app-canvas a.acao:active {
+  transform: translateY(1px) scale(0.98);
+  filter: brightness(0.9);
+}
+.app-canvas.escuro button:not(:disabled):active,
+.app-canvas.escuro a.acao:active { filter: brightness(1.25); }
+.app-canvas button:focus-visible,
+.app-canvas a:focus-visible { outline: 2px solid #0891b2; outline-offset: 2px; }
 
 .acao-cyan { background: #ecfeff; color: #0e7490; }
 .acao-cyan:hover { background: #cffafe; }
@@ -314,6 +323,8 @@ button, a {
   .login-ring { animation: none; }
   button, a { transition: none; }
   .acao:hover, .acao:active { transform: none; }
+  .app-canvas button:not(:disabled):active,
+  .app-canvas a.acao:active { transform: none; }
 }
 
 /* Score do JEV na triagem: um tom só (escala ordinal), validado contra as duas superfícies. */

@@ -1,6 +1,6 @@
 # Agente — Candidatos
 
-> Última revisão: 2026-11-13 (commit "Repagina as telas restantes no padrão novo")
+> Última revisão: 2026-11-13 (commit "Botões com retorno de clique e Pesquisar sempre recarrega")
 
 ## Para que serve
 
@@ -78,6 +78,7 @@ Variáveis de config que mudam a lista: `CONTRATACAO_STATUS_ATIVO` (padrão 1) e
 
 ## Regras e comportamentos importantes
 
+- **Pesquisar sempre tem efeito:** com os mesmos filtros, recarrega a lista (`refetch`, ou a chave `rodada` no Financeiro); o botão mostra "Pesquisando…" com ícone girando enquanto carrega. Todo botão do sistema afunda e muda o tom ao ser pressionado (`index.css`, `.app-canvas button:active`).
 - **CPF único**: create e update recusam CPF já usado por outro candidato (comparando só dígitos) → 409 `CPF_DUPLICADO` com `details.id_candidato` (`candidato.service.ts:51`, `:75`). O CPF é validado e normalizado para dígitos por `cpfSchema` (`schemas/common.ts:8`).
 - **E-mail obrigatório só no create** do backend (`candidatoCreateSchema` usa `z.string().email()`), mas o formulário do frontend aceita e-mail vazio — salvar candidato novo sem e-mail volta erro de validação da API.
 - **Campos editáveis**: só os da lista `PATCHABLE` (`candidato.service.ts:38`). Sem nenhum campo → 400 `NADA_PARA_ATUALIZAR`. Todo update grava `ultimaalteracao = hoje`.

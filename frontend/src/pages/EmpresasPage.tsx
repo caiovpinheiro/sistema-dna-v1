@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { ChevronRight, Plus, Search } from "lucide-react";
+import { ChevronRight, Loader2, Plus, Search } from "lucide-react";
 import type { FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { LinhaPreview, PreviewFlutuante, useLinhaPreview } from "@/components/preview";
@@ -48,7 +48,9 @@ export function EmpresasPage() {
       if (value) next.set(key, value);
     }
     if (tamanho !== 20) next.set("pageSize", String(tamanho));
-    setParams(next);
+    // Mesma busca de novo: recarrega a lista (senão o clique não faria nada).
+    if (next.toString() === params.toString()) void result.refetch();
+    else setParams(next);
   }
   function irPara(paginaDestino: number) {
     const next = new URLSearchParams(params);
@@ -101,7 +103,7 @@ export function EmpresasPage() {
               <option value="sem">Sem login</option>
             </Select>
           </CampoFiltro>
-          <Button type="submit" className="h-10 sm:col-span-2 lg:col-span-1"><Search size={16} /> Pesquisar</Button>
+          <Button type="submit" className="h-10 sm:col-span-2 lg:col-span-1">{result.isFetching ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />} {result.isFetching ? "Pesquisando…" : "Pesquisar"}</Button>
         </form>
       </Card>
       <ResumoResultados total={total} singular="empresa" plural="empresas" filtrando={filtrando} carregando={result.isLoading} onLimpar={() => setParams(new URLSearchParams())} />

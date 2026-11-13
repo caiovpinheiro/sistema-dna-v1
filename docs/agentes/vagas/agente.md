@@ -1,6 +1,6 @@
 # Agente — Vagas
 
-> Última revisão: 2026-11-13 (commit "Repagina as telas restantes no padrão novo")
+> Última revisão: 2026-11-13 (commit "Botões com retorno de clique e Pesquisar sempre recarrega")
 
 ## Para que serve
 
@@ -122,6 +122,7 @@ Menu: `vagaLinks` em `frontend/src/components/shell.tsx` (linhas 36-39). Para li
 
 ## Regras e comportamentos importantes
 
+- **Pesquisar sempre tem efeito:** com os mesmos filtros, recarrega a lista (`refetch`, ou a chave `rodada` no Financeiro); o botão mostra "Pesquisando…" com ícone girando enquanto carrega. Todo botão do sistema afunda e muda o tom ao ser pressionado (`index.css`, `.app-canvas button:active`).
 - **Situação** (`lib/vaga-status.ts`):
   - os códigos do Lightsail viram 4 status: aberta = 0, 3, 4, 5, 9; pausada = 8; contratada = 1; fechada = 2, 6, 7 (código desconhecido ou nulo conta como fechada);
   - ao mudar de status, grava o código padrão (aberta 0, pausada 8, contratada 1, fechada 6). Se o status não mudou, mantém o código atual (`codigoParaStatus`).

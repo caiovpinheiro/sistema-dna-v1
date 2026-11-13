@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FileSpreadsheet, FileText, ListChecks, Receipt, Search, Send, Wallet, X } from "lucide-react";
+import { FileSpreadsheet, FileText, ListChecks, Loader2, Receipt, Search, Send, Wallet, X } from "lucide-react";
 import { useState, type FormEvent, type MouseEvent, type ReactNode } from "react";
 import { Paginacao } from "@/components/paginacao";
 import { Alerta, CabecalhoPagina, CampoFiltro, ResumoResultados } from "@/components/pagina";
@@ -68,8 +68,13 @@ function MonthRange() {
   );
 }
 
-function SearchButton() {
-  return <Button type="submit" className="h-10"><Search size={16} /> Pesquisar</Button>;
+/** Pesquisar sempre dá retorno: fica "Pesquisando…" enquanto a lista carrega. */
+function SearchButton({ carregando = false }: { carregando?: boolean }) {
+  return (
+    <Button type="submit" className="h-10" disabled={carregando} aria-busy={carregando}>
+      {carregando ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />} {carregando ? "Pesquisando…" : "Pesquisar"}
+    </Button>
+  );
 }
 
 function reais(valor: number | string | boolean | null | undefined) {
@@ -172,6 +177,7 @@ export function GerarFaturamentoPage() {
   const client = useQueryClient();
   const inicial = { mes: nowMonth(), ano: nowYear(), status: "3" };
   const [busca, setBusca] = useState(inicial);
+  const [rodada, setRodada] = useState(0);
   const [pagina, setPagina] = useState(1);
   const [aviso, setAviso] = useState("");
   const [marcadas, setMarcadas] = useState<string[]>([]);
@@ -179,7 +185,8 @@ export function GerarFaturamentoPage() {
   const [progresso, setProgresso] = useState<{ feito: number; total: number } | null>(null);
   const limpeza = useLimpeza(inicial, busca, (valor) => { setBusca(valor); setPagina(1); });
   const result = useQuery({
-    queryKey: ["faturamento", busca, pagina],
+    // "rodada" muda a cada Pesquisar: a mesma busca repetida também recarrega.
+    queryKey: ["faturamento", busca, pagina, rodada],
     queryFn: () => api<{ matriz: Array<{ razao_social: string | null; nome_fantasia: string | null; cnpj: string | null; datafechamento: string | null; status: string }>; itens: Array<{ id_empresa: string; razao_social: string | null; nome_fantasia: string | null; cnpj: string | null; tipo: string | null; datafechamento: string | null; itens: number; valor: number | null; status: string; envio: string | null }> }>(`/api/v1/faturamento?${new URLSearchParams({ ...busca, page: String(pagina), pageSize: String(TAMANHO) })}`),
   });
   const boletos = useMutation({
@@ -279,6 +286,7 @@ export function GerarFaturamentoPage() {
           const status = String(new FormData(event.currentTarget).get("status") ?? "");
           setBusca({ ...inicial, ...lerFiltros(event, ["empresa", "mes", "ano"]), status });
           setPagina(1);
+          setRodada((atual) => atual + 1);
         }}>
           <EmpresaField />
           <MonthField />
@@ -292,7 +300,7 @@ export function GerarFaturamentoPage() {
               <option value="1">Faturada</option>
             </Select>
           </CampoFiltro>
-          <SearchButton />
+          <SearchButton carregando={result.isFetching} />
         </form>
       </Card>
       <ResumoResultados total={result.isLoading ? null : total} singular="empresa a faturar" plural="empresas a faturar" filtrando={limpeza.filtrando} carregando={result.isLoading} onLimpar={limpeza.limpar} />
@@ -442,12 +450,14 @@ function vencida(item: Procfy) {
 export function RelatorioProcfyPage() {
   const inicial = { de: `${nowYear()}-01`, ate: `${nowYear()}-${nowMonth()}`, tipoData: "vencimento_fatura", sistema: "ambos", status: "" };
   const [busca, setBusca] = useState(inicial);
+  const [rodada, setRodada] = useState(0);
   const [pagina, setPagina] = useState(1);
   const [porPagamento, setPorPagamento] = useState(false);
   const [detalheId, setDetalheId] = useState<string | null>(null);
   const limpeza = useLimpeza(inicial, busca, (valor) => { setBusca(valor); setPagina(1); setPorPagamento(false); });
   const result = useQuery({
-    queryKey: ["procfy", busca, pagina],
+    // "rodada" muda a cada Pesquisar: a mesma busca repetida também recarrega.
+    queryKey: ["procfy", busca, pagina, rodada],
     queryFn: () => api<Procfy[]>(`/api/v1/procfy?${new URLSearchParams({ ...busca, page: String(pagina), pageSize: String(TAMANHO) })}`),
   });
   const detalhe = useQuery({
@@ -492,6 +502,7 @@ export function RelatorioProcfyPage() {
           filtros.status = filtros.tipoData === "data_pg" ? "1" : status;
           setBusca({ ...inicial, ...filtros });
           setPagina(1);
+          setRodada((atual) => atual + 1);
         }}>
           <CampoFiltro rotulo="Filtrar pela data de">
             <Select name="tipoData" aria-label="Tipo data" defaultValue="vencimento_fatura" onChange={(event) => setPorPagamento(event.target.value === "data_pg")}>
@@ -523,7 +534,7 @@ export function RelatorioProcfyPage() {
             </Select>
           </CampoFiltro>
           <div className="flex flex-wrap gap-2 sm:col-span-2 lg:col-span-1">
-            <SearchButton />
+            <SearchButton carregando={result.isFetching} />
             <ExcelButton onClick={excel} />
           </div>
         </form>
@@ -628,7 +639,7 @@ function Dado({ rotulo, children }: { rotulo: string; children: ReactNode }) {
   );
 }
 
-function ComissaoFilters({ versao, onSubmit }: { versao: number; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
+function ComissaoFilters({ versao, onSubmit, carregando }: { versao: number; onSubmit: (event: FormEvent<HTMLFormElement>) => void; carregando?: boolean }) {
   return (
     <Card>
       <form key={versao} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_minmax(0,1.3fr)_minmax(0,1fr)_6rem_minmax(0,1fr)_auto] lg:items-end" onSubmit={onSubmit}>
@@ -650,7 +661,7 @@ function ComissaoFilters({ versao, onSubmit }: { versao: number; onSubmit: (even
             <option value="1">Paga</option>
           </Select>
         </CampoFiltro>
-        <SearchButton />
+        <SearchButton carregando={carregando} />
       </form>
     </Card>
   );
@@ -664,10 +675,12 @@ export function ComissaoConsultarPage() {
   const inicial = { ano: nowYear() };
   const [paying, setPaying] = useState(false);
   const [busca, setBusca] = useState<Record<string, string>>(inicial);
+  const [rodada, setRodada] = useState(0);
   const [pagina, setPagina] = useState(1);
   const limpeza = useLimpeza(inicial, busca, (valor) => { setBusca(valor); setPagina(1); });
   const result = useQuery({
-    queryKey: ["comissao", busca, pagina],
+    // "rodada" muda a cada Pesquisar: a mesma busca repetida também recarrega.
+    queryKey: ["comissao", busca, pagina, rodada],
     queryFn: () => api<Comissao[]>(`/api/v1/comissao?${new URLSearchParams({ ...busca, page: String(pagina), pageSize: String(TAMANHO) })}`),
   });
   const linhas = result.data?.data ?? [];
@@ -679,7 +692,7 @@ export function ComissaoConsultarPage() {
         descricao="Comissões de vendas por fatura: vendedor, treinamento, valor e se o boleto e a comissão já foram pagos."
         acoes={<BotaoPagarComissao onClick={() => setPaying(true)} />}
       />
-      <ComissaoFilters versao={limpeza.versao} onSubmit={(event) => { event.preventDefault(); setBusca({ ...inicial, ...lerFiltros(event, ["empresa", "consultor", "mes", "ano", "status"]) }); setPagina(1); }} />
+      <ComissaoFilters versao={limpeza.versao} carregando={result.isFetching} onSubmit={(event) => { event.preventDefault(); setBusca({ ...inicial, ...lerFiltros(event, ["empresa", "consultor", "mes", "ano", "status"]) }); setPagina(1); setRodada((atual) => atual + 1); }} />
       <ResumoResultados total={result.isLoading ? null : total} singular="comissão" plural="comissões" filtrando={limpeza.filtrando} carregando={result.isLoading} onLimpar={limpeza.limpar} />
       {result.isLoading ? <Skeleton className="h-64" /> : result.isError ? (
         <Alerta>{erroDe(result.error, "Não foi possível carregar as comissões.")}</Alerta>
@@ -731,10 +744,12 @@ export function ComissaoEmpresasPage() {
   const inicial = { ano: nowYear() };
   const [paying, setPaying] = useState(false);
   const [busca, setBusca] = useState<Record<string, string>>(inicial);
+  const [rodada, setRodada] = useState(0);
   const [pagina, setPagina] = useState(1);
   const limpeza = useLimpeza(inicial, busca, (valor) => { setBusca(valor); setPagina(1); });
   const result = useQuery({
-    queryKey: ["comissao-empresas", busca, pagina],
+    // "rodada" muda a cada Pesquisar: a mesma busca repetida também recarrega.
+    queryKey: ["comissao-empresas", busca, pagina, rodada],
     queryFn: () => api<ComissaoEmpresa[]>(`/api/v1/comissao/empresas?${new URLSearchParams({ ...busca, page: String(pagina), pageSize: String(TAMANHO) })}`),
   });
   const linhas = result.data?.data ?? [];
@@ -746,7 +761,7 @@ export function ComissaoEmpresasPage() {
         descricao="Comissão de cadastro de cada empresa: vendedor, primeira contratação, primeira vaga e valor."
         acoes={<BotaoPagarComissao onClick={() => setPaying(true)} />}
       />
-      <ComissaoFilters versao={limpeza.versao} onSubmit={(event) => { event.preventDefault(); setBusca({ ...inicial, ...lerFiltros(event, ["empresa", "consultor", "mes", "ano", "status"]) }); setPagina(1); }} />
+      <ComissaoFilters versao={limpeza.versao} carregando={result.isFetching} onSubmit={(event) => { event.preventDefault(); setBusca({ ...inicial, ...lerFiltros(event, ["empresa", "consultor", "mes", "ano", "status"]) }); setPagina(1); setRodada((atual) => atual + 1); }} />
       <ResumoResultados total={result.isLoading ? null : total} singular="empresa" plural="empresas" filtrando={limpeza.filtrando} carregando={result.isLoading} onLimpar={limpeza.limpar} />
       {result.isLoading ? <Skeleton className="h-64" /> : result.isError ? (
         <Alerta>{erroDe(result.error, "Não foi possível carregar as comissões de empresas.")}</Alerta>
@@ -795,10 +810,12 @@ export function ComissaoEmpresasPage() {
 export function GerarHoleritePage() {
   const inicial = { mes: nowMonth(), ano: nowYear() };
   const [busca, setBusca] = useState(inicial);
+  const [rodada, setRodada] = useState(0);
   const [pagina, setPagina] = useState(1);
   const limpeza = useLimpeza(inicial, busca, (valor) => { setBusca(valor); setPagina(1); });
   const result = useQuery({
-    queryKey: ["holerite", busca, pagina],
+    // "rodada" muda a cada Pesquisar: a mesma busca repetida também recarrega.
+    queryKey: ["holerite", busca, pagina, rodada],
     queryFn: () => api<Holerite[]>(`/api/v1/holerite?${new URLSearchParams({ ...busca, page: String(pagina), pageSize: String(TAMANHO) })}`),
   });
   const linhas = result.data?.data ?? [];
@@ -810,11 +827,11 @@ export function GerarHoleritePage() {
         descricao="Quantos candidatos ativos cada empresa tem no mês, para lançar a folha."
       />
       <Card>
-        <form key={limpeza.versao} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_7rem_auto] lg:items-end" onSubmit={(event) => { event.preventDefault(); setBusca({ ...inicial, ...lerFiltros(event, ["empresa", "mes", "ano"]) }); setPagina(1); }}>
+        <form key={limpeza.versao} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_7rem_auto] lg:items-end" onSubmit={(event) => { event.preventDefault(); setBusca({ ...inicial, ...lerFiltros(event, ["empresa", "mes", "ano"]) }); setPagina(1); setRodada((atual) => atual + 1); }}>
           <EmpresaField />
           <MonthField />
           <YearField />
-          <SearchButton />
+          <SearchButton carregando={result.isFetching} />
         </form>
       </Card>
       <ResumoResultados total={result.isLoading ? null : total} singular="empresa" plural="empresas" filtrando={limpeza.filtrando} carregando={result.isLoading} onLimpar={limpeza.limpar} />

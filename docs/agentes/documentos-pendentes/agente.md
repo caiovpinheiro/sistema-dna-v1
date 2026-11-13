@@ -1,6 +1,6 @@
 # Agente — Documentos pendentes
 
-> Última revisão: 2026-11-13 (commit "Repagina as telas restantes no padrão novo")
+> Última revisão: 2026-11-13 (commit "Botões com retorno de clique e Pesquisar sempre recarrega")
 
 ## Para que serve
 
@@ -45,6 +45,7 @@ Nada é gravado. Nenhum serviço externo.
 
 ## Regras e comportamentos importantes
 
+- **Pesquisar sempre tem efeito:** com os mesmos filtros, recarrega a lista (`refetch`, ou a chave `rodada` no Financeiro); o botão mostra "Pesquisando…" com ícone girando enquanto carrega. Todo botão do sistema afunda e muda o tom ao ser pressionado (`index.css`, `.app-canvas button:active`).
 - Vencimento (`legado.service.ts:773-781`): documento de rescisão com vínculo encerrado → `data_demicao`; outro de rescisão → `cg.datafim`; se `cg.data` estiver em `AAAA/MM/DD` e `cd.dias` for número → `data + dias`; senão `cg.datafim`.
 - Dias de atraso são calculados em JavaScript (`:819-829`): diferença entre hoje (UTC) e o vencimento, só quando o vencimento é anterior a hoje; senão 0.
 - Status: vínculo `1` → "Ativo", `2` → "Encerrado", outro valor aparece cru.

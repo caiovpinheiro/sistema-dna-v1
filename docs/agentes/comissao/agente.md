@@ -1,6 +1,6 @@
 # Agente — Comissão
 
-> Última revisão: 2026-11-13 (commit "Repagina as telas restantes no padrão novo")
+> Última revisão: 2026-11-13 (commit "Botões com retorno de clique e Pesquisar sempre recarrega")
 
 ## Para que serve
 
@@ -53,6 +53,7 @@ Empresas (`comissaoEmpresas`)
 
 ## Regras e comportamentos importantes
 
+- **Pesquisar sempre tem efeito:** com os mesmos filtros, recarrega a lista (`refetch`, ou a chave `rodada` no Financeiro); o botão mostra "Pesquisando…" com ícone girando enquanto carrega. Todo botão do sistema afunda e muda o tom ao ser pressionado (`index.css`, `.app-canvas button:active`).
 - Permissão (`paginas.ts`): `/api/v1/comissao/empresas` exige `comissao-empresas` e `/api/v1/comissao` exige `comissao`. A regra de `/empresas` vem antes na lista, então quem tem só `comissao` recebe 403 na aba Empresas. O administrador passa em tudo.
 - Filtros iniciais: só `ano` = ano atual (`inicial = { ano: nowYear() }`). O mês começa em "Todos" (`MonthField todos`). `lerFiltros` descarta campos vazios.
 - O select "Consultor" tem uma lista fixa de 3 nomes no código (`ComissaoFilters` em `FinanceiroPage.tsx`), mais "Todos". "todos" vira sem filtro no backend.
