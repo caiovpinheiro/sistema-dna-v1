@@ -45,6 +45,7 @@ import { CargoService } from "./services/cargo.service.js";
 import { normalizarAtendimento } from "./lib/atendimento.js";
 import { iniciarAgendaRegua } from "./lib/regua-agenda.js";
 import { atendimentoSchema } from "./schemas/processo.js";
+import { vagaCadastroSchema } from "./schemas/cadastro.js";
 import { NotionSyncService } from "./services/notion-sync.service.js";
 import { VagasAbertasSyncService } from "./services/vagas-abertas-sync.service.js";
 import { SyncCicloService } from "./services/sync-ciclo.service.js";
@@ -157,7 +158,7 @@ export async function buildApp(context: AppContext): Promise<FastifyInstance> {
   app.addHook("onRequest", async (request) => {
     const path = request.url.split("?")[0];
     if (request.method === "OPTIONS") return;
-    if (path === "/health" || path === "/api/v1/auth/login" || path === "/api/v1/zapsign/webhook" || path === "/api/v1/asaas/webhook" || path === "/api/v1/webhooks/lead-criado" || path === "/api/v1/webhooks/ganho" || path === "/api/v1/servico/ping" || path === "/api/v1/servico/empresas" || path === "/api/v1/servico/processos" || path === "/api/v1/servico/candidatos" || path.startsWith("/docs")) return;
+    if (path === "/health" || path === "/api/v1/auth/login" || path === "/api/v1/zapsign/webhook" || path === "/api/v1/asaas/webhook" || path === "/api/v1/webhooks/lead-criado" || path === "/api/v1/webhooks/ganho" || path === "/api/v1/servico/ping" || path === "/api/v1/servico/empresas" || path === "/api/v1/servico/processos" || path === "/api/v1/servico/candidatos" || path === "/api/v1/servico/vagas" || path.startsWith("/docs")) return;
     if (path.startsWith("/api/")) await app.authenticate(request);
     if (!path.startsWith("/api/v1/") || path.startsWith("/api/v1/auth/")) return;
     const sessao = await services.acesso.daSessao(request.user.sub, request.user.email);
@@ -281,6 +282,28 @@ export async function buildApp(context: AppContext): Promise<FastifyInstance> {
     try {
       const data = await services.processos.atualizarCandidato(corpo.data);
       return { success: true, data, meta: {} };
+    } catch (error) {
+      if (error instanceof AppError) {
+        return reply.code(error.statusCode).send({ success: false, error: { code: error.code, message: error.message, details: error.details } });
+      }
+      throw error;
+    }
+  });
+  /** Portal das empresas abre vaga pelo mesmo fluxo da "Nova vaga" (Lightsail, public.vaga e dna_work.vaga). */
+  app.post("/api/v1/servico/vagas", async (request, reply) => {
+    if (!tokenDoServico(request.headers["x-service-token"], context.config.SERVICE_TOKEN)) {
+      return reply.code(401).send({ success: false, error: { code: "SERVICO_NEGADO", message: "Serviço não autorizado." } });
+    }
+    const { usuario, ...resto } = (request.body ?? {}) as Record<string, unknown>;
+    const corpo = vagaCadastroSchema.safeParse(resto);
+    if (!corpo.success) {
+      const primeiro = corpo.error.issues[0];
+      return reply.code(422).send({ success: false, error: { code: "VALIDACAO", message: primeiro?.message ?? "Dados inválidos.", details: corpo.error.issues } });
+    }
+    const quem = `Portal empresa: ${String(usuario ?? "").slice(0, 100) || "sem usuário"}`;
+    try {
+      const data = await services.cadastro.criarVaga(corpo.data, quem, "Abertura de vaga Portal empresa");
+      return reply.code(201).send({ success: true, data, meta: {} });
     } catch (error) {
       if (error instanceof AppError) {
         return reply.code(error.statusCode).send({ success: false, error: { code: error.code, message: error.message, details: error.details } });

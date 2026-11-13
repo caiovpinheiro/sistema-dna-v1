@@ -369,8 +369,8 @@ type Modelo = {
 };
 const NOVO_CARGO = "novo";
 const novoCargoVazio = { nome: "", descricao: "", requisitos: "" };
-const vagaVazia: FormularioVaga & { empresa_id: string; quantidade: string } = {
-  empresa_id: "", tipo: "estagio", carga_horaria: "30", cargo: "", cargo_id: "", salario: "", horario_entrada: "", horario_saida: "",
+const vagaVazia: FormularioVaga & { empresa_id: string; quantidade: string; aceita_ensino_medio: string } = {
+  empresa_id: "", aceita_ensino_medio: "", tipo: "estagio", carga_horaria: "30", cargo: "", cargo_id: "", salario: "", horario_entrada: "", horario_saida: "",
   sexo: "I", idade: "", idade_ate: "", atividades: "", quantidade: "1",
   segunda_entrada: "", segunda_saida: "", terca_entrada: "", terca_saida: "", quarta_entrada: "", quarta_saida: "",
   quinta_entrada: "", quinta_saida: "", sexta_entrada: "", sexta_saida: "", sab_entrada: "", sab_saida: "",
@@ -579,6 +579,7 @@ function AbaVaga({ empresaInicial, modeloInicial, modo = "vaga" }: { empresaInic
   type EscolhaCargo = { cargoId: string; novo: typeof novoCargoVazio | null };
   function corpo(escolha: EscolhaCargo) {
     const { cargo: _cargo, cargo_id: _cargoId, descricao: _descricao, requisitos: _requisitos, ...resto } = semFolga(form, modos);
+    if (resto.tipo !== "estagio") resto.aceita_ensino_medio = "";
     const escala = DIAS_ESCALA.filter((dia) => modos[dia] === "escala");
     const folga = DIAS_ESCALA.filter((dia) => modos[dia] === "folga");
     return { ...limpar(resto), escala, folga, ...(escolha.novo ? { novo_cargo: escolha.novo } : { cargo_id: escolha.cargoId }) };
@@ -594,6 +595,7 @@ function AbaVaga({ empresaInicial, modeloInicial, modo = "vaga" }: { empresaInic
       const body: Record<string, unknown> = corpo(escolha);
       delete body.empresa_id;
       delete body.quantidade;
+      delete body.aceita_ensino_medio;
       return modeloInicial
         ? api(`/api/v1/vagas/modelos/${modeloInicial}`, { method: "PUT", body: JSON.stringify(body) })
         : api("/api/v1/vagas/modelos", { method: "POST", body: JSON.stringify(body) });
@@ -675,7 +677,9 @@ function AbaVaga({ empresaInicial, modeloInicial, modo = "vaga" }: { empresaInic
           ? "Escolha um cargo da lista ou \"+ Novo cargo\"."
           : novoIncompleto
             ? "Preencha o nome, a descrição e os requisitos do novo cargo."
-            : "";
+            : !ehModelo && form.tipo === "estagio" && !form.aceita_ensino_medio
+              ? "Diga se a vaga de estágio aceita estudante do ensino médio."
+              : "";
       setAviso(falta);
       if (falta) return;
       if (ehModelo) salvarModelo.mutate(escolha); else save.mutate(escolha);
@@ -804,7 +808,7 @@ function AbaVaga({ empresaInicial, modeloInicial, modo = "vaga" }: { empresaInic
           {textoPrevisto(form, modos) ? <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">Texto do horário: <span className="font-semibold text-navy-900">{textoPrevisto(form, modos)}</span></p> : null}
         </div>
       </Bloco>
-      <Bloco numero={numero("perfil")} titulo="Perfil do candidato" texto="Sexo aceito e faixa de idade.">
+      <Bloco numero={numero("perfil")} titulo="Perfil do candidato" texto="Sexo aceito, faixa de idade e, no estágio, se aceita ensino médio.">
         <Grade>
           <Celula span={2}>
             <Field label="Sexo">
@@ -817,6 +821,17 @@ function AbaVaga({ empresaInicial, modeloInicial, modo = "vaga" }: { empresaInic
           </Celula>
           <Celula span={1}><Field label="Idade de"><Input type="number" required min={14} max={80} value={form.idade} onChange={(event) => setForm({ ...form, idade: event.target.value })} /></Field></Celula>
           <Celula span={1}><Field label="Idade até"><Input type="number" required min={14} max={80} value={form.idade_ate} onChange={(event) => setForm({ ...form, idade_ate: event.target.value })} /></Field></Celula>
+          {!ehModelo && form.tipo === "estagio" ? (
+            <Celula span={2}>
+              <Field label="Aceita ensino médio?">
+                <Select required value={form.aceita_ensino_medio} onChange={(event) => setForm({ ...form, aceita_ensino_medio: event.target.value })}>
+                  <option value="">Escolha</option>
+                  <option value="sim">Sim, aceita estudante do ensino médio</option>
+                  <option value="nao">Não, só técnico ou superior</option>
+                </Select>
+              </Field>
+            </Celula>
+          ) : null}
         </Grade>
       </Bloco>
       <Bloco numero={numero("atividades")} titulo="Atividades e benefícios" texto="O que a pessoa vai fazer e o que a vaga oferece além do salário.">

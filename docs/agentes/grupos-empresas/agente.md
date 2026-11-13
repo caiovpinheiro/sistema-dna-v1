@@ -1,6 +1,6 @@
 # Agente — Grupos (Grupos, Empresas e Vagas)
 
-> Última revisão: 2026-11-13 (commit "Corrige faturamento Todas, nomes com &amp;, rescisão pela ficha e cadastro de instituição")
+> Última revisão: 2026-11-13 (commit "Vaga de estágio diz se aceita ensino médio e o portal das empresas abre vaga pelo mesmo fluxo")
 
 ## Para que serve
 
@@ -13,7 +13,7 @@ Tela de cadastro em cascata: primeiro o grupo, depois a empresa do grupo, depois
 | `/grupos-empresas` ou `?aba=grupo` | `GruposEmpresasPage` → `AbaGrupo` | `frontend/src/pages/GruposEmpresasPage.tsx` | `CabecalhoPagina` "Grupos, empresas e vagas" e as abas em `FiltroChips` (Grupo, Empresa, Vaga). Formulário "Novo grupo" à esquerda + lista pesquisável de grupos à direita (filtro no navegador, contador, cada grupo com seta para abrir). |
 | `/grupos-empresas?aba=grupo&grupo=<uuid>` | `AbaGrupo` (selecionado) | idem | "Voltar para os grupos"; cartão do grupo com contato, link "Cadastrar empresa neste grupo" (`?aba=empresa&grupo=<uuid>`) e a tabela `data-table` "Empresas do grupo" (clique ou "Abrir" leva a `/empresas/:id`); "Cobrança das empresas" (`CobrancaEmpresa` por empresa). |
 | `/grupos-empresas?aba=empresa[&grupo=<uuid>]` | `AbaEmpresa` | idem | Formulário de empresa nova em 3 blocos numerados (`Bloco` + grade de 6 colunas): 1 Grupo e identificação (grupo, CNPJ opcional, razão social, fantasia), 2 Endereço (CEP com ViaCEP, endereço, número, complemento, bairro, cidade, UF), 3 Contato. "Salvar empresa" no fim. |
-| `/grupos-empresas?aba=vaga[&empresa=<uuid>][&modelo=<vaga_id>]` | `AbaVaga` (modo `vaga`) | idem | Formulário de abertura de vaga em 5 blocos numerados: 1 Empresa e modelo (empresa, modelo opcional, quantidade), 2 Cargo e remuneração (tipo, carga, cargo da lista ou "+ Novo cargo", salário), 3 Horário (entrada, saída, dias fixo/escala/folga, texto previsto), 4 Perfil do candidato (sexo, idade de/até), 5 Atividades e benefícios. Botão "Abrir vaga" no fim. |
+| `/grupos-empresas?aba=vaga[&empresa=<uuid>][&modelo=<vaga_id>]` | `AbaVaga` (modo `vaga`) | idem | Formulário de abertura de vaga em 5 blocos numerados: 1 Empresa e modelo (empresa, modelo opcional, quantidade), 2 Cargo e remuneração (tipo, carga, cargo da lista ou "+ Novo cargo", salário), 3 Horário (entrada, saída, dias fixo/escala/folga, texto previsto), 4 Perfil do candidato (sexo, idade de/até e, só no estágio, "Aceita ensino médio?" obrigatório), 5 Atividades e benefícios. Botão "Abrir vaga" no fim. |
 | `/vagas/modelos/novo` | `ModeloFormPage` → `AbaVaga` (modo `modelo`) | idem | "Novo modelo de vaga": os mesmos blocos sem o bloco da empresa (a numeração começa em Cargo e remuneração). "Voltar aos modelos" no cabeçalho; Cancelar/Salvar modelo no fim. Salvar volta para `/vagas/modelos`. |
 | `/vagas/modelos/:id/editar` | `ModeloFormPage` → `AbaVaga` (modo `modelo`) | idem | "Editar modelo de vaga": mesmo formulário, já preenchido com o modelo. |
 | `/empresas/nova`, `/vagas/nova` | `Navigate` | `frontend/src/App.tsx:74`, `:81` | Redirecionam para `?aba=empresa` e `?aba=vaga`. |
@@ -54,6 +54,7 @@ Backend
 | POST | `/api/v1/grupos-empresas/empresas` | Cria (ou reativa) empresa no Lightsail e no Postgres | `routes/index.ts:759` → `criarEmpresa` |
 | GET | `/api/v1/grupos-empresas/vagas` | Lista de modelos globais para o campo "Modelo" (resposta tem `modelos` e `data`) | `routes/index.ts:762` → `listarModelos` |
 | POST | `/api/v1/grupos-empresas/vagas` | Abre a(s) vaga(s) | `routes/index.ts:768` → `criarVaga(body, request.user.email)` |
+| POST | `/api/v1/servico/vagas` | Portal das empresas abre vaga (header `x-service-token` = `SERVICE_TOKEN`, sem login; corpo = `vagaCadastroSchema` + `usuario`) | `app.ts` → `criarVaga(body, "Portal empresa: <usuario>", "Abertura de vaga Portal empresa")` |
 | GET | `/api/v1/cargos` | Lista de cargos | `routes/index.ts:757` → `CargoService.listar` |
 | GET | `/api/v1/vagas/modelos/:vagaId` | Um modelo, no formato do formulário | `routes/index.ts:242` → `obterModelo` |
 | POST | `/api/v1/vagas/modelos` | Cria modelo global (só `ModeloFormPage`) | `routes/index.ts:245` → `criarModelo` |
@@ -67,14 +68,14 @@ Backend
 Postgres, schema `public` (tabelas criadas/ajustadas por `MIRROR_SQL` em `cadastro.service.ts:34`, executado uma vez por processo em `ensureMirror`):
 - `public.grupo` — `id`, `nome`, `email`, `telefone`, `criado_em`. Gravado por `criarGrupo`.
 - `public.empresa` — `id` (uuid; igual ao `id_empresa` do Lightsail), `grupo_id`, `cnpj` (só dígitos ou `NULL` quando a empresa não tem CNPJ; índice único `empresa_cnpj_digitos`, que aceita vários `NULL`; o `MIRROR_SQL` faz `ALTER COLUMN cnpj DROP NOT NULL`), `razao_social`, `nome_fantasia`, `email`, `telefone`, `cep`, `logradouro`, `numero`, `complemento`, `latitude`, `longitude`, `local` ("bairro - cidade / UF"). Gravado por `criarEmpresa`.
-- `public.vaga` — uma linha por posição aberta: `id`, `vaga_id` (agrupador), `grupo_id`, `empresa_id`, `tipo_vaga` (1 estágio, 2 CLT), `cargo`, `cargo_id`, `descricao`, `requisitos`, `salario` (numérico), `carga_horaria`, `sexo`, `idade`, `idade_ate`, `km` (30), `atividades`, `horario` (grade no formato do sync), `beneficios`, `cep`, `latitude`, `longitude`. Gravado por `criarVaga`.
+- `public.vaga` — uma linha por posição aberta: `id`, `vaga_id` (agrupador), `grupo_id`, `empresa_id`, `tipo_vaga` (1 estágio, 2 CLT), `cargo`, `cargo_id`, `descricao`, `requisitos`, `salario` (numérico), `carga_horaria`, `sexo`, `idade`, `idade_ate`, `km` (30), `atividades`, `horario` (grade no formato do sync), `beneficios`, `escolaridade`, `cep`, `latitude`, `longitude`. Gravado por `criarVaga`.
 - `public.vaga_repetida` — modelos globais (sem empresa/grupo): `vaga_id`, `tipo_vaga`, `cargo`, `cargo_id`, `descricao`, `requisitos`, `salario`, `carga_horaria`, `sexo`, `idade`, `idade_ate`, `km`, `atividades`, `horario` (texto por dia), `beneficios`. Lido por `listarModelos`/`obterModelo`, gravado por `criarModelo`/`editarModelo`.
 - `public.cargo` — `id`, `nome` (padronizado), `chave` (única), `descricao`, `requisitos`. Lido sempre; gravado quando a vaga/modelo vem com `novo_cargo` e a chave ainda não existe.
 - `public.valor_empresas` — só leitura (cobrança por empresa do grupo).
 
 Postgres, schema `dna_work` (espelho do Lightsail, gravado junto):
 - Empresa: `dna_work.empresa` (insert ou update com `status=1`, `sede=10`, `matriz=id`, `lat`/`lng`, `razao_sem_acento`/`fantasia_sem_acento`), `dna_work.assinaturas_empresa` (linhas `TCE` e `Convenio`, só em empresa nova).
-- Vaga: `dna_work.codigo_vaga`, `dna_work.vaga` (uma por posição, `status=0`, `publicar=1`, `sede=10`, `faturar='S'`, `quantidade_posicoes=1`, `remoto=0`, `beneficios_texto`), `dna_work.etapa_vaga`, `dna_work.log_diversos` (ação "Abertura de vaga ADM" com o e-mail do usuário), `dna_work.vaga_valores` (por `comparador`, valores zerados), `dna_work.vaga_endereco`.
+- Vaga: `dna_work.codigo_vaga`, `dna_work.vaga` (uma por posição, `status=0`, `publicar=1`, `sede=10`, `faturar='S'`, `quantidade_posicoes=1`, `remoto=0`, `beneficios_texto`), `dna_work.etapa_vaga`, `dna_work.log_diversos` (ação "Abertura de vaga ADM" com o e-mail do usuário, ou "Abertura de vaga Portal empresa" quando vem do portal), `dna_work.vaga_valores` (por `comparador`, valores zerados), `dna_work.vaga_endereco`.
 
 Lightsail MySQL (variáveis `DNA_WORK_DB_HOST`, `DNA_WORK_DB_PORT`, `DNA_WORK_DB_USER`, `DNA_WORK_DB_PASS`, `DNA_WORK_DB_NAME`; sem pool configurado → 503 `MYSQL_NAO_CONFIGURADO`):
 - Empresa: lê `empresa` pelo CNPJ (dígitos); grava `empresa` (insert ou update de reativação) e `assinaturas_empresa` (só nova).
@@ -104,6 +105,8 @@ Serviços externos:
   - Cada posição vira uma linha (mesmo `codigo` no formato `AAA-0000`, mesmo `comparador` derivado do timestamp, mesmo `vaga_id` do lote). Depois, `reagruparVagaIds` recalcula `vaga_id` em `public.vaga` para juntar vagas iguais da mesma empresa (erro aí é ignorado; o sync corrige depois).
   - Horários: dias úteis sem horário usam entrada/saída base; sábado/domingo sem horário ficam vazios; folga e qualquer dia vazio são gravados como `"0"` nas colunas do legado. Texto da carga: "HH:MM às HH:MM" ou, com escala/folga em dia útil, o texto por dia (`textoDaVaga`). Coluna legada de domingo se chama `domindo_*`.
   - Mesma estratégia de gravação dupla da empresa; falha após o Postgres → `apagarVagaPostgres` remove o que foi gravado.
+- **Aceita ensino médio** (só estágio, obrigatório em `vagaCadastroSchema`; aceita `"sim"`/`"nao"` ou booleano): "sim" grava `escolaridade = '31'` (código de "Ensino médio" em `dna_work.flex`) no Lightsail, em `public.vaga` e em `dna_work.vaga`; "não" ou CLT deixam `escolaridade` vazia. É o mesmo código que o termo e a rescisão de ensino médio (`termo.service.ts`) e a triagem leem. Não entra no modelo global.
+- **Portal das empresas** (`POST /api/v1/servico/vagas`): usa exatamente o mesmo `criarVaga`, então a vaga aparece em Vagas, na triagem e no Lightsail como uma vaga aberta aqui. A empresa precisa estar em `public.empresa` (senão 422 `EMPRESA_FORA_DA_TELA`, e o portal grava só em `dna_work.vaga`).
 - **Modelo global** (`criarModelo`/`editarModelo`, `cadastro.service.ts:1008`): um por cargo (comparado pela `chaveCargo`) e modalidade; repetido → 409 `MODELO_JA_EXISTE`. Grava só em `public.vaga_repetida`, sempre com o horário em texto por dia (`textoDoModelo`). Apagar modelo não mexe nas vagas já abertas.
 - **Formulário (frontend)**:
   - Trocar tipo volta a carga para 30 (estágio) ou 40 (CLT). Mudar entrada/saída/carga preenche os dias fixos a partir de segunda até cobrir a carga, sem sobrescrever dia editado à mão (`preencherDias`).
@@ -130,7 +133,7 @@ Serviços externos:
 
 - Manual (só em base de teste: empresa e vaga gravam no Lightsail real e no Postgres, e a empresa chama o Google): criar grupo sem e-mail e sem telefone (deve recusar); criar empresa com CNPJ já existente; criar empresa com o CNPJ em branco e abrir vaga para ela; abrir vaga escolhendo modelo, trocando tipo/carga/horários e marcando escala/folga; abrir vaga com "+ Novo cargo" com nome igual a um cargo existente (aviso de reaproveitamento); em `/vagas/modelos/novo`, criar um modelo e tentar criar outro com o mesmo cargo e tipo (409).
 - Testes backend:
-  - `backend/test/cadastro-validacao.test.ts`: regras de grupo, empresa (inclusive CNPJ opcional) e vaga nos schemas.
+  - `backend/test/cadastro-validacao.test.ts`: regras de grupo, empresa (inclusive CNPJ opcional) e vaga nos schemas (inclusive "aceita ensino médio" obrigatório no estágio).
   - `backend/test/cargo.test.ts`: chave/nome padronizado, criação e reaproveitamento de cargo, cargo da lista vs. novo, cargo de modelo antigo.
   - `backend/test/vaga-id.test.ts`: assinatura/reagrupamento de `vaga_id`.
   - `backend/test/horario-escala.test.ts`: texto de horário por dia.

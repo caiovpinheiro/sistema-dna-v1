@@ -63,3 +63,17 @@ test("vaga: idade até obrigatória", () => {
   assert.ok(mensagens(vagaCadastroSchema.safeParse(vaga)).includes("Informe a idade até."));
   assert.equal(vagaCadastroSchema.safeParse({ ...vaga, idade_ate: 40 }).success, true);
 });
+
+test("vaga de estágio: precisa dizer se aceita ensino médio", () => {
+  const vaga = {
+    empresa_id: "33333333-3333-3333-3333-333333333333", tipo: "estagio", carga_horaria: "30", novo_cargo: { nome: "Estagiário", descricao: "Apoio ao setor", requisitos: "Cursando" },
+    salario: "1200,00", horario_entrada: "09:00", horario_saida: "15:00", sexo: "I", idade: 16, idade_ate: 24, atividades: "Atender clientes", quantidade: 1,
+  };
+  assert.ok(mensagens(vagaCadastroSchema.safeParse(vaga)).includes("Diga se a vaga de estágio aceita estudante do ensino médio."));
+  const sim = vagaCadastroSchema.safeParse({ ...vaga, aceita_ensino_medio: "sim" });
+  assert.equal(sim.success && sim.data.aceita_ensino_medio, true);
+  const nao = vagaCadastroSchema.safeParse({ ...vaga, aceita_ensino_medio: false });
+  assert.equal(nao.success && nao.data.aceita_ensino_medio, false);
+  const clt = vagaCadastroSchema.safeParse({ ...vaga, tipo: "clt", carga_horaria: "44" });
+  assert.equal(clt.success, true);
+});

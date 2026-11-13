@@ -87,7 +87,17 @@ function regrasDaVaga(value: z.infer<typeof vagaCampos>, ctx: z.RefinementCtx) {
 export const vagaCadastroSchema = vagaCampos.extend({
   empresa_id: z.string().uuid(),
   quantidade: z.coerce.number().int().min(1).max(20),
-}).superRefine(regrasDaVaga);
+  /** Só no estágio: a vaga aceita estudante do ensino médio (grava a escolaridade 31, "Ensino médio"). */
+  aceita_ensino_medio: z.preprocess(
+    (value) => (value === "sim" || value === true ? true : value === "nao" || value === false ? false : undefined),
+    z.boolean().optional(),
+  ),
+}).superRefine((value, ctx) => {
+  regrasDaVaga(value, ctx);
+  if (value.tipo === "estagio" && value.aceita_ensino_medio === undefined) {
+    ctx.addIssue({ code: "custom", message: "Diga se a vaga de estágio aceita estudante do ensino médio.", path: ["aceita_ensino_medio"] });
+  }
+});
 
 /** Modelo global: os mesmos campos da vaga, sem empresa e sem quantidade. Um por cargo e modalidade. */
 export const modeloVagaSchema = vagaCampos.superRefine(regrasDaVaga);

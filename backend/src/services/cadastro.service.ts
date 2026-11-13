@@ -222,6 +222,8 @@ function textoDoModelo(input: ModeloVaga, horas: ReturnType<typeof horasDaVaga>)
   })));
 }
 
+const ESCOLARIDADE_ENSINO_MEDIO = "31";
+
 const TIPO_MODELO: Record<string, string> = { "1": "Estágio", "2": "CLT", "4": "Pessoa Jurídica" };
 
 type RepetidaLinha = {
@@ -633,7 +635,7 @@ export class CadastroService {
     }
   }
 
-  async criarVaga(input: VagaCadastro, usuario: string) {
+  async criarVaga(input: VagaCadastro, usuario: string, acao = "Abertura de vaga ADM") {
     await this.ensureMirror();
     const empresas = await this.db.query<EmpresaRow>(
       `SELECT id::text AS id, grupo_id::text AS grupo_id, cep, latitude, longitude, logradouro, numero, complemento, local,
@@ -650,6 +652,8 @@ export class CadastroService {
       : await this.cargos.resolverNovo(input.novo_cargo!);
     const endereco = await this.enderecoLightsail(input.empresa_id);
     const tipo = input.tipo === "estagio" ? 1 : 2;
+    // Estágio que aceita ensino médio leva a escolaridade 31 ("Ensino médio" em dna_work.flex), como o termo e a rescisão de médio leem.
+    const escolaridade = tipo === 1 && input.aceita_ensino_medio ? ESCOLARIDADE_ENSINO_MEDIO : null;
     const salarioNumero = parseMoney(input.salario);
     const salario = formatMoneyLegacy(salarioNumero);
     const horas = horasDaVaga(input);
@@ -703,6 +707,7 @@ export class CadastroService {
       atividades: input.atividades,
       horario,
       beneficios: input.beneficios?.trim() || null,
+      escolaridade,
       cep: empresa.cep,
       latitude: empresa.latitude,
       longitude: empresa.longitude,
@@ -721,8 +726,8 @@ export class CadastroService {
             segunda_entrada, segunda_saida, terca_entrada, terca_saida, quarta_entrada, quarta_saida,
             quinta_entrada, quinta_saida, sexta_entrada, sexta_saida, sab_entrada, sab_saida, domindo_entrada, domindo_saida, atribuicaoes, atribu_contrato,
             sede, dataabertura, tipo_vaga, sexo, status, carga_horaria, publicar, codigo, km, faturar, texto_carga,
-            periodo, semanas_inicio, semanas_fim, tempo_refeicao
-          ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,10,?,?,?,0,?,1,?,?, 'S', ?,?,?,?,?)`,
+            periodo, semanas_inicio, semanas_fim, tempo_refeicao, escolaridade
+          ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,10,?,?,?,0,?,1,?,?, 'S', ?,?,?,?,?,?)`,
           [
             id, comparador, empresa.id, cargo.nome, salario, String(input.idade), input.idade_ate ? String(input.idade_ate) : null,
             horas.entrada, horas.saida,
@@ -730,7 +735,7 @@ export class CadastroService {
             horas.quarta_entrada, horas.quarta_saida, horas.quinta_entrada, horas.quinta_saida,
             horas.sexta_entrada, horas.sexta_saida, horas.sab_entrada, horas.sab_saida, horas.domingo_entrada, horas.domingo_saida,
             input.atividades, input.atividades, hoje, tipo, input.sexo, input.carga_horaria, codigo, "30", textoCarga,
-            colunasGrade.periodo, faixa?.inicio ?? null, faixa?.fim ?? null, colunasGrade.tempo_refeicao,
+            colunasGrade.periodo, faixa?.inicio ?? null, faixa?.fim ?? null, colunasGrade.tempo_refeicao, escolaridade,
           ],
         );
         await conn.query(
@@ -742,7 +747,7 @@ export class CadastroService {
         );
         await conn.query(
           "INSERT INTO log_diversos (usuario, id_empresa, id_vaga, acao, data) VALUES (?,?,?,?,NOW())",
-          [usuario.slice(0, 120), empresa.id, id, "Abertura de vaga ADM"],
+          [usuario.slice(0, 120), empresa.id, id, acao],
         );
       }
       await conn.query(
@@ -774,12 +779,13 @@ export class CadastroService {
           await pg.query(
             `INSERT INTO public.vaga (
               id, vaga_id, grupo_id, empresa_id, tipo_vaga, cargo, salario, carga_horaria, sexo, idade, idade_ate, km, atividades, horario, cep, latitude, longitude,
-              cargo_id, descricao, requisitos, beneficios
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
+              cargo_id, descricao, requisitos, beneficios, escolaridade
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
             [
               linha.id, linha.vaga_id, linha.grupo_id, linha.empresa_id, linha.tipo_vaga, linha.cargo, linha.salario,
               linha.carga_horaria, linha.sexo, linha.idade, linha.idade_ate, linha.km, linha.atividades, linha.horario,
               linha.cep, linha.latitude, linha.longitude, linha.cargo_id, linha.descricao, linha.requisitos, linha.beneficios,
+              linha.escolaridade,
             ],
           );
         }
@@ -791,9 +797,9 @@ export class CadastroService {
               segunda_entrada, segunda_saida, terca_entrada, terca_saida, quarta_entrada, quarta_saida,
               quinta_entrada, quinta_saida, sexta_entrada, sexta_saida, sab_entrada, sab_saida, domindo_entrada, domindo_saida, atribuicaoes, atribu_contrato,
               sede, dataabertura, tipo_vaga, sexo, status, carga_horaria, publicar, codigo, km, faturar, texto_carga, quantidade_posicoes, beneficios_texto,
-              periodo, semanas_inicio, semanas_fim, tempo_refeicao, remoto, data_adicao
+              periodo, semanas_inicio, semanas_fim, tempo_refeicao, remoto, data_adicao, escolaridade
             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,10,$26,$27,$28,0,$29,1,$30,'30','S',$31,1,$32,
-              $33,$34,$35,$36,0,(now() AT TIME ZONE 'UTC'))`,
+              $33,$34,$35,$36,0,(now() AT TIME ZONE 'UTC'),$37)`,
             [
               id, comparador, empresa.id, cargo.nome, salario, String(input.idade), input.idade_ate ? String(input.idade_ate) : null,
               horas.entrada, horas.saida,
@@ -802,7 +808,7 @@ export class CadastroService {
               horas.sexta_entrada, horas.sexta_saida, horas.sab_entrada, horas.sab_saida, horas.domingo_entrada, horas.domingo_saida,
               input.atividades, input.atividades, hoje, tipo, input.sexo, input.carga_horaria, codigo, textoCarga,
               input.beneficios?.trim() || null,
-              colunasGrade.periodo, faixa?.inicio ?? null, faixa?.fim ?? null, colunasGrade.tempo_refeicao,
+              colunasGrade.periodo, faixa?.inicio ?? null, faixa?.fim ?? null, colunasGrade.tempo_refeicao, escolaridade,
             ],
           );
           await pg.query(
@@ -814,7 +820,7 @@ export class CadastroService {
           );
           await pg.query(
             "INSERT INTO dna_work.log_diversos (usuario, id_empresa, id_vaga, acao, data) VALUES ($1,$2,$3,$4, now())",
-            [usuario.slice(0, 120), empresa.id, id, "Abertura de vaga ADM"],
+            [usuario.slice(0, 120), empresa.id, id, acao],
           );
         }
         await pg.query(
