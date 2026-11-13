@@ -1,6 +1,6 @@
 # Agente — Painel
 
-> Última revisão: 2026-11-12 (commit 5f1e2d0)
+> Última revisão: 2026-11-13 (commit "Repagina as telas restantes no padrão novo")
 
 ## Para que serve
 
@@ -10,7 +10,7 @@ Tela inicial do sistema interno. Mostra os indicadores do período escolhido (7,
 
 | Rota | Componente | Arquivo | O que mostra |
 |---|---|---|---|
-| `/` | `DashboardPage` | `frontend/src/pages/DashboardPage.tsx` | Cards principais, gráficos de vagas x contratações, CLT/estágio, ranking de empresas, "Análise detalhada" (origem dnawork/empresa, conversão, posições), tabela "Contratações recentes" |
+| `/` | `DashboardPage` | `frontend/src/pages/DashboardPage.tsx` | Cabeçalho padrão (`CabecalhoPagina`: título, "Movimento de … a …" e, à direita, 7/30/90 dias e as datas); erro de carregamento com `Alerta`. Cards principais, gráficos de vagas x contratações, CLT/estágio, ranking de empresas, "Análise detalhada" (origem dnawork/empresa, conversão, posições), tabela "Contratações recentes" |
 | `/` (seção no fim) | `OrigemDashboard` | `frontend/src/origem/OrigemDashboard.tsx` | "Origem dos candidatos": Lead de entrada, Atendimento, Processo seletivo realizado e Ganho, por canal/rede/campanha, com filtro próprio de período (7 dias, 1 mês, 3 meses ou datas) |
 
 Não há abas. A página exige a permissão `painel` (`paginaDoCaminho("/")` devolve `"painel"`, `frontend/src/components/shell.tsx:85-88`).

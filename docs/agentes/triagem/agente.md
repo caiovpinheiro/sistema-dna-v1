@@ -1,6 +1,6 @@
 # Agente — Triagem
 
-> Última revisão: 2026-11-12 (prioridade alta no topo e baixa no fim)
+> Última revisão: 2026-11-13 (commit "Repagina as telas restantes no padrão novo")
 
 ## Para que serve
 
@@ -11,7 +11,7 @@ O operador informa o CEP da pessoa e o sistema lista as vagas abertas (CLT e/ou 
 | Rota | Componente | Arquivo | O que mostra |
 |---|---|---|---|
 | `/triagem` | `TriagemPage` | `frontend/src/pages/TriagemPage.tsx` | Menu "Pesquisar vagas + CEP". Formulário (CEP, tipo CLT/Estágio, raio de 5 a 50 km, sexo aceito, idade), aviso de empresas pendentes, lista de vagas em cartões, painel "Texto para a pessoa". Com "Busca inteligente" ligada, aparecem o perfil do candidato (`PerfilCandidato`) e a análise JEV em cada cartão (`AnaliseDaVaga`). |
-| `/triagem/dossie` | `DossiePage` | `frontend/src/pages/DossiePage.tsx` | Menu "Gerador de dossiês". Quatro passos: candidato no CRM (telefone), vaga escolhida, currículo, conferir dados. À direita, o dossiê gerado, que pode ser editado, copiado e salvo como nota no CRM. |
+| `/triagem/dossie` | `DossiePage` | `frontend/src/pages/DossiePage.tsx` | Menu "Gerador de dossiês". Cabeçalho padrão (`CabecalhoPagina`); aviso de IA não configurada e erros com `Alerta`. Quatro passos: candidato no CRM (telefone), vaga escolhida, currículo, conferir dados. À direita, o dossiê gerado, que pode ser editado, copiado e salvo como nota no CRM. |
 
 O menu fica em `frontend/src/components/shell.tsx` (`triagemLinks`, linhas 16-19). As duas abas usam o mesmo id de página, `triagem`. Quando o usuário não tem a página `painel`, o grupo Triagem aparece no topo do menu (shell.tsx:188).
 

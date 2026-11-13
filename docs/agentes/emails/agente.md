@@ -1,6 +1,6 @@
 # Agente — E-mails
 
-> Última revisão: 2026-11-12 (commit 5f1e2d0)
+> Última revisão: 2026-11-13 (commit "Repagina as telas restantes no padrão novo")
 
 ## Para que serve
 
@@ -10,7 +10,7 @@ Editor dos modelos de e-mail que o sistema envia automaticamente (assinatura dig
 
 | Rota | Componente | Arquivo | O que mostra |
 |---|---|---|---|
-| `/emails` | `EmailsPage` | `frontend/src/pages/EmailsPage.tsx` | Lista de modelos (esquerda), prévia "Como o e-mail sai" (De/Para/Assunto + iframe) e formulário (Nome do modelo, Assunto, Mensagem, Campos da mensagem, Salvar/Excluir) |
+| `/emails` | `EmailsPage` | `frontend/src/pages/EmailsPage.tsx` | Cabeçalho padrão (`CabecalhoPagina`). Lista de modelos à esquerda (com a contagem; o escolhido fica em ciano), bloco "Editar modelo" (Nome do modelo, Assunto, Mensagem, Campos da mensagem com "Colocar na mensagem" e, para cada campo usado, o exemplo e "Colocar de novo na mensagem"; no fim "Excluir modelo" e "Salvar alterações") e, à direita, a prévia "Como o e-mail sai" (De/Para/Assunto + iframe). Carregando com `Skeleton`, erro com `Alerta` e lista vazia com `Empty`. |
 
 Sem abas nem subrotas. Exige a página `emails`.
 
@@ -65,7 +65,7 @@ Serviço externo (no envio, fora desta tela): **Mailjet**, variáveis `MAILJET_A
 
 ## Como testar
 
-- Abrir `/emails`, escolher um modelo, inserir um campo com "Colocar na mensagem", trocar o exemplo e ver a prévia; trocar o tema no topo e ver a prévia mudar.
+- Abrir `/emails`, escolher um modelo, inserir um campo com "Colocar na mensagem", trocar o exemplo e ver a prévia; trocar o tema no topo e ver a prévia mudar. "Salvar alterações" fica desligado com nome, assunto ou mensagem vazios.
 - Salvar num ambiente de teste e conferir no banco que o texto voltou com tokens `@...`; tentar salvar com um nome que já existe (409).
 - Testes: não encontrei teste automatizado para `email-modelo.ts` nem para `EmailsPage`.
 - Comandos: `npm test -w backend`, `npm run lint -w backend`, `npm run lint -w frontend`.

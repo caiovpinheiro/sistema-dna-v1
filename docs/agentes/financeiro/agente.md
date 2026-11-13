@@ -1,6 +1,6 @@
 # Agente — Financeiro
 
-> Última revisão: 2026-11-12 (commit "Alinha as colunas dos grupos da régua de cobrança")
+> Última revisão: 2026-11-13 (commit "Repagina as telas restantes no padrão novo")
 
 ## Para que serve
 
@@ -10,18 +10,18 @@
 
 | Rota | Componente | Arquivo | O que mostra |
 | --- | --- | --- | --- |
-| `/financeiro/faturamento` | `GerarFaturamentoPage` | `frontend/src/pages/FinanceiroPage.tsx` | Cartões "Valor a receber" (calculado) e "Asaas" (cobranças em aberto no Asaas), filtros (empresa, mês, ano, status), tabela "Matriz (Sem candidatos)", tabela de empresas a faturar com seleção em lote, painel "Relatório" por empresa e os botões "Enviar relatório e boleto" e "Gerar boletos do mês". |
-| `/financeiro/contas-a-receber` | `ContasReceberPage` | `frontend/src/pages/ContasReceberPage.tsx` | Formulário "Gerar cobrança" com pesquisa de empresa (a mesma pesquisa filtra a tabela), filtro por vencimento (De/Até) e status, a tabela de cobranças do Asaas com as ações Relatório, Link, Enviar relatório, Verificar, Baixar, Nota, Excluir e PDF da nota, e os modais "Data do recebimento" e "Emitir nota fiscal". |
+| `/financeiro/faturamento` | `GerarFaturamentoPage` | `frontend/src/pages/FinanceiroPage.tsx` | Título "Gerar faturamento" com "Gerar boletos do mês" no cabeçalho (pede confirmação). Cartões "Valor a receber no mês" (calculado) e "Em aberto no Asaas". Filtros com rótulo (empresa, mês por nome, ano, situação da fatura) e "Pesquisar"; abaixo, o total de empresas e "Limpar filtros" (volta ao mês atual e a "Aberta e parcial"). Tabela "Matrizes sem candidatos" (só aparece quando há matriz). "Selecionar todas (N)", contador de selecionadas e "Enviar relatório e boleto" (só com seleção), barra de progresso e aviso. Tabela de empresas: seleção, empresa (fantasia e razão social), CNPJ, tipo, fechamento ("Dia 10"), itens, a faturar, situação em selo, relatório enviado e "Relatório"; rodapé com o total a receber e a paginação. |
+| `/financeiro/contas-a-receber` | `ContasReceberPage` | `frontend/src/pages/ContasReceberPage.tsx` | Bloco "Nova cobrança" com pesquisa de empresa (a mesma pesquisa filtra a tabela), valor, vencimento, forma de pagamento, descrição e "Gerar cobrança" no fim do bloco. Filtros com rótulo (vencimento de/até e situação), total de cobranças e "Limpar filtros" (volta ao mês atual e limpa a empresa). "Selecionar todas a pagar sem envio" e "Enviar relatório e boleto". Tabela de cobranças do Asaas (empresa com CNPJ, descrição, vencimento, valor, situação em selo, relatório por e-mail) com as ações Relatório, Link, Enviar relatório, Verificar, Baixar, Nota, PDF da nota e Excluir (rosa, por último); rodapé com o total em aberto da lista. Modais "Data do recebimento" ("Confirmar recebimento") e "Emitir nota fiscal". |
 | `/financeiro/regua` | `ReguaCobrancaPage` | `frontend/src/pages/ReguaCobrancaPage.tsx` | Cabeçalho com competência (AAAA-MM) e "Simular o dia"; "Como a régua funciona" recolhível; resumo do mês (total devido, grupos, pendências, pagos); filtro por situação (Todos, Em aberto, Comprovante a validar, Encaminhados, Pagos) e busca por empresa/filial/CNPJ, feitos na tela; uma linha por grupo (matriz com as filiais) que abre as faturas. Em cada fatura: valor, vencimento, situação, próximo passo e comprovante, links do Asaas, Registrar/Validar comprovante, "Ver candidatos da fatura" e a tabela de etapas com selo de situação e a próxima etapa destacada, com as ações Registrar envio, Escalar, Encaminhar e Enviar relatório. A simulação aparece numa tabela (etapa, e-mail, empresas, valor). |
-| `/financeiro/relatorio-procfy` | `RelatorioProcfyPage` | `frontend/src/pages/FinanceiroPage.tsx` | Título "Contas a Receber DNA + DISC". Filtros: tipo de data, De/Até (mês), status e sistema. Tabela de faturas do sistema antigo, modal "Detalhes" com os candidatos da fatura e o botão "Gerar excel". |
-| `/financeiro/holerite` | `GerarHoleritePage` | `frontend/src/pages/FinanceiroPage.tsx` | Filtros (empresa, mês, ano) e tabela por empresa com a quantidade de candidatos. Não fica no grupo Financeiro: aparece como link solto "Holerite" na barra lateral (`shell.tsx:208`), com a permissão `holerite`. |
+| `/financeiro/relatorio-procfy` | `RelatorioProcfyPage` | `frontend/src/pages/FinanceiroPage.tsx` | Título "Relatório Procfy". Filtros com rótulo: "Filtrar pela data de", De/Até (mês), situação (vira "Só as pagas" com data de pagamento) e sistema, mais "Pesquisar" e "Gerar Excel". Total de faturas e "Limpar filtros". Tabela de faturas do sistema antigo (empresa, tipo, vencimento, valor, forma de pagamento, pago em, situação em selo, "Ver detalhes") com rodapé do total a receber; modal com valor, desconto, parcela, vencimento e os candidatos da fatura. |
+| `/financeiro/holerite` | `GerarHoleritePage` | `frontend/src/pages/FinanceiroPage.tsx` | Filtros com rótulo (empresa, mês, ano), total e "Limpar filtros", e tabela por empresa (empresa, CNPJ, candidatos ativos). A antiga coluna vazia "Lançar Folha" saiu da tela. Não fica no grupo Financeiro: aparece como link solto "Holerite" na barra lateral (`shell.tsx:208`), com a permissão `holerite`. |
 
 Componente compartilhado: `RelatorioEmpresaPainel` (`frontend/src/components/relatorio-empresa.tsx`). É o painel "Relatório" de Faturamento e de Contas a receber. Mostra os candidatos que entram na cobrança, deixa editar ou tirar linhas e envia o relatório com as linhas da tela.
 
 ## Arquivos
 
 Frontend
-- `frontend/src/pages/FinanceiroPage.tsx`: `GerarFaturamentoPage`, `RelatorioProcfyPage` e `GerarHoleritePage`. O mesmo arquivo tem as telas de Comissão (ver `docs/agentes/comissao/agente.md`) e os auxiliares `Screen`, `DataTable`, `ListingFooter`, `PayDialog`, `lerFiltros` e `TAMANHO = 50`.
+- `frontend/src/pages/FinanceiroPage.tsx`: `GerarFaturamentoPage`, `RelatorioProcfyPage` e `GerarHoleritePage`. O mesmo arquivo tem as telas de Comissão (ver `docs/agentes/comissao/agente.md`) e os auxiliares `useLimpeza` (filtros guardados no estado da tela: diz se há filtro e limpa trocando a `key` do formulário), `EmpresaField`, `MonthField`, `YearField`, `MonthRange`, `NomeEmpresa` (fantasia e razão social com `textoPlano`), `Resumo`, `RodapeTabela` (total + `Paginacao`), `SeloStatus`, `PayDialog`, `lerFiltros` e `TAMANHO = 50`. Usa `CabecalhoPagina`, `CampoFiltro`, `ResumoResultados` e `Alerta` de `frontend/src/components/pagina.tsx`.
 - `frontend/src/pages/ContasReceberPage.tsx`
 - `frontend/src/pages/ReguaCobrancaPage.tsx`
 - `frontend/src/components/relatorio-empresa.tsx` (`RelatorioEmpresaPainel`)
@@ -156,10 +156,12 @@ Holerite (`legado.service.ts:707`): conta candidatos distintos com `datainicio <
 - `ASAAS_API_KEY` vazia faz as rotas do Asaas devolverem 503. O cartão "Asaas" do Faturamento mostra "indisponível" em vez de erro.
 - Excluir, Baixar e emitir nota agem de verdade no Asaas e na prefeitura. Não teste em produção.
 - `meta.conferencia` (faturas antigas em aberto) é calculada no backend, mas a tela não mostra.
+- Os filtros de Faturamento, Procfy e Holerite ficam no estado da tela, não na URL. No Faturamento, escolher "Todas" na situação manda `status=3` (o vazio é descartado por `lerFiltros` e o valor inicial "3" fica), então hoje não dá para ver as faturadas junto com as abertas.
+- Visual: as tabelas usam `.data-table` dentro de `Card` (`p-0`), estados com `Skeleton`, `Alerta` e `Empty` (diferencia "nada no mês" de "nada com esses filtros"). Use só classes com remapeamento nos dois temas (`index.css`).
 
 ## Como testar
 
-- Faturamento: abra `/financeiro/faturamento`, troque mês, ano e status e clique em Pesquisar. Abra "Relatório" de uma empresa. Não use "Enviar relatório e boleto" nem "Gerar boletos do mês" fora de um ambiente com Asaas sandbox (`ASAAS_API_URL`).
+- Faturamento: abra `/financeiro/faturamento`, troque mês, ano e situação e clique em Pesquisar; "Limpar filtros" volta os campos ao mês atual. Abra "Relatório" de uma empresa. Não use "Enviar relatório e boleto" nem "Gerar boletos do mês" fora de um ambiente com Asaas sandbox (`ASAAS_API_URL`).
 - Contas a receber: digite parte do nome ou do CNPJ e confira se a tabela filtra. Escolha a empresa na lista, confira "A lista abaixo mostra só ela" e use "Limpar e ver todas". Troque De, Até e Status.
 - Régua: escolha a competência, use os filtros de situação e a busca, abra um grupo ("Ver faturas"), "Ver candidatos da fatura" e "Simular o dia". Os botões das etapas ficam desligados enquanto uma ação está sendo gravada.
 - Procfy: troque o tipo de data (o Status some com "Pagamento"), abra "Detalhes" e use "Gerar excel".

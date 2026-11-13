@@ -1,6 +1,6 @@
 # Agente — Configurações
 
-> Última revisão: 2026-11-12 (commit 5f1e2d0)
+> Última revisão: 2026-11-13 (commit "Repagina as telas restantes no padrão novo")
 
 ## Para que serve
 
@@ -10,11 +10,11 @@ Tela só do administrador para gerenciar quem entra no sistema interno. Lista os
 
 | Rota | Componente | Arquivo | O que mostra |
 |---|---|---|---|
-| `/configuracoes` | `ConfiguracoesPage` | `frontend/src/pages/ConfiguracoesPage.tsx` | Contagem, lista de usuários à esquerda e o painel da direita |
-| `/configuracoes` (painel "Novo usuário") | `NovoUsuario` | mesmo arquivo | Formulário Nome/E-mail/Senha + páginas |
-| `/configuracoes` (painel do usuário escolhido) | `Editor` | mesmo arquivo | Nova senha, "Pode entrar no sistema", páginas, Salvar, Apagar usuário (com confirmação) |
+| `/configuracoes` | `ConfiguracoesPage` | `frontend/src/pages/ConfiguracoesPage.tsx` | Cabeçalho padrão com "Novo usuário", três cartões de contagem, lista "Pessoas com login" à esquerda (selo Administrador ou Sem acesso, ou a quantidade de páginas; a escolhida fica em ciano) e o painel da direita. Sem ninguém escolhido, mostra um `Empty` com o que fazer. |
+| `/configuracoes` (painel "Novo usuário") | `NovoUsuario` | mesmo arquivo | Seções "Dados de acesso" (Nome/E-mail/Senha) e "Páginas que pode usar"; Cancelar e "Criar usuário" no fim |
+| `/configuracoes` (painel do usuário escolhido) | `Editor` | mesmo arquivo | Nome com selo (Administrador, Com acesso ou Sem acesso) e "Apagar usuário" (com confirmação) no topo; seções "Senha", "Entrada no sistema" ("Pode entrar no sistema") e "Páginas que pode usar"; "Salvar alterações" no fim |
 
-Componentes internos: `PaginasMarcadas` (caixas agrupadas por área) e `CaixaArea` (caixa da área com estado "meio marcado").
+Componentes internos: `PaginasMarcadas` (caixas agrupadas por área, cada área num quadro com "N de M"), `CaixaArea` (caixa da área com estado "meio marcado"), `Secao` (título e uma frase de cada parte do formulário) e `Contagem`. Erros e avisos usam `Alerta`.
 
 ## Arquivos
 

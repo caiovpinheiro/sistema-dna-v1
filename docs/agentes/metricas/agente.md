@@ -1,6 +1,6 @@
 # Agente — Métricas
 
-> Última revisão: 2026-11-12 (modo do período, curva e média limitadas a 24 meses)
+> Última revisão: 2026-11-13 (commit "Repagina as telas restantes no padrão novo")
 
 ## Para que serve
 
@@ -11,6 +11,8 @@ Mostra indicadores de gestão que só o administrador vê. Hoje tem a **permanê
 | Rota | Componente | Arquivo | O que mostra |
 |---|---|---|---|
 | `/metricas` | `MetricasPage` | `frontend/src/pages/MetricasPage.tsx` | Filtro de período (De/Até, na URL como `?de=AAAA-MM-DD&ate=AAAA-MM-DD`, com atalhos Tudo, Últimos 12 meses, ano atual e ano anterior) e, com período escolhido, o seletor "Considerar": "Só quem entrou no período" (padrão) ou "Todos ativos no período" (`&modo=ativos`), indicadores (média restrita, mediana, ativos, contratos analisados), bloco "Quanto um estagiário rende", gráfico "Receita por mês" (histórico + projeção de 12 meses), curva de quantos continuam contratados com o tempo, distribuição de quem já saiu por faixa, tabela por ano de início e nota dos descartes. |
+
+O erro de carregamento aparece com `Alerta` (de `components/pagina.tsx`), no mesmo formato das outras telas.
 
 Não tem abas. O item "Métricas" do menu (`shell.tsx`) só aparece para o administrador, logo acima de "Configurações".
 
