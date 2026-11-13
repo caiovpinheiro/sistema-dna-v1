@@ -19,10 +19,20 @@ function pontoValido(lat: unknown, lng: unknown): Ponto | null {
   return { lat: la, lng: ln };
 }
 
+export type EnderecoCep = { rua: string; bairro: string; cidade: string; uf: string };
+
+/** Endereço do CEP pelo ViaCEP (rua, bairro, cidade, UF). `null` se o CEP não existe ou o serviço falhou. */
+export async function enderecoDoCep(cep: string): Promise<EnderecoCep | null> {
+  const digitos = cep.replace(/\D/g, "");
+  if (digitos.length !== 8) return null;
+  const body = await getJson<{ erro?: boolean | string; logradouro?: string; bairro?: string; localidade?: string; uf?: string }>(`https://viacep.com.br/ws/${digitos}/json/`);
+  if (!body || body.erro) return null;
+  return { rua: body.logradouro ?? "", bairro: body.bairro ?? "", cidade: body.localidade ?? "", uf: body.uf ?? "" };
+}
+
 async function viaCep(cep: string) {
-  const body = await getJson<{ erro?: boolean | string; logradouro?: string; localidade?: string; uf?: string }>(`https://viacep.com.br/ws/${cep}/json/`);
-  if (!body || body.erro) return { rua: "", cidade: "", uf: "" };
-  return { rua: body.logradouro ?? "", cidade: body.localidade ?? "", uf: body.uf ?? "" };
+  const endereco = await enderecoDoCep(cep);
+  return { rua: endereco?.rua ?? "", cidade: endereco?.cidade ?? "", uf: endereco?.uf ?? "" };
 }
 
 async function awesomeApi(cep: string) {

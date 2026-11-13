@@ -21,7 +21,7 @@ O menu fica em `frontend/src/components/shell.tsx` (`triagemLinks`, linhas 16-19
 - `frontend/src/pages/TriagemPage.tsx`: página da busca. Os componentes `AvisoEmpresasPendentes`, `AvisoCep`, `CartaoVaga`, `Chip`, `ComoFunciona` e `Secao` ficam no próprio arquivo.
 - `frontend/src/components/triagem-inteligente.tsx`: `useStatusIa`, `PerfilCandidato` (upload do currículo, escolaridade, turnos, tempo de experiência, habilidades) e `AnaliseDaVaga` (score, nível, confiança, explicação).
 - `frontend/src/lib/triagem-matching.ts`: regras puras da tela. `organizarVagas` (avaliadas / sem avaliação / pendentes), `ordemDeExibicao`, `proximoLote`, `idsParaRepetir`, `selecaoValida`, `problemaDoPerfil`, `perfilPreenchido`, `rotuloTurnos`, `rotuloScore` e `textoParaCandidato`, que monta o texto com emojis (reexportado pela `TriagemPage`).
-- `frontend/src/lib/triagem-geo.ts`: geocodifica o CEP **no navegador**. Usa ViaCEP para o endereço e, para a coordenada, tenta AwesomeAPI, depois BrasilAPI e por fim Photon (komoot).
+- `frontend/src/lib/triagem-geo.ts`: geocodifica o CEP **no navegador**. Usa ViaCEP para o endereço (`enderecoDoCep`, exportada e usada também no formulário de candidato para preencher o endereço) e, para a coordenada, tenta AwesomeAPI, depois BrasilAPI e por fim Photon (komoot).
 - `frontend/src/pages/DossiePage.tsx`: página do dossiê. Tudo fica no arquivo (`Passo`, `Indicador`, `ResumoCandidato`).
 - `frontend/src/lib/foto-cargo.ts`: `fotoDoCargo` (nome do cargo → `/cargos/<chave>.jpg`, ou null) e `copiarComFoto` (texto + foto num único item da área de transferência). Também usado pela ficha da vaga.
 - `frontend/public/cargos/*.jpg`: fotos ilustrativas por cargo (1024 px, JPEG, nome = `chaveCargo` com hífens).

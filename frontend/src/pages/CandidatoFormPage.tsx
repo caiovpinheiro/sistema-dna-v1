@@ -9,6 +9,7 @@ import { Alerta, CabecalhoPagina } from "@/components/pagina";
 import { Button, Card, Field, Input, Select, Skeleton, Textarea } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 import { formatCnpj, textoPlano } from "@/lib/format";
+import { enderecoDoCep } from "@/lib/triagem-geo";
 
 const schema = z.object({
   nome: z.string().min(3, "Informe o nome."),
@@ -51,6 +52,11 @@ function diferencas<T extends Record<string, unknown>>(values: T, base: T | null
   return Object.fromEntries(Object.entries(values).filter(([key, value]) => String(value ?? "") !== String(base[key] ?? "")));
 }
 
+function mascaraCep(value: string) {
+  const digitos = value.replace(/\D/g, "").slice(0, 8);
+  return digitos.length > 5 ? `${digitos.slice(0, 5)}-${digitos.slice(5)}` : digitos;
+}
+
 function mensagemErro(error: unknown) {
   if (!(error instanceof ApiError)) return "";
   const details = error.details;
@@ -80,6 +86,32 @@ export function CandidatoFormPage() {
     queryFn: () => api<EmpresaOpcao[]>(`/api/v1/empresas?pageSize=20&q=${encodeURIComponent(buscaEmpresa.trim())}`),
   });
   const base = useRef<Form | null>(null);
+  // CEP digitado: com 8 dígitos busca no ViaCEP (como a triagem) e preenche rua, bairro, cidade e UF.
+  const [cepStatus, setCepStatus] = useState<"" | "buscando" | "nao_encontrado">("");
+  const ultimoCep = useRef("");
+  async function aoMudarCep(valor: string) {
+    const mascarado = mascaraCep(valor);
+    form.setValue("cep", mascarado, { shouldDirty: true });
+    const digitos = mascarado.replace(/\D/g, "");
+    if (digitos.length !== 8) {
+      ultimoCep.current = "";
+      setCepStatus("");
+      return;
+    }
+    if (digitos === ultimoCep.current) return;
+    ultimoCep.current = digitos;
+    setCepStatus("buscando");
+    const endereco = await enderecoDoCep(digitos);
+    if (ultimoCep.current !== digitos) return;
+    if (!endereco) return setCepStatus("nao_encontrado");
+    setCepStatus("");
+    const opcoes = { shouldDirty: true };
+    if (endereco.rua) form.setValue("logradouro", endereco.rua, opcoes);
+    if (endereco.bairro) form.setValue("bairro", endereco.bairro, opcoes);
+    if (endereco.cidade) form.setValue("cidade", endereco.cidade, opcoes);
+    if (endereco.uf) form.setValue("estado", endereco.uf, opcoes);
+    form.setFocus("numero");
+  }
   useEffect(() => {
     if (!current.data || base.current) return;
     const bruto = current.data.data as Form & { id_empresa?: string | null; empresa_nome?: string | null };
@@ -190,7 +222,16 @@ export function CandidatoFormPage() {
         <Col span={3}><Field label="Telefone fixo"><Input placeholder="(11) 0000-0000" {...form.register("telefonefixo")} /></Field></Col>
       </Secao>
       <Secao titulo="Endereço" texto="Usado nas vagas sugeridas (pela cidade) e nos documentos.">
-        <Col span={2}><Field label="CEP"><Input placeholder="00000-000" {...form.register("cep")} /></Field></Col>
+        <Col span={2}>
+          <Field label="CEP" error={cepStatus === "nao_encontrado" ? "CEP não encontrado; preencha o endereço." : undefined}>
+            <Input
+              placeholder="00000-000"
+              inputMode="numeric"
+              {...form.register("cep", { onChange: (event) => void aoMudarCep(event.target.value) })}
+            />
+          </Field>
+          {cepStatus === "buscando" ? <p className="mt-1 text-xs text-slate-500">Buscando endereço…</p> : null}
+        </Col>
         <Col span={3}><Field label="Logradouro"><Input {...form.register("logradouro")} /></Field></Col>
         <Col span={1}><Field label="Número"><Input {...form.register("numero")} /></Field></Col>
         <Col span={2}><Field label="Bairro"><Input {...form.register("bairro")} /></Field></Col>

@@ -1,6 +1,6 @@
 # Agente — Candidatos
 
-> Última revisão: 2026-11-13 (botão "Abertura de conta" na ficha)
+> Última revisão: 2026-11-13 (CEP preenche o endereço no formulário)
 
 ## Para que serve
 
@@ -27,6 +27,7 @@ Frontend
 - `frontend/src/components/documentos-candidato.tsx` — `DocumentosCandidato`.
 - `frontend/src/components/abertura-conta.tsx` — `AberturaConta`: botão e janela da carta "Abertura de conta" (campos editáveis, gera o PDF); `lerValor` lê "1.234,56".
 - `ProcessosRelacionados` exportado de `frontend/src/pages/ProcessosPage.tsx` (também usado em `VagaDetailPage`).
+- `frontend/src/lib/triagem-geo.ts` — `enderecoDoCep` (ViaCEP), compartilhado com a Triagem.
 - `frontend/src/components/preview.tsx`, `paginacao.tsx`, `pagina.tsx`, `ui.tsx`; `frontend/src/lib/api.ts`, `frontend/src/lib/format.ts`.
 - Menu: `frontend/src/components/shell.tsx` (item `candidatos`; `/candidatos` → página `candidatos`).
 
@@ -83,6 +84,7 @@ Variáveis de config que mudam a lista: `CONTRATACAO_STATUS_ATIVO` (padrão 1) e
 ## Regras e comportamentos importantes
 
 - **Cadastro (novo candidato):** só nome e CPF são obrigatórios também no servidor — o e-mail ficou opcional em `candidatoCreateSchema` (antes o cadastro sem e-mail era recusado com mensagem genérica e "não avançava"); grava e-mail vazio quando não vem. Mensagens de nome, CPF, e-mail e UF em português. Em "Cadastrado por: Outra empresa", a busca mostra cada empresa com CNPJ, razão social e cidade (e tudo no `title` ao passar o mouse), para separar unidades com o mesmo nome (ex.: Lumi); escolhida, a lista fecha e aparece a empresa com o CNPJ e "Trocar".
+- **CEP preenche o endereço** (formulário de criar/editar): o campo CEP ganha máscara `00000-000`; ao chegar a 8 dígitos, `enderecoDoCep` (`frontend/src/lib/triagem-geo.ts`, o mesmo ViaCEP da triagem, chamado do navegador) preenche Logradouro, Bairro, Cidade e UF e põe o foco em Número. Só sobrescreve os campos que o ViaCEP devolveu preenchidos; mostra "Buscando endereço…" e, se o CEP não existir ou o serviço falhar, "CEP não encontrado; preencha o endereço.". Ao abrir a edição não busca nada (só reage à digitação).
 - **Pesquisar sempre tem efeito:** com os mesmos filtros, recarrega a lista (`refetch`, ou a chave `rodada` no Financeiro); o botão mostra "Pesquisando…" com ícone girando enquanto carrega. Todo botão do sistema afunda e muda o tom ao ser pressionado (`index.css`, `.app-canvas button:active`).
 - **CPF único**: create e update recusam CPF já usado por outro candidato (comparando só dígitos) → 409 `CPF_DUPLICADO` com `details.id_candidato` (`candidato.service.ts:51`, `:75`). O CPF é validado e normalizado para dígitos por `cpfSchema` (`schemas/common.ts:8`).
 - **E-mail obrigatório só no create** do backend (`candidatoCreateSchema` usa `z.string().email()`), mas o formulário do frontend aceita e-mail vazio — salvar candidato novo sem e-mail volta erro de validação da API.
@@ -105,6 +107,7 @@ Variáveis de config que mudam a lista: `CONTRATACAO_STATUS_ATIVO` (padrão 1) e
 ## Cuidados ao mudar
 
 - `fichaDoCandidato` é usada também por `backend/src/services/processo.service.ts:68` (ficha do processo; `ProcessoDetailPage` usa `FichaCandidato`); mudar o formato quebra as duas telas.
+- `enderecoDoCep` fica em `lib/triagem-geo.ts` e também alimenta `geocodeCep` da Triagem; mudar o retorno afeta as duas telas.
 - `ProcessosRelacionados` e `FichaCandidato` são compartilhados com Vagas e Processos. `FichaCandidato` devolve um fragmento (vários `Card`/`dl` irmãos): o pai precisa ser um `grid gap-5`.
 - Nomes de empresa que vêm com entidade HTML (`&amp;`) passam por `textoPlano` na ficha; no formulário de edição os campos mostram o valor como está gravado (decodificar mudaria o que é salvo).
 - `CandidatoRepository` recebe os códigos de status de contratação por config; não fixe `1`/`2` no SQL.
