@@ -1,6 +1,6 @@
 # Agente — Financeiro
 
-> Última revisão: 2026-11-13 (commit "Botões com retorno de clique e Pesquisar sempre recarrega")
+> Última revisão: 2026-11-13 (commit "Contas a receber: recebido no período e ações em lote")
 
 ## Para que serve
 
@@ -101,6 +101,7 @@ Serviços externos:
 
 ## Regras e comportamentos importantes
 
+- **Contas a receber — totais e lote:** cartões Recebido (cobranças pagas), A receber (abertas) e Total do período (sem canceladas, com % recebido), calculados na tela sobre a lista filtrada; o rodapé da tabela repete recebido e em aberto. Toda linha tem caixa de seleção e o cabeçalho marca todas as visíveis ("Selecionar todas (N)"). Com seleção, "Escolher ação" abre uma janela com três ações em lote, cada uma mostrando quantas selecionadas alcança: **Enviar relatório e boleto** (só a pagar sem envio, mesmo fluxo de antes, `POST /api/v1/faturamento/relatorios`), **Emitir nota fiscal** (pede confirmação; para cada cobrança sem nota, `GET …/cobrancas/:id/nota` e emite as notas sugeridas com `POST …/cobrancas/:id/nota`; sugestão "padrao" — sem contrato no mês — é pulada e listada para emitir pela linha) e **Verificar no Asaas** (`POST …/cobrancas/:id/sincronizar` em todas não canceladas). Barra de progresso e resumo no fim.
 - **Pesquisar sempre tem efeito:** com os mesmos filtros, recarrega a lista (`refetch`, ou a chave `rodada` no Financeiro); o botão mostra "Pesquisando…" com ícone girando enquanto carrega. Todo botão do sistema afunda e muda o tom ao ser pressionado (`index.css`, `.app-canvas button:active`).
 Permissões (`backend/src/lib/paginas.ts:28-56`; o hook fica em `app.ts:163`). O administrador passa em tudo. Os outros usuários precisam do id da página:
 - `/api/v1/asaas/regua*` precisa de `regua`. O resto de `/api/v1/asaas*` precisa de `contas` ou `faturamento`.
