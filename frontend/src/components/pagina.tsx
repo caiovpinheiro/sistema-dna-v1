@@ -52,3 +52,43 @@ export function ResumoResultados({ total, singular, plural, filtrando, onLimpar,
     </div>
   );
 }
+
+/**
+ * Filtro em chips (situação, status, abas simples): um selecionado por vez, com contagem opcional.
+ * Mesmo visual dos filtros da Régua de cobrança e da Triagem.
+ */
+export function FiltroChips<T extends string>({ opcoes, valor, onChange, rotulo }: {
+  opcoes: Array<{ id: T; rotulo: string; contagem?: number }>;
+  valor: T;
+  onChange: (id: T) => void;
+  rotulo: string;
+}) {
+  return (
+    <div className="flex flex-wrap gap-2" role="group" aria-label={rotulo}>
+      {opcoes.map((opcao) => {
+        const ativo = opcao.id === valor;
+        return (
+          <button
+            key={opcao.id || "todos"}
+            type="button"
+            aria-pressed={ativo}
+            onClick={() => onChange(opcao.id)}
+            className={cn(
+              "inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-sm font-semibold ring-1 transition",
+              ativo ? "bg-cyan-700 text-white ring-cyan-700" : "bg-white text-slate-600 ring-slate-200 hover:bg-slate-50",
+            )}
+          >
+            {opcao.rotulo}
+            {opcao.contagem != null ? <span className={cn("tabular-nums", ativo ? "" : "text-slate-400")}>{opcao.contagem}</span> : null}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Mensagem de erro de carregamento ou de ação, no mesmo formato em todas as telas. */
+export function Alerta({ children, tom = "erro" }: { children: ReactNode; tom?: "erro" | "aviso" | "info" }) {
+  const estilo = tom === "erro" ? "bg-rose-50 text-rose-700" : tom === "aviso" ? "bg-amber-50 text-amber-800" : "bg-cyan-50 text-cyan-800";
+  return <p role={tom === "erro" ? "alert" : "status"} className={cn("rounded-lg px-3 py-2 text-sm", estilo)}>{children}</p>;
+}

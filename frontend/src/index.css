@@ -255,7 +255,15 @@ button, a {
 .app-canvas.escuro :where(input, textarea, select) { color: #f4f6f8; }
 .app-canvas.claro :where(input, textarea, select) { color: #102033; }
 /* Ícone do calendário dos campos de data visível no fundo escuro. */
-.app-canvas.escuro input[type="date"] { color-scheme: dark; }
+/* Controles nativos (lista do select, calendário, barras de rolagem) no tema da tela. */
+.app-canvas.escuro { color-scheme: dark; }
+.app-canvas.claro { color-scheme: light; }
+.app-canvas.escuro input[type="date"],
+.app-canvas.escuro input[type="month"],
+.app-canvas.escuro input[type="time"] { color-scheme: dark; }
+.app-canvas.escuro select option,
+.app-canvas.escuro select optgroup { background-color: #15181e; color: #f4f6f8; }
+.app-canvas.claro select option { background-color: #ffffff; color: #102033; }
 
 .app-canvas.claro .bg-\[\#0b0d12\],
 .app-canvas.claro .bg-\[\#0e1014\] { background-color: #ffffff; }
