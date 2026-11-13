@@ -1,5 +1,5 @@
 import type { Db } from "../repositories/sql.js";
-import { many, one } from "../repositories/sql.js";
+import { many, one, REGIME_SQL } from "../repositories/sql.js";
 import type { AppConfig } from "../config.js";
 import { textoHtml } from "../lib/email-modelo.js";
 import { enviarEmailMailjet } from "../lib/mailjet.js";
@@ -713,9 +713,10 @@ export class LegadoService {
     const fim = `${proximoAno}/${String(proximoMes).padStart(2, "0")}/01`;
     const empresa = texto(query.empresa);
     const { pagina, tamanho, offset } = corte(query.page ?? 1, query.pageSize ?? 50);
+    // Ativos em algum dia do mês: começaram antes do mês seguinte e não saíram antes do dia 1 (datas AAAA/MM/DD).
     const where = `
-      WHERE cv.datainicio <= $1
-        AND (cv.data_demicao IS NULL OR cv.data_demicao = '' OR cv.data_demicao >= $2)
+      WHERE cv.datainicio < $2
+        AND (cv.data_demicao IS NULL OR cv.data_demicao = '' OR cv.data_demicao >= $1)
         AND ($3 = '' OR e.razao_social ILIKE $3 OR e.nome_fantasia ILIKE $3 OR e.cnpj ILIKE $3)
     `;
     const params = [inicio, fim, empresa ? `%${empresa}%` : ""];
@@ -729,10 +730,12 @@ export class LegadoService {
         GROUP BY e.id_empresa
       ) lista
     `, params);
-    const rows = await many<{ cnpj: string | null; razao_social: string | null; nome_fantasia: string | null; candidatos: number }>(this.db, `
-      SELECT e.cnpj, e.razao_social, e.nome_fantasia, count(DISTINCT cv.id_candidato)::int AS candidatos
+    const rows = await many<{ id_empresa: string; cnpj: string | null; razao_social: string | null; nome_fantasia: string | null; candidatos: number; estagiarios: number }>(this.db, `
+      SELECT e.id_empresa::text AS id_empresa, e.cnpj, e.razao_social, e.nome_fantasia, count(DISTINCT cv.id_candidato)::int AS candidatos,
+             count(DISTINCT cv.id_candidato) FILTER (WHERE ${REGIME_SQL} LIKE '%estagio%')::int AS estagiarios
       FROM dna_work.conratacaovaga cv
       JOIN dna_work.vaga v ON v.id_vaga = cv.id_vaga
+      LEFT JOIN dna_work.modalidade_vaga m ON m.id = v.tipo_vaga
       JOIN dna_work.empresa e ON e.id_empresa = v.id_empresa
       ${where}
       GROUP BY e.id_empresa, e.cnpj, e.razao_social, e.nome_fantasia

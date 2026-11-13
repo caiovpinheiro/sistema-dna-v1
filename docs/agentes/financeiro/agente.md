@@ -1,10 +1,10 @@
 # Agente — Financeiro
 
-> Última revisão: 2026-11-13 (commit "Contas a receber: recebido no período e ações em lote")
+> Última revisão: 2026-11-13 (commit "Holerite de estágio: lançar a folha e gerar os PDFs")
 
 ## Para que serve
 
-É onde o financeiro fecha o mês. Em Faturamento, calcula quanto cada empresa deve no mês e envia o relatório com o boleto do Asaas. Em Contas a receber, acompanha e mexe nas cobranças do Asaas: cria cobrança avulsa, dá baixa, exclui e emite nota fiscal. A Régua de cobrança mostra as etapas de cobrança de cada fatura. O Relatório Procfy lista as faturas do sistema antigo e exporta para Excel. O Holerite conta quantos candidatos ativos cada empresa tem no mês.
+É onde o financeiro fecha o mês. Em Faturamento, calcula quanto cada empresa deve no mês e envia o relatório com o boleto do Asaas. Em Contas a receber, acompanha e mexe nas cobranças do Asaas: cria cobrança avulsa, dá baixa, exclui e emite nota fiscal. A Régua de cobrança mostra as etapas de cobrança de cada fatura. O Relatório Procfy lista as faturas do sistema antigo e exporta para Excel. O Holerite lista as empresas com contratados ativos no mês e abre a folha de cada uma, onde o operador lança faltas e valores e gera os holerites de estágio em PDF.
 
 ## Rotas e abas
 
@@ -14,7 +14,8 @@
 | `/financeiro/contas-a-receber` | `ContasReceberPage` | `frontend/src/pages/ContasReceberPage.tsx` | Bloco "Nova cobrança" com pesquisa de empresa (a mesma pesquisa filtra a tabela), valor, vencimento, forma de pagamento, descrição e "Gerar cobrança" no fim do bloco. Filtros com rótulo (vencimento de/até e situação), total de cobranças e "Limpar filtros" (volta ao mês atual e limpa a empresa). "Selecionar todas a pagar sem envio" e "Enviar relatório e boleto". Tabela de cobranças do Asaas (empresa com CNPJ, descrição, vencimento, valor, situação em selo, relatório por e-mail) com as ações Relatório, Link, Enviar relatório, Verificar, Baixar, Nota, PDF da nota e Excluir (rosa, por último); rodapé com o total em aberto da lista. Modais "Data do recebimento" ("Confirmar recebimento") e "Emitir nota fiscal". |
 | `/financeiro/regua` | `ReguaCobrancaPage` | `frontend/src/pages/ReguaCobrancaPage.tsx` | Cabeçalho com competência (AAAA-MM) e "Simular o dia"; "Como a régua funciona" recolhível; resumo do mês (total devido, grupos, pendências, pagos); filtro por situação (Todos, Em aberto, Comprovante a validar, Encaminhados, Pagos) e busca por empresa/filial/CNPJ, feitos na tela; uma linha por grupo (matriz com as filiais) que abre as faturas. Em cada fatura: valor, vencimento, situação, próximo passo e comprovante, links do Asaas, Registrar/Validar comprovante, "Ver candidatos da fatura" e a tabela de etapas com selo de situação e a próxima etapa destacada, com as ações Registrar envio, Escalar, Encaminhar e Enviar relatório. A simulação aparece numa tabela (etapa, e-mail, empresas, valor). |
 | `/financeiro/relatorio-procfy` | `RelatorioProcfyPage` | `frontend/src/pages/FinanceiroPage.tsx` | Título "Relatório Procfy". Filtros com rótulo: "Filtrar pela data de", De/Até (mês), situação (vira "Só as pagas" com data de pagamento) e sistema, mais "Pesquisar" e "Gerar Excel". Total de faturas e "Limpar filtros". Tabela de faturas do sistema antigo (empresa, tipo, vencimento, valor, forma de pagamento, pago em, situação em selo, "Ver detalhes") com rodapé do total a receber; modal com valor, desconto, parcela, vencimento e os candidatos da fatura. |
-| `/financeiro/holerite` | `GerarHoleritePage` | `frontend/src/pages/FinanceiroPage.tsx` | Filtros com rótulo (empresa, mês, ano), total e "Limpar filtros", e tabela por empresa (empresa, CNPJ, candidatos ativos). A antiga coluna vazia "Lançar Folha" saiu da tela. Não fica no grupo Financeiro: aparece como link solto "Holerite" na barra lateral (`shell.tsx:208`), com a permissão `holerite`. |
+| `/financeiro/holerite` | `GerarHoleritePage` | `frontend/src/pages/FinanceiroPage.tsx` | Filtros (empresa, mês, ano), total e "Limpar filtros", e tabela por empresa: empresa, CNPJ, contratados ativos, estagiários e o botão "Lançar folha" (abre a folha do mês; empresa só com CLT mostra "Só CLT"). Não fica no grupo Financeiro: link solto "Holerite" na barra lateral, permissão `holerite`. |
+| `/financeiro/holerite/:id?competencia=AAAA-MM` | `HoleriteFolhaPage` | `frontend/src/pages/HoleriteFolhaPage.tsx` | Folha de holerite de estágio da empresa no mês: um estagiário por linha (dias no mês, bolsa proporcional, faltas, auxílio-transporte, outros acréscimos e descontos com descrição, líquido recalculado ao digitar), linha alterada em amarelo, barra fixa com líquido total e "Salvar folha", PDF por estagiário e "Gerar PDF de todos" (salvam antes o que estiver alterado). Aviso de quantos CLT ficaram de fora. Mesma permissão `holerite`. |
 
 Componente compartilhado: `RelatorioEmpresaPainel` (`frontend/src/components/relatorio-empresa.tsx`). É o painel "Relatório" de Faturamento e de Contas a receber. Mostra os candidatos que entram na cobrança, deixa editar ou tirar linhas e envia o relatório com as linhas da tela.
 
@@ -68,7 +69,10 @@ Backend
 | GET | `/api/v1/procfy?de&ate&status&tipoData&sistema&page&pageSize` | Faturas antigas e `meta.totalReceber` | `routes/index.ts:698` → `LegadoService.procfy` |
 | GET | `/api/v1/procfy/fatura/:id` | Detalhe da fatura com os candidatos | `routes/index.ts:695` → `LegadoService.procfyFatura` |
 | GET | `/api/v1/procfy/excel?...` | Baixa `Faturas.xls` (tabela HTML) | `routes/index.ts:689` → `LegadoService.planilhaProcfy` |
-| GET | `/api/v1/holerite?empresa&mes&ano&page&pageSize` | Empresas e a quantidade de candidatos ativos no mês | `routes/index.ts:710` → `LegadoService.holerite` |
+| GET | `/api/v1/holerite?empresa&mes&ano&page&pageSize` | Empresas com contratados ativos no mês (`id_empresa`, `candidatos`, `estagiarios`) | `routes/index.ts` → `LegadoService.holerite` |
+| GET | `/api/v1/holerite/empresas/:id?competencia=AAAA-MM` | Folha de estágio da empresa no mês, com lançamentos salvos e cálculo | `HoleriteService.folha` |
+| PUT | `/api/v1/holerite/empresas/:id` `{competencia, itens[]}` | Grava os lançamentos (faltas, auxílio-transporte, acréscimos e descontos com descrição); o cálculo é refeito no servidor | `HoleriteService.salvar` |
+| GET | `/api/v1/holerite/empresas/:id/pdf?competencia&contratacao?` | PDF com um holerite por página (todos ou um estagiário) | `HoleriteService.pdf` → `gerarHoleritesPdf` (`lib/holerite.ts`) |
 
 Rotas do backend que esta tela não chama: `POST /api/v1/asaas/cobrancas/:id/email` (reenvia a fatura), `POST /api/v1/asaas/notas/:id/cancelar` e `POST /api/v1/asaas/webhook`. O webhook é público, protegido pelo cabeçalho `asaas-access-token` comparado com `ASAAS_WEBHOOK_TOKEN`, atualiza o status e encerra a régua quando o pagamento chega.
 
@@ -92,6 +96,7 @@ Gravados:
 - `dna_work.fatura.id_asaas`: gravado em "Gerar boletos do mês" (`asaas.service.ts:154`)
 - `dna_work.cobranca_email`: INSERT com `id = max(id)+1` depois que o e-mail de relatório e boleto sai (`legado.service.ts:416`)
 - `dna_work.fatura_regua`, `dna_work.fatura_envio` e `dna_work.fatura_regua_log`: régua
+- `dna_work.holerite_estagio` (gravada): folha de holerite de estágio por contratação e mês
 
 Serviços externos:
 - Asaas (`ASAAS_API_URL`, `ASAAS_API_KEY`): `/v3/customers`, `/v3/payments`, `/receiveInCash`, `/v3/invoices`, `/authorize`, `/cancel` e `/v3/finance/payment/statistics`
@@ -144,7 +149,10 @@ Relatório Procfy (`legado.service.ts:428`)
 - Subfaturas ficam de fora. Uma fatura "Aberta" com vencimento passado aparece como "Vencido" em vermelho (cálculo só no front).
 - O Excel usa os mesmos filtros, sem paginação, com até 5000 linhas.
 
-Holerite (`legado.service.ts:707`): conta candidatos distintos com `datainicio <= dia 1 do mês` e sem demissão, ou demitidos a partir do dia 1 do mês seguinte. É só leitura. A coluna "Lançar Folha" é vazia: não tem ação.
+Holerite:
+- Lista (`LegadoService.holerite`): contratados ativos em algum dia do mês — `datainicio` antes do dia 1 do mês seguinte e sem demissão ou demitidos a partir do dia 1 do mês (datas `AAAA/MM/DD`, como no sistema antigo). Conta todos e, à parte, os de estágio (modalidade da vaga com "estágio").
+- Folha (`backend/src/services/holerite.service.ts`, cálculo em `backend/src/lib/holerite.ts`): só estágio. Contratações da empresa (`vaga.id_empresa`) com modalidade de estágio e pelo menos um dia no mês. Bolsa = `vaga.salario` ÷ dias corridos do mês × dias contratado no mês (do início ou dia 1 até a demissão ou o último dia; mês cheio = bolsa inteira), como no sistema antigo. Cada falta desconta um dia de bolsa (no máximo os dias trabalhados). Líquido = bolsa + auxílio-transporte + outros acréscimos − faltas − outros descontos. Sem INSS, IRRF ou FGTS. CLT fica fora (aviso na tela): a folha CLT do sistema antigo (INSS, IRRF, FGTS, ponto, hora extra, adiantamentos, férias) não foi migrada.
+- Gravação em `dna_work.holerite_estagio` (migration `20261113150000_holerite_estagio`): um registro por `(id_contratacao, competencia)`, com lançamentos, cálculo e `atualizado_por` (e-mail de quem salvou). Sem a tabela, ler mostra a folha sem lançamentos e salvar responde 503 `MIGRACAO_PENDENTE`. Lançar para contratação fora da folha do mês → 422 `FORA_DA_FOLHA`.
 
 ## Cuidados ao mudar
 
@@ -167,6 +175,6 @@ Holerite (`legado.service.ts:707`): conta candidatos distintos com `datainicio <
 - Contas a receber: digite parte do nome ou do CNPJ e confira se a tabela filtra. Escolha a empresa na lista, confira "A lista abaixo mostra só ela" e use "Limpar e ver todas". Troque De, Até e Status.
 - Régua: escolha a competência, use os filtros de situação e a busca, abra um grupo ("Ver faturas"), "Ver candidatos da fatura" e "Simular o dia". Os botões das etapas ficam desligados enquanto uma ação está sendo gravada.
 - Procfy: troque o tipo de data (o Status some com "Pagamento"), abra "Detalhes" e use "Gerar excel".
-- Holerite: abra `/financeiro/holerite`.
+- Holerite: abra `/financeiro/holerite`, clique "Lançar folha" numa empresa com estagiários, lance faltas e auxílio-transporte, salve e gere o PDF de um e de todos. Teste: `backend/test/holerite.test.ts` (dias no mês, bolsa proporcional, faltas, lançamentos e PDF).
 - Testes automáticos: `backend/test/regua.test.ts` cobre agrupamento, datas, feriados, suspensão, simulação, reserva, consolidação, início e agenda. `backend/test/money.test.ts` cobre `parseMoney`. Não foram encontrados testes de `LegadoService.faturamento`, `AsaasService`, `nota-fiscal.ts` nem das telas.
 - Comandos: `npm run lint -w frontend`, `npm run lint -w backend`, `npm test -w backend` e `npm run agentes:conferir`.

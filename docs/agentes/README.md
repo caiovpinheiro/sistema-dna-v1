@@ -47,6 +47,7 @@ O script `scripts/conferir-agentes.mjs` lê esta tabela. Mantenha o formato: uma
 | TermoDetailPage.tsx | [termos](termos/agente.md) |
 | GerarDocumentoPage.tsx | [termos](termos/agente.md) |
 | FinanceiroPage.tsx | [financeiro](financeiro/agente.md), [comissao](comissao/agente.md) |
+| HoleriteFolhaPage.tsx | [financeiro](financeiro/agente.md) |
 | ContasReceberPage.tsx | [financeiro](financeiro/agente.md) |
 | ReguaCobrancaPage.tsx | [financeiro](financeiro/agente.md) |
 | NovasAbasPage.tsx | [vagas](vagas/agente.md), [documentos-pendentes](documentos-pendentes/agente.md), [instituicoes](instituicoes/agente.md) |

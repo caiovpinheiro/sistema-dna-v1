@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FileSpreadsheet, FileText, ListChecks, Loader2, Receipt, Search, Send, Wallet, X } from "lucide-react";
 import { useState, type FormEvent, type MouseEvent, type ReactNode } from "react";
+import { Link } from "react-router-dom";
 import { Paginacao } from "@/components/paginacao";
 import { Alerta, CabecalhoPagina, CampoFiltro, ResumoResultados } from "@/components/pagina";
 import { Badge, Button, Card, Empty, Field, Input, Select, Skeleton, cn } from "@/components/ui";
@@ -440,7 +441,7 @@ type ProcfyDetalhe = {
 };
 type Comissao = { nome_fantasia: string | null; cnpj: string | null; vencimento: string | null; data_pg: string | null; status_boleto: string; itens: number; vendedor: string | null; treinamento: string | null; valor: number | null; status: string };
 type ComissaoEmpresa = { nome_fantasia: string | null; vendedor: string | null; data_cadastro: string | null; primeira_contratacao: string | null; primeira_vaga: string | null; tipo: string | null; valor: number | null; status: string };
-type Holerite = { cnpj: string | null; razao_social: string | null; nome_fantasia: string | null; candidatos: number };
+type Holerite = { id_empresa: string; cnpj: string | null; razao_social: string | null; nome_fantasia: string | null; candidatos: number; estagiarios: number };
 
 function vencida(item: Procfy) {
   if (item.status !== "Aberta" || !item.vencimento) return false;
@@ -824,7 +825,7 @@ export function GerarHoleritePage() {
     <div className="grid gap-5">
       <CabecalhoPagina
         titulo="Holerite"
-        descricao="Quantos candidatos ativos cada empresa tem no mês, para lançar a folha."
+        descricao="Empresas com contratados ativos no mês. Clique em “Lançar folha” para lançar faltas e valores e gerar os holerites de estágio em PDF."
       />
       <Card>
         <form key={limpeza.versao} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_7rem_auto] lg:items-end" onSubmit={(event) => { event.preventDefault(); setBusca({ ...inicial, ...lerFiltros(event, ["empresa", "mes", "ano"]) }); setPagina(1); setRodada((atual) => atual + 1); }}>
@@ -844,7 +845,9 @@ export function GerarHoleritePage() {
               <tr>
                 <th>Empresa</th>
                 <th>CNPJ</th>
-                <th className="text-right">Candidatos ativos</th>
+                <th className="text-right">Contratados ativos</th>
+                <th className="text-right">Estagiários</th>
+                <th><span className="sr-only">Lançar folha</span></th>
               </tr>
             </thead>
             <tbody>
@@ -852,7 +855,15 @@ export function GerarHoleritePage() {
                 <tr key={`${item.cnpj}-${index}`}>
                   <td><NomeEmpresa fantasia={item.nome_fantasia} razao={item.razao_social} /></td>
                   <td className="whitespace-nowrap tabular-nums text-slate-600">{formatCnpj(item.cnpj)}</td>
-                  <td className="text-right font-semibold tabular-nums text-navy-900">{item.candidatos}</td>
+                  <td className="text-right tabular-nums text-slate-600">{item.candidatos}</td>
+                  <td className="text-right font-semibold tabular-nums text-navy-900">{item.estagiarios}</td>
+                  <td className="w-px whitespace-nowrap text-right">
+                    {item.estagiarios > 0 ? (
+                      <Link to={`/financeiro/holerite/${item.id_empresa}?competencia=${busca.ano}-${String(busca.mes).padStart(2, "0")}`}>
+                        <Button type="button" className="h-9"><FileText size={15} /> Lançar folha</Button>
+                      </Link>
+                    ) : <span className="text-xs text-slate-500" title="O holerite CLT ainda não está no sistema novo">Só CLT</span>}
+                  </td>
                 </tr>
               ))}
             </tbody>

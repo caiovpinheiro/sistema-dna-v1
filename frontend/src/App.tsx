@@ -32,6 +32,7 @@ import { VagaDetailPage } from "@/pages/VagaDetailPage";
 import { VagaFormPage } from "@/pages/VagaFormPage";
 import { TermoDetailPage } from "@/pages/TermoDetailPage";
 import { GerarDocumentoPage } from "@/pages/GerarDocumentoPage";
+import { HoleriteFolhaPage } from "@/pages/HoleriteFolhaPage";
 import { EditarTcePage, GerarTcePage, TermosPage } from "@/pages/TermosPage";
 import { TriagemPage } from "@/pages/TriagemPage";
 import { VagasPage } from "@/pages/VagasPage";
@@ -102,6 +103,7 @@ export function App() {
             <Route path="/financeiro/comissao" element={<ComissaoConsultarPage />} />
             <Route path="/financeiro/comissao/empresas" element={<ComissaoEmpresasPage />} />
             <Route path="/financeiro/holerite" element={<GerarHoleritePage />} />
+            <Route path="/financeiro/holerite/:id" element={<HoleriteFolhaPage />} />
             <Route path="/documentos-pendentes" element={<DocumentosPendentesPage />} />
             <Route path="/emails" element={<EmailsPage />} />
             <Route path="/configuracoes" element={<ConfiguracoesPage />} />

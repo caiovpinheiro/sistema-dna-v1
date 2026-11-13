@@ -43,6 +43,7 @@ import type { CurriculoService } from "../services/curriculo.service.js";
 import type { TriagemMatchingService } from "../services/triagem-matching.service.js";
 import type { DossieService } from "../services/dossie.service.js";
 import type { InstituicaoService } from "../services/instituicao.service.js";
+import type { HoleriteService } from "../services/holerite.service.js";
 import { prepararCurriculo } from "../lib/curriculo/arquivo.js";
 import type { CargoService } from "../services/cargo.service.js";
 import type { SyncCicloService } from "../services/sync-ciclo.service.js";
@@ -70,6 +71,7 @@ type Services = {
   matching: TriagemMatchingService;
   dossie: DossieService;
   instituicoes: InstituicaoService;
+  holerites: HoleriteService;
   cargos: CargoService;
   sync: SyncCicloService;
 };
@@ -732,6 +734,40 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
   api.get("/api/v1/holerite", { schema: { tags: ["holerite"], querystring: z.object({ ...pagina, empresa: z.string().optional(), mes: z.string().optional(), ano: z.string().optional() }) } }, async (request) => {
     const result = await legado.holerite(request.query);
     return ok(result.data, result.meta);
+  });
+  // Folha de holerite de estágio por empresa e mês (grava em dna_work.holerite_estagio).
+  const competenciaSchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "Informe o mês no formato AAAA-MM.");
+  const dinheiro = z.coerce.number().min(0, "Valor não pode ser negativo.").max(1_000_000);
+  api.get("/api/v1/holerite/empresas/:id", {
+    schema: { tags: ["holerite"], params: z.object({ id: z.string().min(1) }), querystring: z.object({ competencia: competenciaSchema }) },
+  }, async (request) => ok(await services.holerites.folha(request.params.id, request.query.competencia)));
+  api.put("/api/v1/holerite/empresas/:id", {
+    schema: {
+      tags: ["holerite"],
+      params: z.object({ id: z.string().min(1) }),
+      body: z.object({
+        competencia: competenciaSchema,
+        itens: z.array(z.object({
+          id_contratacao: z.coerce.number().int().positive(),
+          faltas: z.coerce.number().int().min(0).max(31),
+          auxilio_transporte: dinheiro,
+          acrescimos: dinheiro,
+          descricao_acrescimos: z.string().trim().max(120).default(""),
+          descontos: dinheiro,
+          descricao_descontos: z.string().trim().max(120).default(""),
+        })).max(500),
+      }),
+    },
+  }, async (request) => ok(await services.holerites.salvar(request.params.id, request.body.competencia, request.body.itens, request.user.email)));
+  api.get("/api/v1/holerite/empresas/:id/pdf", {
+    schema: {
+      tags: ["holerite"],
+      params: z.object({ id: z.string().min(1) }),
+      querystring: z.object({ competencia: competenciaSchema, contratacao: z.coerce.number().int().positive().optional() }),
+    },
+  }, async (request, reply) => {
+    const { bytes, arquivo } = await services.holerites.pdf(request.params.id, request.query.competencia, request.query.contratacao);
+    return reply.header("Content-Type", "application/pdf").header("Content-Disposition", `inline; filename="${arquivo}"`).send(Buffer.from(bytes));
   });
   api.get("/api/v1/documentos-pendentes", { schema: { tags: ["documentos"], querystring: z.object({ ...pagina, pageSize: z.coerce.number().int().min(1).max(100).default(20), modalidade: z.string().optional(), empresa: z.string().optional(), documento: z.string().optional(), candidato: z.string().optional(), de: z.string().optional(), ate: z.string().optional() }) } }, async (request) => {
     const result = await legado.documentos(request.query);
