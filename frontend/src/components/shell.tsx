@@ -1,4 +1,4 @@
-import { BarChart3, Briefcase, Building2, ChevronDown, FileSignature, FileWarning, GraduationCap, Handshake, Layers, LayoutDashboard, ListChecks, LogOut, Mail, Menu, Moon, Percent, Receipt, Search, Settings, Sun, Users, Wallet, X } from "lucide-react";
+import { BarChart3, Briefcase, Building2, ChevronDown, ExternalLink, FileSignature, FileWarning, GraduationCap, Handshake, Layers, LayoutDashboard, ListChecks, LogOut, Mail, Menu, Moon, Percent, Receipt, Search, Send, Settings, Sun, Users, Wallet, X } from "lucide-react";
 import { useEffect, useState, type ComponentType } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { api } from "@/lib/api";
@@ -17,6 +17,8 @@ const triagemLinks: LinkItem[] = [
   { id: "triagem", to: "/triagem", label: "Pesquisar vagas + CEP", end: true },
   { id: "triagem", to: "/triagem/dossie", label: "Gerador de dossiês" },
 ];
+
+const DISPARADOR_URL = "https://dnaworkia-disparador-infojobs.vkfaze.easypanel.host/";
 
 const afterVagas = [
   { id: "processos", to: "/processos", label: "Processos", icon: ListChecks },
@@ -216,6 +218,11 @@ export function Shell({ email, admin, paginas, notify }: { email: string; admin:
           <Mail size={18} className="shrink-0" /> {label("E-mails")}
         </NavLink>
       ) : null}
+      {/* Ferramenta externa: abre o disparador de mensagens (Infojobs) numa aba nova. */}
+      <a href={DISPARADOR_URL} target="_blank" rel="noreferrer" onClick={() => setOpen(false)} title="Disparador (abre em nova aba)" className={linkClass({ isActive: false })}>
+        <Send size={18} className="shrink-0" /> {label("Disparador")}
+        {expanded ? <ExternalLink size={13} className="ml-auto shrink-0 text-slate-400" /> : null}
+      </a>
       {permitido("documentos") ? (
         <NavLink to="/documentos-pendentes" onClick={() => setOpen(false)} title="Documentos Pendentes" className={linkClass}>
           <FileWarning size={18} className="shrink-0" /> {label("Documentos Pendentes")}
