@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, ExternalLink, FileText, ListChecks, Plus, Search, Send } from "lucide-react";
+import { Check, ExternalLink, FileText, ListChecks, Plus, RefreshCw, Search, Send, X } from "lucide-react";
 import { useState } from "react";
 import { Alerta, CabecalhoPagina, CampoFiltro, ResumoResultados } from "@/components/pagina";
 import { RelatorioEmpresaPainel } from "@/components/relatorio-empresa";
@@ -77,7 +77,8 @@ export function ContasReceberPage() {
   const [erro, setErro] = useState("");
   const [aviso, setAviso] = useState("");
   const [marcadas, setMarcadas] = useState<string[]>([]);
-  const [progresso, setProgresso] = useState<{ feito: number; total: number } | null>(null);
+  const [progresso, setProgresso] = useState<{ feito: number; total: number; acao: string } | null>(null);
+  const [acoesAbertas, setAcoesAbertas] = useState(false);
   const [pagamento, setPagamento] = useState<{ id: string; data: string } | null>(null);
   const [nota, setNota] = useState<{ id: string; origem: SugestaoNota["origem"] | "carregando"; itens: ItemNota[] } | null>(null);
   const [relatorio, setRelatorio] = useState<{ empresaId: string; mes: string; ano: string } | null>(null);
@@ -100,8 +101,20 @@ export function ContasReceberPage() {
     const nomes = semEntidades(`${row.empresa_fantasia ?? ""} ${row.empresa_razao ?? ""}`).toLowerCase();
     return nomes.includes(termo) || (termoCnpj.length >= 3 && (row.empresa_cnpj ?? "").replace(/\D/g, "").includes(termoCnpj));
   });
-  const pendentes = rows.filter((row) => row.situacao === "aberta" && !row.envio);
-  const total = rows.filter((row) => row.situacao === "aberta").reduce((sum, row) => sum + Number(row.valor), 0);
+  const soma = (lista: Cobranca[]) => lista.reduce((sum, row) => sum + Number(row.valor || 0), 0);
+  const pagas = rows.filter((row) => row.situacao === "paga");
+  const abertas = rows.filter((row) => row.situacao === "aberta");
+  const naoCanceladas = rows.filter((row) => row.situacao !== "cancelada");
+  const total = soma(abertas);
+  const recebido = soma(pagas);
+  const visiveis = rows.map((row) => row.id);
+  const marcadasVisiveis = marcadas.filter((id) => visiveis.includes(id));
+  const selecionadas = rows.filter((row) => marcadasVisiveis.includes(row.id));
+  const todasMarcadas = rows.length > 0 && marcadasVisiveis.length === rows.length;
+  // Quem cada ação em lote alcança entre as selecionadas.
+  const paraRelatorio = selecionadas.filter((row) => row.situacao === "aberta" && !row.envio);
+  const paraNota = selecionadas.filter((row) => row.situacao !== "cancelada" && row.notas.length === 0);
+  const paraVerificar = selecionadas.filter((row) => row.situacao !== "cancelada");
 
   function falha(error: unknown) {
     setErro(error instanceof ApiError ? error.message : "Não foi possível concluir a operação.");
@@ -197,7 +210,7 @@ export function ContasReceberPage() {
 
   async function enviarPendentes(ids: string[]) {
     const escolhidas = rows.filter((row) => ids.includes(row.id));
-    setProgresso({ feito: 0, total: escolhidas.length });
+    setProgresso({ feito: 0, total: escolhidas.length, acao: "Enviando relatórios" });
     setAviso("");
     setErro("");
     let enviados = 0;
@@ -226,7 +239,7 @@ export function ContasReceberPage() {
         falhas += 1;
         motivos.add(error instanceof Error ? error.message : "Falha ao enviar.");
       }
-      setProgresso((atual) => atual ? { feito: atual.feito + 1, total: atual.total } : null);
+      setProgresso((atual) => atual ? { ...atual, feito: atual.feito + 1 } : null);
     }
     setProgresso(null);
     setMarcadas([]);
@@ -237,6 +250,71 @@ export function ContasReceberPage() {
         ? "Nenhum e-mail novo. Essas cobranças já tinham relatório e o boleto não foi duplicado."
         : `Nenhum e-mail enviado. ${porque || "O boleto existente foi mantido."}`);
     await atualizar();
+  }
+
+  /** Emite as notas sugeridas de cada cobrança. Sem contrato encontrado ("padrao"), pula para conferir à mão. */
+  async function emitirNotasEmLote(lista: Cobranca[]) {
+    setProgresso({ feito: 0, total: lista.length, acao: "Emitindo notas" });
+    setAviso("");
+    setErro("");
+    let emitidas = 0;
+    const conferir: string[] = [];
+    const motivos = new Set<string>();
+    for (const row of lista) {
+      const nome = textoPlano(row.empresa_fantasia) || textoPlano(row.empresa_razao) || "Empresa sem nome";
+      try {
+        const sugestao = await api<SugestaoNota>(`/api/v1/asaas/cobrancas/${row.id}/nota`);
+        if (sugestao.data.origem === "padrao" || !sugestao.data.notas.length) {
+          conferir.push(nome);
+        } else {
+          for (const item of sugestao.data.notas) {
+            await api(`/api/v1/asaas/cobrancas/${row.id}/nota`, {
+              method: "POST",
+              body: JSON.stringify({ tipo: item.tipo, valor: Number(item.valor), codigo_servico: item.codigo, iss: Number(item.iss), descricao: item.descricao }),
+            });
+            emitidas += 1;
+          }
+        }
+      } catch (error) {
+        motivos.add(`${nome}: ${error instanceof Error ? error.message : "falha ao emitir."}`);
+      }
+      setProgresso((atual) => atual ? { ...atual, feito: atual.feito + 1 } : null);
+    }
+    setProgresso(null);
+    setMarcadas([]);
+    const partes = [
+      emitidas ? `${emitidas} nota(s) emitida(s).` : "Nenhuma nota emitida.",
+      conferir.length ? `Sem contrato no mês, emita pelo botão "Nota" da linha para conferir o serviço: ${conferir.slice(0, 5).join(", ")}${conferir.length > 5 ? "…" : ""}.` : "",
+      motivos.size ? `Não saíram: ${[...motivos].slice(0, 3).join(" ")}` : "",
+    ].filter(Boolean);
+    setAviso(partes.join(" "));
+    await atualizar();
+  }
+
+  async function verificarEmLote(lista: Cobranca[]) {
+    setProgresso({ feito: 0, total: lista.length, acao: "Verificando no Asaas" });
+    setAviso("");
+    setErro("");
+    let falhas = 0;
+    for (const row of lista) {
+      try {
+        await api(`/api/v1/asaas/cobrancas/${row.id}/sincronizar`, { method: "POST" });
+      } catch {
+        falhas += 1;
+      }
+      setProgresso((atual) => atual ? { ...atual, feito: atual.feito + 1 } : null);
+    }
+    setProgresso(null);
+    setMarcadas([]);
+    setAviso(`${lista.length - falhas} cobrança(s) verificada(s) no Asaas.${falhas ? ` ${falhas} não responderam; tente de novo.` : ""}`);
+    await atualizar();
+  }
+
+  function executar(acao: "relatorio" | "nota" | "verificar") {
+    setAcoesAbertas(false);
+    if (acao === "relatorio") void enviarPendentes(paraRelatorio.map((row) => row.id));
+    if (acao === "nota") void emitirNotasEmLote(paraNota);
+    if (acao === "verificar") void verificarEmLote(paraVerificar);
   }
 
   const filtrando = de !== monthStart() || ate !== monthEnd() || Boolean(situacao) || Boolean(busca) || Boolean(empresaId);
@@ -321,25 +399,37 @@ export function ContasReceberPage() {
           </CampoFiltro>
         </div>
       </Card>
+      {!query.isLoading && rows.length ? (
+        <dl className="grid gap-3 sm:grid-cols-3">
+          <ResumoValor rotulo="Recebido" valor={money(recebido)} detalhe={`${pagas.length} ${pagas.length === 1 ? "cobrança paga" : "cobranças pagas"}`} tom="verde" />
+          <ResumoValor rotulo="A receber" valor={money(total)} detalhe={`${abertas.length} ${abertas.length === 1 ? "cobrança em aberto" : "cobranças em aberto"}`} />
+          <ResumoValor rotulo="Total do período" valor={money(soma(naoCanceladas))} detalhe={naoCanceladas.length ? `${Math.round((recebido / Math.max(soma(naoCanceladas), 0.01)) * 100)}% já recebido` : "Sem cobranças"} />
+        </dl>
+      ) : null}
       <ResumoResultados total={query.isLoading ? null : rows.length} singular="cobrança" plural="cobranças" filtrando={filtrando} carregando={query.isLoading} onLimpar={limparFiltros} />
 
-      <div className="flex flex-wrap items-center gap-3">
-        <Button type="button" variant="secondary" disabled={Boolean(progresso) || pendentes.length === 0} onClick={() => setMarcadas(pendentes.map((row) => row.id))}>
-          <ListChecks size={16} /> Selecionar todas a pagar sem envio ({pendentes.length})
-        </Button>
-        {marcadas.length > 0 ? (
-          <>
-            <span className="text-sm text-slate-500"><span className="font-bold tabular-nums text-navy-900">{marcadas.length}</span> {marcadas.length === 1 ? "selecionada" : "selecionadas"}</span>
-            <Button type="button" disabled={Boolean(progresso)} onClick={() => enviarPendentes(marcadas)}><Send size={16} /> Enviar relatório e boleto</Button>
-          </>
-        ) : null}
-      </div>
+      {rows.length ? (
+        <div className={selecionadas.length ? "flex flex-wrap items-center gap-3 rounded-xl border border-cyan-500/40 bg-cyan-50 px-4 py-2.5" : "flex flex-wrap items-center gap-3"}>
+          <Button type="button" variant="secondary" disabled={Boolean(progresso)} onClick={() => setMarcadas(todasMarcadas ? [] : visiveis)}>
+            <ListChecks size={16} /> {todasMarcadas ? "Desmarcar todas" : `Selecionar todas (${rows.length})`}
+          </Button>
+          {selecionadas.length ? (
+            <>
+              <span className="text-sm text-slate-600">
+                <span className="font-bold tabular-nums text-navy-900">{selecionadas.length}</span> {selecionadas.length === 1 ? "selecionada" : "selecionadas"}, <span className="font-semibold tabular-nums">{money(soma(selecionadas))}</span>
+              </span>
+              <Button type="button" disabled={Boolean(progresso)} onClick={() => setAcoesAbertas(true)}><Send size={16} /> Escolher ação</Button>
+              <button type="button" className="text-sm font-semibold text-slate-500 hover:text-navy-900" onClick={() => setMarcadas([])}>Limpar seleção</button>
+            </>
+          ) : <span className="text-sm text-slate-500">Marque as cobranças para enviar relatório, emitir nota ou verificar várias de uma vez.</span>}
+        </div>
+      ) : null}
       {progresso ? (
         <div className="grid gap-1" role="status">
           <div className="h-2 overflow-hidden rounded-full bg-slate-200">
             <div className="h-full bg-cyan-700 transition-[width]" style={{ width: `${Math.round((progresso.feito / progresso.total) * 100)}%` }} />
           </div>
-          <p className="text-sm text-slate-500">Enviando {progresso.feito} de {progresso.total}…</p>
+          <p className="text-sm text-slate-500">{progresso.acao}: {progresso.feito} de {progresso.total}…</p>
         </div>
       ) : null}
       {aviso ? <Alerta tom={aviso.startsWith("Nenhum") ? "aviso" : "info"}>{aviso}</Alerta> : null}
@@ -351,7 +441,9 @@ export function ContasReceberPage() {
           <table className="data-table min-w-[1120px]">
             <thead>
               <tr>
-                <th className="w-px"><span className="sr-only">Selecionar</span></th>
+                <th className="w-px">
+                  <input type="checkbox" aria-label="Selecionar todas" className="h-4 w-4 accent-cyan-700" checked={todasMarcadas} onChange={() => setMarcadas(todasMarcadas ? [] : visiveis)} />
+                </th>
                 <th>Empresa</th>
                 <th>Descrição</th>
                 <th>Vencimento</th>
@@ -369,15 +461,13 @@ export function ContasReceberPage() {
                 return (
                   <tr key={row.id} className={marcada ? "bg-cyan-50" : undefined}>
                     <td>
-                      {podeEnviar ? (
-                        <input
-                          type="checkbox"
-                          aria-label={`Selecionar ${nome}`}
-                          className="h-4 w-4 accent-cyan-700"
-                          checked={marcada}
-                          onChange={(event) => setMarcadas((atual) => event.target.checked ? [...atual, row.id] : atual.filter((id) => id !== row.id))}
-                        />
-                      ) : null}
+                      <input
+                        type="checkbox"
+                        aria-label={`Selecionar ${nome}`}
+                        className="h-4 w-4 accent-cyan-700"
+                        checked={marcada}
+                        onChange={(event) => setMarcadas((atual) => event.target.checked ? [...atual, row.id] : atual.filter((id) => id !== row.id))}
+                      />
                     </td>
                     <td className="min-w-48 max-w-72">
                       <p className="truncate font-semibold text-navy-900" title={nome}>{nome}</p>
@@ -386,7 +476,7 @@ export function ContasReceberPage() {
                     <td className="min-w-40 text-slate-600">{row.descricao}</td>
                     <td className="whitespace-nowrap tabular-nums text-slate-600">{dateBr(row.vencimento)}</td>
                     <td className="whitespace-nowrap text-right font-semibold tabular-nums text-navy-900">{money(row.valor)}</td>
-                    <td><Badge value={row.situacao === "paga" ? "ativa" : row.situacao === "aberta" ? "aberta" : "encerrada"}>{situacaoLabel[row.situacao] ?? row.situacao}</Badge></td>
+                    <td className="whitespace-nowrap"><Badge value={row.situacao === "paga" ? "ativa" : row.situacao === "aberta" ? "aberta" : "encerrada"}>{situacaoLabel[row.situacao] ?? row.situacao}</Badge></td>
                     <td className="whitespace-nowrap text-slate-600">{row.envio ? <span className="tabular-nums">Enviado em {dataEnvio(row.envio)}</span> : <span className="text-slate-400">Não enviado</span>}</td>
                     <td>
                       <div className="flex min-w-56 flex-wrap justify-end gap-1.5">
@@ -417,8 +507,9 @@ export function ContasReceberPage() {
               })}
             </tbody>
           </table>
-          <div className="border-t border-slate-100 px-4 py-3 text-sm text-slate-500">
-            Em aberto nesta lista <span className="font-bold tabular-nums text-navy-900">{money(total)}</span>
+          <div className="flex flex-wrap gap-x-6 gap-y-1 border-t border-slate-100 px-4 py-3 text-sm text-slate-500">
+            <span>Recebido nesta lista <span className="font-bold tabular-nums text-emerald-800">{money(recebido)}</span></span>
+            <span>Em aberto nesta lista <span className="font-bold tabular-nums text-navy-900">{money(total)}</span></span>
           </div>
         </Card>
       ) : busca.trim() || empresaId ? (
@@ -429,6 +520,50 @@ export function ContasReceberPage() {
         <Empty title="Nenhuma cobrança com vencimento neste mês" text="Gere uma cobrança acima ou mude o período de vencimento." />
       )}
 
+      {acoesAbertas ? (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-navy-950/40 p-4" role="dialog" aria-modal="true" aria-labelledby="acoes-titulo" onClick={(event) => { if (event.target === event.currentTarget) setAcoesAbertas(false); }}>
+          <Card className="motion-pop grid w-full max-w-lg gap-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 id="acoes-titulo" className="text-[15px] font-bold text-navy-900">O que fazer com {selecionadas.length === 1 ? "a cobrança selecionada" : `as ${selecionadas.length} cobranças selecionadas`}?</h2>
+                <p className="text-sm text-slate-500">Total selecionado: <span className="font-semibold tabular-nums">{money(soma(selecionadas))}</span>. Cada ação só vale para as cobranças em que ela se aplica.</p>
+              </div>
+              <button type="button" aria-label="Fechar" className="rounded-lg p-1 text-slate-500 hover:bg-slate-100" onClick={() => setAcoesAbertas(false)}><X size={18} /></button>
+            </div>
+            <div className="grid gap-2">
+              <OpcaoLote
+                icone={<Send size={18} />}
+                titulo="Enviar relatório e boleto por e-mail"
+                texto="Para as cobranças a pagar que ainda não tiveram o relatório enviado. Usa o boleto que já existe."
+                alcance={paraRelatorio.length}
+                total={selecionadas.length}
+                onEscolher={() => executar("relatorio")}
+              />
+              <OpcaoLote
+                icone={<FileText size={18} />}
+                titulo="Emitir nota fiscal"
+                texto="Com o serviço e o ISS sugeridos pelos contratos do mês. Cobranças que já têm nota ficam de fora; sem contrato no mês, a tela avisa para emitir pela linha."
+                alcance={paraNota.length}
+                total={selecionadas.length}
+                onEscolher={() => {
+                  if (window.confirm(`Emitir a nota fiscal de ${paraNota.length} cobrança(s) no Asaas?`)) executar("nota");
+                }}
+              />
+              <OpcaoLote
+                icone={<RefreshCw size={18} />}
+                titulo="Verificar no Asaas"
+                texto="Consulta a situação de cada cobrança e atualiza pagamento e régua."
+                alcance={paraVerificar.length}
+                total={selecionadas.length}
+                onEscolher={() => executar("verificar")}
+              />
+            </div>
+            <div className="flex justify-end">
+              <Button type="button" variant="secondary" onClick={() => setAcoesAbertas(false)}>Cancelar</Button>
+            </div>
+          </Card>
+        </div>
+      ) : null}
       {relatorio ? <RelatorioEmpresaPainel empresaId={relatorio.empresaId} mes={relatorio.mes} ano={relatorio.ano} onClose={() => setRelatorio(null)} /> : null}
       {pagamento ? (
         <div className="fixed inset-0 z-50 grid place-items-center bg-navy-950/40 p-4" role="dialog" aria-modal="true" aria-labelledby="recebimento-titulo">
@@ -474,5 +609,34 @@ export function ContasReceberPage() {
         </div>
       ) : null}
     </div>
+  );
+}
+
+function ResumoValor({ rotulo, valor, detalhe, tom }: { rotulo: string; valor: string; detalhe: string; tom?: "verde" }) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-[0_1px_2px_rgb(15_23_42/0.06)]">
+      <dt className="text-xs font-semibold text-slate-500">{rotulo}</dt>
+      <dd className={tom === "verde" ? "mt-0.5 text-xl font-extrabold tabular-nums text-emerald-800" : "mt-0.5 text-xl font-extrabold tabular-nums text-navy-900"}>{valor}</dd>
+      <dd className="text-xs text-slate-500">{detalhe}</dd>
+    </div>
+  );
+}
+
+/** Uma ação em lote na janela "Escolher ação": diz quantas selecionadas ela alcança e fica desligada se nenhuma. */
+function OpcaoLote({ icone, titulo, texto, alcance, total, onEscolher }: { icone: React.ReactNode; titulo: string; texto: string; alcance: number; total: number; onEscolher: () => void }) {
+  return (
+    <button
+      type="button"
+      disabled={alcance === 0}
+      onClick={onEscolher}
+      className="flex w-full items-start gap-3 rounded-xl border border-slate-200 bg-white p-3 text-left hover:border-cyan-500 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      <span className="mt-0.5 text-cyan-700">{icone}</span>
+      <span className="grid min-w-0 flex-1 gap-0.5">
+        <span className="text-sm font-bold text-navy-900">{titulo}</span>
+        <span className="text-xs text-slate-500">{texto}</span>
+      </span>
+      <span className="shrink-0 rounded-md bg-slate-100 px-2 py-0.5 text-xs font-semibold tabular-nums text-slate-600">{alcance} de {total}</span>
+    </button>
   );
 }
