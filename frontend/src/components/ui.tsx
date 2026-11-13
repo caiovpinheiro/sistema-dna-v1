@@ -57,7 +57,7 @@ export function Field({ label, error, children }: { label: string; error?: strin
 }
 
 export function Card({ className, children }: { className?: string; children: ReactNode }) {
-  return <section className={cn("rounded-xl border border-slate-200 bg-white p-4", className)}>{children}</section>;
+  return <section className={cn("rounded-xl border border-slate-200 bg-white p-4 shadow-[0_1px_2px_rgb(15_23_42/0.06)]", className)}>{children}</section>;
 }
 
 const badgeStyles: Record<string, string> = {

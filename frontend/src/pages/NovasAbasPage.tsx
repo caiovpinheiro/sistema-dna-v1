@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ExternalLink, Pencil, Plus, Save, Search, Trash2 } from "lucide-react";
+import { Check, ExternalLink, Pencil, Plus, Save, Search, Trash2 } from "lucide-react";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Paginacao } from "@/components/paginacao";
@@ -722,79 +722,145 @@ export function CadastrarInstituicaoPage() {
       </div>
     );
   }
+  const obrigatorioOk = (dados.razao_social ?? "").trim().length >= 3;
+  const blocos = [
+    { id: "inst-dados", titulo: "Instituição", feitos: ["razao_social", "nome_fantasia", "cnpj_inep", "tipo_instituicao"].filter((chave) => (dados[chave] ?? "").trim()).length, total: 4 },
+    { id: "inst-direcao", titulo: "Direção e representante", feitos: ["diretor", "representante_legal", "representante_email"].filter((chave) => (dados[chave] ?? "").trim()).length, total: 3 },
+    { id: "inst-contato", titulo: "Contato", feitos: ["telefone", "email"].filter((chave) => (dados[chave] ?? "").trim()).length, total: 2 },
+    { id: "inst-endereco", titulo: "Endereço", feitos: ["cep", "logradouro", "numero", "cidade", "uf"].filter((chave) => (dados[chave] ?? "").trim()).length, total: 5 },
+  ];
+  const texto = (rotulo: string, chave: string, span: string, extra: Record<string, unknown> = {}) => (
+    <div className={span}>
+      <Field label={rotulo}><Input aria-label={rotulo} {...campo(chave)} {...extra} /></Field>
+    </div>
+  );
   return (
     <form key={versao} className="grid gap-5" onSubmit={(event) => { event.preventDefault(); if (podeSalvar) salvar.mutate(); }}>
       <CabecalhoPagina
         titulo="Nova instituição de ensino"
-        descricao="Dados da escola ou faculdade, de quem assina pelo convênio, contato e endereço."
+        descricao="Escola ou faculdade dos estagiários: ela passa a aparecer na consulta de instituições e na busca de escola do TCE."
+        acoes={<Link to="/instituicoes"><Button type="button" variant="secondary">Ver instituições</Button></Link>}
       />
-      <Secao titulo="Instituição" texto="Tipo de ensino, documentos e nomes como aparecem no convênio.">
-        <Grade>
-          <Celula span={3}>
-            <Field label="Tipo de ensino">
-              <Select aria-label="Tipo Ensino" {...campo("tipo_ensino")} >
-                <option value="Ensino Médio">Ensino médio</option>
-                <option value="Ensino Superior">Ensino superior</option>
-                <option value="Ensino Supletivo">Ensino supletivo</option>
-                <option value="Ensino Técnico">Ensino técnico</option>
-              </Select>
-            </Field>
-          </Celula>
-          <Celula span={3}>
-            <Field label="Tipo de instituição">
-              <Select aria-label="Tipo Instituição" {...campo("tipo_instituicao")}>
-                <option value="">Selecione</option>
-                <option>Particular</option>
-                <option>Pública</option>
-              </Select>
-            </Field>
-          </Celula>
-          <Celula span={3}><Field label="CNPJ / INEP"><Input aria-label="CNPJ / INEP" {...campo("cnpj_inep")} placeholder="00.000.000/0000-00 ou código INEP" /></Field></Celula>
-          <Celula span={3}><Field label="IE / IM"><Input aria-label="IE / IM" {...campo("ie_im")} /></Field></Celula>
-          <Celula span={6}><Field label="Mantenedora"><Input aria-label="Mantenedora" {...campo("mantenedora")} /></Field></Celula>
-          <Celula span={3}><Field label="Razão social (obrigatória)"><Input aria-label="Razão Social" {...campo("razao_social")} /></Field></Celula>
-          <Celula span={3}><Field label="Nome fantasia"><Input aria-label="Nome Fantasia" {...campo("nome_fantasia")} /></Field></Celula>
-        </Grade>
-      </Secao>
-      <Secao titulo="Direção e representante legal" texto="Quem dirige a instituição e quem assina os termos de estágio.">
-        <Grade>
-          <Celula span={4}><Field label="Diretor"><Input aria-label="Diretor" {...campo("diretor")} /></Field></Celula>
-          <Celula span={2}><Field label="E-mail do diretor"><Input aria-label="Diretor E-mail" {...campo("diretor_email")} type="email" /></Field></Celula>
-          <Celula span={3}><Field label="CPF do diretor"><Input aria-label="CPF Diretor" {...campo("diretor_cpf")} placeholder="000.000.000-00" /></Field></Celula>
-          <Celula span={3}><Field label="RG do diretor"><Input aria-label="RG Diretor" {...campo("diretor_rg")} /></Field></Celula>
-          <Celula span={4}><Field label="Representante legal"><Input aria-label="Representante Legal" {...campo("representante_legal")} /></Field></Celula>
-          <Celula span={2}><Field label="CPF do representante"><Input aria-label="Representante Legal CPF" {...campo("representante_cpf")} placeholder="000.000.000-00" /></Field></Celula>
-          <Celula span={3}><Field label="Cargo do representante"><Input aria-label="Cargo Representante Legal" {...campo("representante_cargo")} /></Field></Celula>
-          <Celula span={3}><Field label="E-mail do representante"><Input aria-label="Representante E-mail" {...campo("representante_email")} type="email" /></Field></Celula>
-        </Grade>
-      </Secao>
-      <Secao titulo="Contato" texto="Telefones e e-mail da secretaria.">
-        <Grade>
-          <Celula span={2}><Field label="Telefone"><Input aria-label="Telefone" {...campo("telefone")} placeholder="(11) 0000-0000" /></Field></Celula>
-          <Celula span={2}><Field label="Segundo telefone"><Input aria-label="Segundo telefone" {...campo("telefone2")} placeholder="(11) 90000-0000" /></Field></Celula>
-          <Celula span={2}><Field label="E-mail"><Input aria-label="E-mail" {...campo("email")} type="email" /></Field></Celula>
-        </Grade>
-      </Secao>
-      <Secao titulo="Endereço" texto="Endereço da unidade, com latitude e longitude se souber.">
-        <Grade>
-          <Celula span={2}><Field label="CEP"><Input aria-label="Cep" {...campo("cep")} placeholder="00000-000" /></Field></Celula>
-          <Celula span={4}><Field label="Rua"><Input aria-label="Rua" {...campo("logradouro")} /></Field></Celula>
-          <Celula span={1}><Field label="Número"><Input aria-label="Número" {...campo("numero")} /></Field></Celula>
-          <Celula span={2}><Field label="Complemento"><Input aria-label="Complemento" {...campo("complemento")} /></Field></Celula>
-          <Celula span={3}><Field label="Bairro"><Input aria-label="Bairro" {...campo("bairro")} /></Field></Celula>
-          <Celula span={4}><Field label="Cidade"><Input aria-label="Cidade" {...campo("cidade")} /></Field></Celula>
-          <Celula span={2}><Field label="UF"><Input aria-label="Estado" {...campo("uf")} placeholder="SP" maxLength={2} className="uppercase" /></Field></Celula>
-          <Celula span={3}><Field label="Latitude"><Input aria-label="Latitude" {...campo("latitude")} placeholder="-23.5505" /></Field></Celula>
-          <Celula span={3}><Field label="Longitude"><Input aria-label="Longitude" {...campo("longitude")} placeholder="-46.6333" /></Field></Celula>
-        </Grade>
-      </Secao>
-      {salvar.isError ? <Alerta>{salvar.error.message}</Alerta> : null}
-      <div className="flex flex-wrap items-center justify-end gap-3">
-        {!podeSalvar && !salvar.isPending ? <span className="text-xs text-slate-500">Preencha a razão social para salvar.</span> : null}
-        <Button type="submit" disabled={!podeSalvar}><Save size={16} /> {salvar.isPending ? "Salvando…" : "Salvar instituição"}</Button>
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_18rem] xl:items-start">
+        <div className="grid min-w-0 gap-4">
+          <BlocoNumerado id="inst-dados" numero={1} titulo="Instituição" texto="Nomes e documentos como aparecem no convênio.">
+            <Grade12>
+              {texto("Razão social (obrigatória)", "razao_social", "sm:col-span-7")}
+              {texto("Nome fantasia", "nome_fantasia", "sm:col-span-5")}
+              <div className="sm:col-span-4">
+                <Field label="Tipo de ensino">
+                  <Select aria-label="Tipo de ensino" {...campo("tipo_ensino")}>
+                    <option value="Ensino Médio">Ensino médio</option>
+                    <option value="Ensino Superior">Ensino superior</option>
+                    <option value="Ensino Supletivo">Ensino supletivo</option>
+                    <option value="Ensino Técnico">Ensino técnico</option>
+                  </Select>
+                </Field>
+              </div>
+              <div className="sm:col-span-3">
+                <Field label="Tipo de instituição">
+                  <Select aria-label="Tipo de instituição" {...campo("tipo_instituicao")}>
+                    <option value="">Selecione</option>
+                    <option value="Particular">Particular</option>
+                    <option value="Pública">Pública</option>
+                  </Select>
+                </Field>
+              </div>
+              {texto("CNPJ ou INEP", "cnpj_inep", "sm:col-span-5", { placeholder: "00.000.000/0000-00 ou código INEP" })}
+              {texto("Mantenedora", "mantenedora", "sm:col-span-8")}
+              {texto("IE / IM", "ie_im", "sm:col-span-4")}
+            </Grade12>
+          </BlocoNumerado>
+
+          <BlocoNumerado id="inst-direcao" numero={2} titulo="Direção e representante legal" texto="Quem dirige a escola e quem assina os termos de estágio.">
+            <Subtitulo12>Diretor</Subtitulo12>
+            <Grade12>
+              {texto("Nome do diretor", "diretor", "sm:col-span-6")}
+              {texto("E-mail do diretor", "diretor_email", "sm:col-span-6", { type: "email", placeholder: "diretor@escola.edu.br" })}
+              {texto("CPF do diretor", "diretor_cpf", "sm:col-span-4", { placeholder: "000.000.000-00", inputMode: "numeric" })}
+              {texto("RG do diretor", "diretor_rg", "sm:col-span-4")}
+            </Grade12>
+            <Subtitulo12>Representante legal (assina o TCE)</Subtitulo12>
+            <Grade12>
+              {texto("Nome do representante", "representante_legal", "sm:col-span-6")}
+              {texto("Cargo", "representante_cargo", "sm:col-span-6", { placeholder: "Ex.: Diretora, Coordenador de estágio" })}
+              {texto("CPF do representante", "representante_cpf", "sm:col-span-4", { placeholder: "000.000.000-00", inputMode: "numeric" })}
+              {texto("E-mail do representante", "representante_email", "sm:col-span-8", { type: "email", placeholder: "Recebe o TCE para assinar" })}
+            </Grade12>
+          </BlocoNumerado>
+
+          <BlocoNumerado id="inst-contato" numero={3} titulo="Contato" texto="Telefones e e-mail da secretaria.">
+            <Grade12>
+              {texto("Telefone", "telefone", "sm:col-span-3", { placeholder: "(11) 0000-0000", inputMode: "tel" })}
+              {texto("Outro telefone", "telefone2", "sm:col-span-3", { placeholder: "(11) 90000-0000", inputMode: "tel" })}
+              {texto("E-mail da secretaria", "email", "sm:col-span-6", { type: "email", placeholder: "secretaria@escola.edu.br" })}
+            </Grade12>
+          </BlocoNumerado>
+
+          <BlocoNumerado id="inst-endereco" numero={4} titulo="Endereço" texto="Da unidade onde o estagiário estuda.">
+            <Grade12>
+              {texto("CEP", "cep", "sm:col-span-3", { placeholder: "00000-000", inputMode: "numeric" })}
+              {texto("Rua", "logradouro", "sm:col-span-7")}
+              {texto("Número", "numero", "sm:col-span-2")}
+              {texto("Complemento", "complemento", "sm:col-span-4")}
+              {texto("Bairro", "bairro", "sm:col-span-4")}
+              {texto("Cidade", "cidade", "sm:col-span-3")}
+              {texto("UF", "uf", "sm:col-span-1", { placeholder: "SP", maxLength: 2, className: "uppercase" })}
+              {texto("Latitude (se souber)", "latitude", "sm:col-span-3", { placeholder: "-23.5505" })}
+              {texto("Longitude (se souber)", "longitude", "sm:col-span-3", { placeholder: "-46.6333" })}
+            </Grade12>
+          </BlocoNumerado>
+        </div>
+
+        <aside className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm xl:sticky xl:top-0">
+          <div>
+            <p className="text-[15px] font-bold text-navy-900">Salvar instituição</p>
+            <p className="text-sm text-slate-500">Campos principais preenchidos em cada bloco. Clique para ir até ele.</p>
+          </div>
+          <ol className="grid gap-1">
+            {blocos.map((bloco) => (
+              <li key={bloco.id}>
+                <a href={`#${bloco.id}`} className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm hover:bg-slate-50">
+                  <span className={bloco.feitos === bloco.total ? "grid h-5 w-5 shrink-0 place-items-center rounded-full bg-emerald-500 text-white" : "grid h-5 w-5 shrink-0 place-items-center rounded-full bg-slate-100"}>
+                    {bloco.feitos === bloco.total ? <Check size={12} /> : null}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-slate-700">{bloco.titulo}</span>
+                  <span className="tabular-nums text-xs text-slate-500">{bloco.feitos}/{bloco.total}</span>
+                </a>
+              </li>
+            ))}
+          </ol>
+          {!obrigatorioOk ? <Alerta tom="aviso">Preencha a razão social (bloco 1) para liberar o botão.</Alerta> : null}
+          {salvar.isError ? <Alerta>{salvar.error.message}</Alerta> : null}
+          <Button type="submit" className="h-11 w-full" disabled={!podeSalvar}><Save size={16} /> {salvar.isPending ? "Salvando…" : "Salvar instituição"}</Button>
+          <p className="text-xs text-slate-500">Grava no sistema novo. CNPJ ou INEP repetido é recusado.</p>
+        </aside>
       </div>
     </form>
   );
+}
+
+function BlocoNumerado({ id, numero, titulo, texto, children }: { id: string; numero: number; titulo: string; texto: string; children: ReactNode }) {
+  return (
+    <section id={id} className="grid scroll-mt-4 gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm md:p-5">
+      <header className="flex items-start gap-3">
+        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-cyan-700 text-sm font-bold text-white">{numero}</span>
+        <div>
+          <h2 className="text-base font-bold text-navy-900">{titulo}</h2>
+          <p className="text-sm text-slate-500">{texto}</p>
+        </div>
+      </header>
+      {children}
+    </section>
+  );
+}
+
+function Grade12({ children }: { children: ReactNode }) {
+  return <div className="grid gap-3 sm:grid-cols-12">{children}</div>;
+}
+
+function Subtitulo12({ children }: { children: ReactNode }) {
+  return <p className="-mb-1 border-b border-slate-200 pb-1.5 text-sm font-semibold text-slate-700">{children}</p>;
 }
 
 const ROTULO_CAMPO: Record<string, string> = {
