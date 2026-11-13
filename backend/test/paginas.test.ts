@@ -21,7 +21,15 @@ test("quem já usava o sistema continua vendo o Disparador depois da troca", () 
   assert.match(sql, /ON CONFLICT DO NOTHING/);
 });
 
-test("o menu só mostra o Disparador para quem tem a página", () => {
+test("o menu só mostra cada opção do Disparador para quem tem a página dela", () => {
   const shell = readFileSync(new URL("../../frontend/src/components/shell.tsx", import.meta.url), "utf8");
-  assert.match(shell, /permitido\("disparador"\) \? \(\s*<a href=\{DISPARADOR_URL\}/);
+  // Grupo "Disparador": "Pelo CRM" (disparador-crm) e "Infojobs" (disparador, link externo), filtrados por permissão.
+  assert.match(shell, /\{ id: "disparador-crm", to: "\/disparador\/crm"/);
+  assert.match(shell, /\{ id: "disparador", to: DISPARADOR_URL, label: "Infojobs", externo: true \}/);
+  assert.match(shell, /links=\{disparadorLinks\.filter\(\(item\) => permitido\(item\.id\)\)\}/);
+});
+
+test("o Disparador pelo CRM tem página e rotas próprias", () => {
+  assert.equal(IDS_PAGINA.has("disparador-crm"), true);
+  assert.deepEqual(paginasDaApi("/api/v1/disparo-crm/criar"), ["disparador-crm"]);
 });

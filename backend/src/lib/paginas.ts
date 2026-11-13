@@ -23,6 +23,8 @@ export const PAGINAS = [
   { id: "emails", nome: "E-mails", grupo: "Geral" },
   // Link externo do menu (abre o disparador Infojobs em nova aba): a caixa só mostra ou esconde o item.
   { id: "disparador", nome: "Disparador Infojobs", grupo: "Geral" },
+  // Cria deals e dispara WhatsApp pelo CRM: liberada só por quem administra os acessos.
+  { id: "disparador-crm", nome: "Disparador pelo CRM", grupo: "Geral" },
   { id: "documentos", nome: "Documentos pendentes", grupo: "Geral" },
 ] as const;
 
@@ -53,6 +55,7 @@ const REGRAS_API: Array<[string, string[]]> = [
   ["/api/v1/holerite", ["holerite"]],
   ["/api/v1/documentos-pendentes", ["documentos"]],
   ["/api/v1/modelos", ["vagas-modelos", "vagas-modelo"]],
+  ["/api/v1/disparo-crm", ["disparador-crm"]],
   ["/api/v1/instituicoes/nova", ["instituicoes-nova"]],
   ["/api/v1/instituicoes", ["instituicoes", "instituicoes-nova"]],
 ];
