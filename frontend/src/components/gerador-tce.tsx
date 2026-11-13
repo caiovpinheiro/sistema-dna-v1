@@ -190,9 +190,11 @@ export function GeradorTce({ editarId }: { editarId?: string }) {
 
   const lista = empresas.data?.data ?? [];
   const termo = busca.trim();
+  const termoDigitos = termo.replace(/\D/g, "");
   const visiveis = termo.length < 1 ? [] : lista.filter((empresa) => {
     const texto = normalizar(`${empresa.razao_social} ${empresa.nome_fantasia} ${empresa.cnpj}`);
-    return texto.includes(normalizar(termo));
+    // CNPJ digitado com ou sem pontuação acha a empresa.
+    return texto.includes(normalizar(termo)) || (termoDigitos.length >= 5 && empresa.cnpj.replace(/\D/g, "").includes(termoDigitos));
   }).slice(0, 15);
 
   async function procurarCandidato(valor: string) {

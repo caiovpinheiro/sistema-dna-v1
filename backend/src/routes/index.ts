@@ -418,7 +418,8 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
     schema: {
       tags: ["termos"],
       body: z.object({
-        empresa_id: z.string().uuid(),
+        // Id de dna_work.empresa (o mesmo da tela de Empresas); empresas antigas não têm UUID.
+        empresa_id: z.string().trim().min(1, "Escolha a empresa concedente.").max(64),
         id_contratacao: z.number().int().positive().optional().nullable(),
         id_candidato: z.string().max(64).optional().nullable(),
         escola_id: z.string().max(255).optional().nullable(),
@@ -455,7 +456,7 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
       tags: ["termos"],
       params: z.object({ id: z.string().uuid() }),
       body: z.object({
-        empresa_id: z.string().uuid().or(z.literal("")).optional().default(""),
+        empresa_id: z.string().trim().max(64).optional().default(""),
         id_candidato: z.string().max(64).optional().nullable(),
         escola_id: z.string().max(255).optional().nullable(),
         concedente: z.object({

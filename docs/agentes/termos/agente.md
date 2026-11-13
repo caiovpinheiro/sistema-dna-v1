@@ -1,6 +1,6 @@
 # Agente — Termos e documentos
 
-> Última revisão: 2026-11-13 (commit "Repagina as telas restantes no padrão novo")
+> Última revisão: 2026-11-13 (commit "TCE lista todas as empresas cadastradas")
 
 ## Para que serve
 
@@ -44,7 +44,7 @@ Backend
 | GET | `/api/v1/termos?status=` | Lista TCEs (limite 200) | `routes/index.ts:323` → `TermoService.list` |
 | GET | `/api/v1/termos/:id` | Detalhe (id UUID) | `:351` → `TermoService.get` |
 | DELETE | `/api/v1/termos/:id` | Apaga TCE, payload e arquivo PDF | `:354` → `TceService.excluir` |
-| GET | `/api/v1/tce/empresas` | Todas as empresas de `public.empresa` (filtro no cliente, 15 itens) | `:360` → `listEmpresasCadastro` |
+| GET | `/api/v1/tce/empresas` | Todas as empresas de `dna_work.empresa` (as mesmas da tela de Empresas; ativas primeiro), com endereço, bairro, cidade, UF, e-mail e responsável. Filtro no cliente por nome ou CNPJ com ou sem pontuação, 15 itens | `listEmpresasCadastro` (`lib/empresas-cadastro.ts`; sem a tabela, cai em `public.empresa`) |
 | GET | `/api/v1/tce/escolas?q=` | Busca instituições (≥2 caracteres, máx. 15) | `:361` → `searchEscolas` |
 | GET | `/api/v1/tce/vagas?q=` | Vagas de estágio abertas (`public.vaga`, `tipo_vaga = 1`) por cargo ou empresa (máx. 30), com os campos do Anexo I que cada uma preenche | `routes/index.ts` → `TceService.buscarVagasEstagio` → `vagaParaTce` (`lib/tce-candidato.ts`) |
 | GET | `/api/v1/tce/candidatos?q=` | Busca candidato por nome, CPF ou empresa (máx. 20) | `:364` → `TceService.buscarCandidatos` |
@@ -70,7 +70,7 @@ Postgres:
 - `dna_work.termo_estagio` (lida/gravada): `id` (UUID, igual ao `public.tces.id`), `id_contratacao` (opcional), `nome` ("TCE - <nome>"), `status` (`gerado`, `enviado`, `assinado`, `recusado`, `cancelado`), `zapsign_token`, `arquivo_assinado`, `signatarios` (jsonb: nome, email, status, url), `tce_id`, `candidato_nome`, `empresa_nome`, `criado_em`, `atualizado_em`. As colunas `id_candidato`/`id_empresa` existem mas não são preenchidas pelo gerador.
 - `public.tces` (lida/gravada): `id`, `empresa_id`, `empresa_nome`, `candidato_nome`, `payload` (jsonb `{ campos, empresa }` — é a fonte da edição e do envio), `pdf_path` (nome do arquivo), `status` (sempre `generated`, não é usado na tela).
 - `public.candidato_documentos` (gravada): upsert por `(id_candidato, tipo)` com tipos `cpf`, `rg`, `nascimento`, `endereco`, `matricula`, `responsavel`, `origem = 'tce'`, `tce_id`.
-- `public.empresa` (lida): empresas do gerador (`lib/empresas-cadastro.ts`).
+- `dna_work.empresa` (lida): empresas do gerador (`lib/empresas-cadastro.ts`). Antes vinha de `public.empresa` (cópia da Triagem), que não tem todas: empresa cadastrada não aparecia no TCE.
 - `public.vaga` (lida): vagas de estágio abertas para a pesquisa do bloco 5 (`cargo`, `salario`, `beneficios`, `horario`, `jornada`, `atividades`, `empresa_id`).
 - Somente leitura em `dna_work`: `candidato`, `conratacaovaga`, `empresa`, `vaga`, `instituicao`, `flex` (nível do curso), `rescisao_documento` (motivo/avaliação/resumo para a rescisão do médio), `emailsvinculo`, `emails`, `servidor_email` (modelos de e-mail).
 - Arquivos: PDFs do TCE em disco, pasta `PDF_STORAGE_DIR`; sem ela, `./data/tces` ou, se não for gravável, a pasta temporária do sistema (`tce.service.ts:483-497`).
@@ -91,7 +91,7 @@ TCE (`tce.service.ts`):
 - Só os campos de `MANUAL_FIELDS` são aceitos; o resto do corpo é ignorado (`routes/index.ts:395` e `:431`).
 - Validações no servidor (`montar`, `:218-259`): nome obrigatório (422 `NOME_OBRIGATORIO`), razão social da concedente obrigatória (422 `EMPRESA_OBRIGATORIA`), término ≥ início, no máximo 730 dias (422 `ESTAGIO_MAIS_DE_2_ANOS`), datas válidas em `AAAA-MM-DD` (gravadas no PDF como `DD/MM/AAAA`).
 - No cliente (`gerador-tce.tsx:94-104`) há a mesma trava de 2 anos e mais uma: o término não passa do término dos estudos do candidato (`terminoEstudo`), que **só é checada no frontend**.
-- Para gerar, `empresa_id` (UUID de `public.empresa`) é obrigatório; o botão fica desabilitado sem empresa escolhida. Na edição, a empresa é opcional.
+- Para gerar, `empresa_id` (id de `dna_work.empresa`, texto — empresas antigas não têm UUID) é obrigatório; o botão fica desabilitado sem empresa escolhida. Na edição, a empresa é opcional.
 - O frontend não envia `escola_id`; os dados da escola vão preenchidos nos `campos` (escolha na busca copia `escola.campos`).
 - Signatários (`signatariosDe`, `:510-522`): estagiário; responsável (se `email_responsavel` diferente do do estagiário); empresa (representante ou razão social); escola (se tiver e-mail).
 - Enviar (`enviar`, `:315-366`): só com status `gerado` (409 `TERMO_JA_ENVIADO`); estagiário e empresa precisam de e-mail (422 `EMAIL_AUSENTE`); status vira `enviado` e guarda token e links. Se a Mailjet não estiver configurada, o envio à ZapSign vale e a resposta traz `email_enviado: false`; outro erro de e-mail vira 502 `EMAIL_ASSINATURA` (o TCE já ficou enviado).
