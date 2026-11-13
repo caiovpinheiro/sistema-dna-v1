@@ -51,6 +51,7 @@ const REGRAS_API: Array<[string, string[]]> = [
   ["/api/v1/holerite", ["holerite"]],
   ["/api/v1/documentos-pendentes", ["documentos"]],
   ["/api/v1/modelos", ["vagas-modelos", "vagas-modelo"]],
+  ["/api/v1/instituicoes/nova", ["instituicoes-nova"]],
   ["/api/v1/instituicoes", ["instituicoes", "instituicoes-nova"]],
 ];
 

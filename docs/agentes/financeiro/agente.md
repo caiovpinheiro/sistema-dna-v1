@@ -1,6 +1,6 @@
 # Agente — Financeiro
 
-> Última revisão: 2026-11-13 (commit "Repagina as telas restantes no padrão novo")
+> Última revisão: 2026-11-13 (commit "Corrige faturamento Todas, nomes com &amp;, rescisão pela ficha e cadastro de instituição")
 
 ## Para que serve
 
@@ -156,7 +156,7 @@ Holerite (`legado.service.ts:707`): conta candidatos distintos com `datainicio <
 - `ASAAS_API_KEY` vazia faz as rotas do Asaas devolverem 503. O cartão "Asaas" do Faturamento mostra "indisponível" em vez de erro.
 - Excluir, Baixar e emitir nota agem de verdade no Asaas e na prefeitura. Não teste em produção.
 - `meta.conferencia` (faturas antigas em aberto) é calculada no backend, mas a tela não mostra.
-- Os filtros de Faturamento, Procfy e Holerite ficam no estado da tela, não na URL. No Faturamento, escolher "Todas" na situação manda `status=3` (o vazio é descartado por `lerFiltros` e o valor inicial "3" fica), então hoje não dá para ver as faturadas junto com as abertas.
+- Os filtros de Faturamento, Procfy e Holerite ficam no estado da tela, não na URL. No Faturamento, a situação é lida à parte de `lerFiltros`: "Todas" manda `status=` vazio (o backend aceita todas), sem cair no "3" inicial.
 - Visual: as tabelas usam `.data-table` dentro de `Card` (`p-0`), estados com `Skeleton`, `Alerta` e `Empty` (diferencia "nada no mês" de "nada com esses filtros"). Use só classes com remapeamento nos dois temas (`index.css`).
 
 ## Como testar

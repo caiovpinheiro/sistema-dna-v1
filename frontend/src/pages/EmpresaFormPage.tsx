@@ -10,7 +10,7 @@ import { Button, Card, Field, Input, Skeleton, Textarea } from "@/components/ui"
 import { ApiError, api } from "@/lib/api";
 
 const schema = z.object({
-  razao_social: z.string().min(3),
+  razao_social: z.string().trim().min(3, "A razão social precisa ter pelo menos 3 letras."),
   nome_fantasia: z.string().optional(),
   cnpj: z.string().trim().refine((value) => !value || value.replace(/\D/g, "").length === 14, "CNPJ deve ter 14 dígitos ou ficar em branco.").optional(),
   email: z.string().trim().refine((value) => !value || z.string().email().safeParse(value).success, "E-mail inválido."),
@@ -27,6 +27,22 @@ const schema = z.object({
   obs: z.string().optional(),
 });
 type Form = z.infer<typeof schema>;
+
+/** Nomes gravados pelo sistema antigo com entidades HTML ("Freire &amp; Pinho"). */
+const CAMPOS_COM_ENTIDADES = ["razao_social", "nome_fantasia", "responsavel", "logradouro", "bairro", "cidade"] as const;
+const ENTIDADES: Record<string, string> = { amp: "&", quot: "\"", apos: "'", lt: "<", gt: ">", nbsp: " " };
+
+function semEntidades(valor: string) {
+  let atual = valor;
+  for (let i = 0; i < 3; i += 1) {
+    const proximo = atual
+      .replace(/&(amp|quot|apos|lt|gt|nbsp);/gi, (_, nome: string) => ENTIDADES[nome.toLowerCase()])
+      .replace(/&#(\d+);/g, (_, codigo: string) => String.fromCodePoint(Number(codigo)));
+    if (proximo === atual) break;
+    atual = proximo;
+  }
+  return atual;
+}
 
 function compact<T extends Record<string, unknown>>(values: T) {
   return Object.fromEntries(Object.entries(values).filter(([, value]) => value !== undefined && value !== null && value !== ""));
@@ -59,8 +75,11 @@ export function EmpresaFormPage() {
       Object.entries(current.data.data).map(([key, value]) => [key, value ?? ""]),
     ) as Form;
     if (id && data.matriz === id) data.matriz = "";
+    // A base guarda o valor do banco; o formulário mostra o nome limpo. Assim, salvar já grava a versão sem "&amp;".
     base.current = data;
-    form.reset(data);
+    const limpo = { ...data } as Record<string, unknown>;
+    for (const campo of CAMPOS_COM_ENTIDADES) if (typeof limpo[campo] === "string") limpo[campo] = semEntidades(limpo[campo] as string);
+    form.reset(limpo as Form);
   }, [current.data, form, id]);
   const save = useMutation({
     mutationFn: (values: Form) => {

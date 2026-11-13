@@ -38,6 +38,7 @@ import { TriagemService } from "./services/triagem.service.js";
 import { CurriculoService } from "./services/curriculo.service.js";
 import { TriagemMatchingService } from "./services/triagem-matching.service.js";
 import { DossieService } from "./services/dossie.service.js";
+import { InstituicaoService } from "./services/instituicao.service.js";
 import { criarTransporteJev } from "./lib/jev/jev.js";
 import { CargoService } from "./services/cargo.service.js";
 import { normalizarAtendimento } from "./lib/atendimento.js";
@@ -142,6 +143,7 @@ export async function buildApp(context: AppContext): Promise<FastifyInstance> {
     curriculo: new CurriculoService(context.config),
     matching: new TriagemMatchingService(context.db, context.config, criarTransporteJev(context.config)),
     dossie: new DossieService(context.db, context.config),
+    instituicoes: new InstituicaoService(context.db),
     sync: new SyncCicloService(
       new VagasAbertasSyncService(context.db, context.mysql ?? null, context.config, app.log),
       new CargosSyncService(context.db, context.config, cargos, app.log),

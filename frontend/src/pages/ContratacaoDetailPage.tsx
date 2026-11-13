@@ -1,11 +1,11 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState, type ReactNode } from "react";
+import { useQuery } from "@tanstack/react-query";
+import type { ReactNode } from "react";
 import { ArrowLeft, FileText, UserMinus } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { DocumentosContratacao } from "@/components/documentos-contratacao";
 import { Alerta } from "@/components/pagina";
-import { Badge, Button, Card, Field, Input, Skeleton } from "@/components/ui";
-import { ApiError, api } from "@/lib/api";
+import { Badge, Button, Card, Skeleton } from "@/components/ui";
+import { api } from "@/lib/api";
 import { dateBr, formatCpf, money, regimeLabel, situacaoLabel, textoPlano } from "@/lib/format";
 
 type Detail = {
@@ -18,20 +18,7 @@ type Detail = {
 export function ContratacaoDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-  const [message, setMessage] = useState("");
-  const [falhou, setFalhou] = useState(false);
-  const client = useQueryClient();
   const query = useQuery({ queryKey: ["contratacao", id], queryFn: () => api<Detail>(`/api/v1/contratacoes/${id}`) });
-  const close = useMutation({
-    mutationFn: () => api(`/api/v1/contratacoes/${id}/encerrar`, { method: "POST", body: JSON.stringify({ data_encerramento: date }) }),
-    onSuccess: async () => {
-      setFalhou(false);
-      setMessage("Vínculo encerrado. O histórico foi mantido.");
-      await client.invalidateQueries({ queryKey: ["contratacao", id] });
-    },
-    onError: (error) => { setFalhou(true); setMessage(error instanceof ApiError ? error.message : "Não foi possível encerrar."); },
-  });
   if (query.isLoading) return <Skeleton className="h-80" />;
   if (!query.data) {
     return (
@@ -94,17 +81,15 @@ export function ContratacaoDetailPage() {
         <Card className="grid gap-4 md:max-w-2xl">
           <div>
             <h2 className="text-[15px] font-bold text-navy-900">Encerrar vínculo</h2>
-            <p className="text-sm text-slate-500">Encerra sem gerar documento de rescisão. O histórico da contratação é mantido.</p>
+            <p className="text-sm text-slate-500">
+              O encerramento é feito pela rescisão: lá você informa a data, o motivo e a avaliação, confere a prévia e o documento de rescisão é gerado junto. O histórico da contratação é mantido.
+            </p>
           </div>
-          <div className="grid gap-3 sm:grid-cols-[12rem_auto] sm:items-end">
-            <Field label="Data de encerramento"><Input type="date" value={date} onChange={(event) => setDate(event.target.value)} /></Field>
-            <Button variant="danger" className="h-10 justify-self-start" disabled={close.isPending} onClick={() => close.mutate()}>
-              <UserMinus size={16} /> {close.isPending ? "Encerrando…" : "Encerrar e manter histórico"}
-            </Button>
-          </div>
-          {message ? <Alerta tom={falhou ? "erro" : "info"}>{message}</Alerta> : null}
+          <Link to={`/contratacoes/rescisao/${data.id_contratacao}`} className="justify-self-start">
+            <Button variant="danger" className="h-10"><UserMinus size={16} /> Fazer a rescisão</Button>
+          </Link>
         </Card>
-      ) : message ? <Alerta tom={falhou ? "erro" : "info"}>{message}</Alerta> : null}
+      ) : null}
     </div>
   );
 }

@@ -273,7 +273,13 @@ export function GerarFaturamentoPage() {
         <Resumo rotulo="Em aberto no Asaas" valor={meta?.asaas ? reais(meta.asaas.valor) : "—"} detalhe={meta?.asaas ? `${meta.asaas.quantidade} cobranças em aberto no Asaas` : "Asaas indisponível neste momento"} destaque />
       </dl>
       <Card>
-        <form key={limpeza.versao} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_7rem_minmax(0,1.2fr)_auto] lg:items-end" onSubmit={(event) => { event.preventDefault(); setBusca({ ...inicial, ...lerFiltros(event, ["empresa", "mes", "ano", "status"]) }); setPagina(1); }}>
+        <form key={limpeza.versao} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_7rem_minmax(0,1.2fr)_auto] lg:items-end" onSubmit={(event) => {
+          event.preventDefault();
+          // "Todas" tem valor vazio: precisa ir explícito, senão vale o "3" (aberta e parcial) do estado inicial.
+          const status = String(new FormData(event.currentTarget).get("status") ?? "");
+          setBusca({ ...inicial, ...lerFiltros(event, ["empresa", "mes", "ano"]), status });
+          setPagina(1);
+        }}>
           <EmpresaField />
           <MonthField />
           <YearField />

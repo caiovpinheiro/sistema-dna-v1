@@ -1,6 +1,6 @@
 # Agente — Empresas
 
-> Última revisão: 2026-11-13 (commit "Repagina as telas restantes no padrão novo")
+> Última revisão: 2026-11-13 (commit "Corrige faturamento Todas, nomes com &amp;, rescisão pela ficha e cadastro de instituição")
 
 ## Para que serve
 
@@ -70,6 +70,7 @@ Serviços externos: nenhum.
 
 ## Regras e comportamentos importantes
 
+- **Nomes com entidades HTML** (`&amp;`, `&quot;`… gravados pelo sistema antigo): os schemas de empresa e do cadastro em Grupos limpam razão social, nome fantasia e responsável ao gravar (`semEntidades` em `lib/normalize.ts`). O formulário de edição mostra os nomes já limpos e compara com o valor do banco, então salvar grava a versão limpa. Mensagens de tamanho da razão social/nome fantasia em português (antes vinha o texto padrão do zod, em inglês).
 - **CNPJ opcional** (`optionalCnpj`): em branco é aceito (empresa sem CNPJ); preenchido tem que ser válido e **único** (só dígitos): create e update → 409 `CNPJ_DUPLICADO` com `details.id_empresa`. No PATCH, CNPJ em branco é ignorado (não apaga o CNPJ que já existe). O formulário aceita o campo vazio ou com 14 dígitos.
 - **E-mail obrigatório no create** do backend (`empresaCreateSchema`); opcional no PATCH.
 - **Matriz**: tem que ser um `id_empresa` existente (422 `MATRIZ_INVALIDA`); a empresa não pode ser matriz de si mesma. No PATCH, `matriz === id` é descartado em silêncio; no formulário, se `matriz` for o próprio id, o campo aparece vazio (`EmpresaFormPage.tsx:59`).

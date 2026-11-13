@@ -1,6 +1,6 @@
 # Agente — Contratações
 
-> Última revisão: 2026-11-13 (commit "Repagina as telas restantes no padrão novo")
+> Última revisão: 2026-11-13 (commit "Corrige faturamento Todas, nomes com &amp;, rescisão pela ficha e cadastro de instituição")
 
 ## Para que serve
 
@@ -12,7 +12,7 @@ Registra o vínculo (contratação) de um candidato numa vaga aberta com posiç�
 | --- | --- | --- | --- |
 | `/contratacoes` (menu "Consultar") | `ContratacoesPage` | `frontend/src/pages/ContratacoesPage.tsx` | Título "Contratações" com o botão "Nova contratação". Filtros com rótulo (Buscar, Regime, Situação, Início a partir de, Início até) gravados na URL (`q`, `regime`, `status`, `inicio_de`, `inicio_ate`); a busca aplica ao sair do campo ou com Enter. Contador + "Limpar filtros". Tabela `data-table` (lg+): candidato (link, CPF e nº embaixo), empresa (fantasia e razão), vaga (modalidade embaixo só se diferente do regime), regime em selo, início, fim (encerramento ou previsão), situação em selo e "Abrir". Em tela estreita vira lista em blocos. Paginação fixa de 20. |
 | `/contratacoes/nova` | `NovaContratacaoPage` | `frontend/src/pages/NovaContratacaoPage.tsx` | Blocos numerados (1 Empresa, 2 Vaga disponível, 3 Candidato com "Criar candidato") e painel lateral "Registrar a contratação" com o resumo do que foi escolhido, a data de início e o botão "Registrar contratação". Tela de sucesso com links para candidato, vaga e empresa e "Abrir contratação". Aceita `?empresa=&vaga=&candidato=&processo=` (vem de `ProcessoDetailPage` e `VagaDetailPage`). |
-| `/contratacoes/:id` | `ContratacaoDetailPage` | `frontend/src/pages/ContratacaoDetailPage.tsx` | Cabeçalho com nome, selos de situação e regime e o botão "Gerar TCE" (só regime estágio). Cards "Vínculo" (candidato, empresa e vaga como links) e "Datas", tabela "Documentos gerados" e card "Encerrar vínculo" (só se ativa). |
+| `/contratacoes/:id` | `ContratacaoDetailPage` | `frontend/src/pages/ContratacaoDetailPage.tsx` | Cabeçalho com nome, selos de situação e regime e o botão "Gerar TCE" (só regime estágio). Cards "Vínculo" (candidato, empresa e vaga como links) e "Datas", tabela "Documentos gerados" e card "Encerrar vínculo" (só se ativa) com o botão "Fazer a rescisão", que leva a `/contratacoes/rescisao/:id`: o encerramento passa sempre pela rescisão (data, motivo, avaliação e prévia), que gera o documento. A ficha não encerra mais só com a data. |
 | `/contratacoes/rescisao` (menu "Rescisão") | `RescisaoPage` | `frontend/src/pages/RescisaoPage.tsx` | Só vínculos ativos (`status=1` fixo na query). Filtros com rótulo (Buscar, Regime), contador, tabela `data-table` com "Abrir" (lista em blocos em tela estreita). |
 | `/contratacoes/rescisao/:id` | `RescisaoDetailPage` | `frontend/src/pages/RescisaoDetailPage.tsx` | Cabeçalho com nome, selos e "Abrir contratação"; card "Dados do contratado"; formulário "Demitir" (motivo, data, avaliação em chips `FiltroChips`, resumo das atividades, motivo interno), botões "Gerar rescisão e demitir" e "Ver prévia" (só na tela); depois modal perguntando se envia para assinatura digital ("Sim, enviar" / "Não, agora não"). |
 Permissão de menu/página: id `contratacoes` (`frontend/src/components/shell.tsx:24-27`, `:79-80`).
@@ -118,6 +118,6 @@ Listagem:
 
 ## Como testar
 
-- Tela: abrir `/contratacoes`, filtrar; `/contratacoes/nova`, escolher empresa (≥2 letras), vaga com posição livre, candidato e registrar; abrir a ficha e encerrar. Em `/contratacoes/rescisao/:id`, preencher motivo/data, "Gerar rescisão e demitir", responder o modal e abrir "Imprimir original" (PDF). Envio real à ZapSign só com `ZAPSIGN_API_TOKEN` configurado.
+- Tela: abrir `/contratacoes`, filtrar; `/contratacoes/nova`, escolher empresa (≥2 letras), vaga com posição livre, candidato e registrar; abrir a ficha e clicar "Fazer a rescisão" (abre a rescisão da mesma contratação). Em `/contratacoes/rescisao/:id`, preencher motivo/data, "Gerar rescisão e demitir", responder o modal e abrir "Imprimir original" (PDF). Envio real à ZapSign só com `ZAPSIGN_API_TOKEN` configurado.
 - Testes: `backend/test/escopo.test.ts` (Postgres embutido) cobre contratar até o limite, sexta bloqueada, duplicada, sem vaga, empresa divergente, concorrência na última posição e encerramento preservando histórico. Não há teste para rescisão/ZapSign (não encontrado).
 - Comandos: `npm run lint -w frontend`, `npm run lint -w backend`, `npm test -w backend`, `npm run agentes:conferir`.

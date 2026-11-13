@@ -1,6 +1,6 @@
 # Agente — Grupos (Grupos, Empresas e Vagas)
 
-> Última revisão: 2026-11-13 (commit "Repagina as telas restantes no padrão novo")
+> Última revisão: 2026-11-13 (commit "Corrige faturamento Todas, nomes com &amp;, rescisão pela ficha e cadastro de instituição")
 
 ## Para que serve
 
@@ -85,6 +85,8 @@ Serviços externos:
 - ViaCEP — chamado direto do navegador na aba Empresa.
 
 ## Regras e comportamentos importantes
+
+- Cadastro de empresa (`empresaCadastroSchema`): razão social e nome fantasia perdem entidades HTML (`&amp;` → `&`) antes de gravar, com mensagens de tamanho em português.
 
 - **Grupo**: nome 2–180 caracteres e pelo menos e-mail **ou** telefone (`exigeContato`, `schemas/cadastro.ts:7`).
 - **Empresa** (`criarEmpresa`, `cadastro.service.ts:469`):

@@ -58,3 +58,20 @@ export function classifyRegime(descricao: string | null | undefined): Regime {
   if (/\bclt\b/.test(text)) return "clt";
   return "outro";
 }
+
+const ENTIDADES: Record<string, string> = { amp: "&", quot: "\"", apos: "'", lt: "<", gt: ">", nbsp: " " };
+
+/** Tira as entidades HTML que o sistema antigo gravava nos textos ("Freire &amp; Pinho" vira "Freire & Pinho"). */
+export function semEntidades(valor: string): string {
+  let atual = valor;
+  // Repete para casos duplos como "&amp;amp;".
+  for (let i = 0; i < 3; i += 1) {
+    const proximo = atual
+      .replace(/&(amp|quot|apos|lt|gt|nbsp);/gi, (_, nome: string) => ENTIDADES[nome.toLowerCase()])
+      .replace(/&#(\d+);/g, (_, codigo: string) => String.fromCodePoint(Number(codigo)))
+      .replace(/&#x([0-9a-f]+);/gi, (_, codigo: string) => String.fromCodePoint(Number.parseInt(codigo, 16)));
+    if (proximo === atual) break;
+    atual = proximo;
+  }
+  return atual;
+}

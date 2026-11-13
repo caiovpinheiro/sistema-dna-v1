@@ -694,19 +694,45 @@ export function ConsultarInstituicoesPage() {
 }
 
 /** Formulário visual: o botão Salvar ainda não grava nada (não há rota de cadastro no backend). */
+type NovaInstituicao = Record<string, string>;
+
 export function CadastrarInstituicaoPage() {
+  const [dados, setDados] = useState<NovaInstituicao>({ tipo_ensino: "Ensino Médio", tipo_instituicao: "" });
+  const [versao, setVersao] = useState(0);
+  const salvar = useMutation({
+    mutationFn: () => api<{ id: string | null; ignorados: string[] }>("/api/v1/instituicoes/nova", { method: "POST", body: JSON.stringify(dados) }),
+  });
+  const campo = (chave: string) => ({
+    value: dados[chave] ?? "",
+    onChange: (event: { target: { value: string } }) => setDados((atual) => ({ ...atual, [chave]: event.target.value })),
+  });
+  const podeSalvar = (dados.razao_social ?? "").trim().length >= 3 && !salvar.isPending;
+  if (salvar.isSuccess) {
+    const ignorados = salvar.data.data.ignorados;
+    return (
+      <div className="grid gap-5">
+        <CabecalhoPagina titulo="Instituição cadastrada" descricao={`${dados.nome_fantasia || dados.razao_social} já aparece na consulta de instituições e na busca de escola do TCE.`} />
+        {ignorados.length ? (
+          <Alerta tom="aviso">Estes campos não têm coluna no cadastro de instituições do banco e não foram gravados: {ignorados.map((chave) => ROTULO_CAMPO[chave] ?? chave).join(", ")}.</Alerta>
+        ) : null}
+        <div className="flex flex-wrap gap-2">
+          <Link to="/instituicoes"><Button>Ver instituições</Button></Link>
+          <Button type="button" variant="secondary" onClick={() => { salvar.reset(); setDados({ tipo_ensino: "Ensino Médio", tipo_instituicao: "" }); setVersao((atual) => atual + 1); }}>Cadastrar outra</Button>
+        </div>
+      </div>
+    );
+  }
   return (
-    <div className="grid gap-5">
+    <form key={versao} className="grid gap-5" onSubmit={(event) => { event.preventDefault(); if (podeSalvar) salvar.mutate(); }}>
       <CabecalhoPagina
         titulo="Nova instituição de ensino"
         descricao="Dados da escola ou faculdade, de quem assina pelo convênio, contato e endereço."
       />
-      <Alerta tom="aviso">Este cadastro ainda não grava no sistema: o botão Salvar não envia os dados. Por enquanto, cadastre a instituição no sistema antigo.</Alerta>
       <Secao titulo="Instituição" texto="Tipo de ensino, documentos e nomes como aparecem no convênio.">
         <Grade>
           <Celula span={3}>
             <Field label="Tipo de ensino">
-              <Select aria-label="Tipo Ensino" defaultValue="Ensino Médio">
+              <Select aria-label="Tipo Ensino" {...campo("tipo_ensino")} >
                 <option value="Ensino Médio">Ensino médio</option>
                 <option value="Ensino Superior">Ensino superior</option>
                 <option value="Ensino Supletivo">Ensino supletivo</option>
@@ -716,55 +742,65 @@ export function CadastrarInstituicaoPage() {
           </Celula>
           <Celula span={3}>
             <Field label="Tipo de instituição">
-              <Select aria-label="Tipo Instituição" defaultValue="">
+              <Select aria-label="Tipo Instituição" {...campo("tipo_instituicao")}>
                 <option value="">Selecione</option>
                 <option>Particular</option>
                 <option>Pública</option>
               </Select>
             </Field>
           </Celula>
-          <Celula span={3}><Field label="CNPJ / INEP"><Input aria-label="CNPJ / INEP" placeholder="00.000.000/0000-00 ou código INEP" /></Field></Celula>
-          <Celula span={3}><Field label="IE / IM"><Input aria-label="IE / IM" /></Field></Celula>
-          <Celula span={6}><Field label="Mantenedora"><Input aria-label="Mantenedora" /></Field></Celula>
-          <Celula span={3}><Field label="Razão social"><Input aria-label="Razão Social" /></Field></Celula>
-          <Celula span={3}><Field label="Nome fantasia"><Input aria-label="Nome Fantasia" /></Field></Celula>
+          <Celula span={3}><Field label="CNPJ / INEP"><Input aria-label="CNPJ / INEP" {...campo("cnpj_inep")} placeholder="00.000.000/0000-00 ou código INEP" /></Field></Celula>
+          <Celula span={3}><Field label="IE / IM"><Input aria-label="IE / IM" {...campo("ie_im")} /></Field></Celula>
+          <Celula span={6}><Field label="Mantenedora"><Input aria-label="Mantenedora" {...campo("mantenedora")} /></Field></Celula>
+          <Celula span={3}><Field label="Razão social (obrigatória)"><Input aria-label="Razão Social" {...campo("razao_social")} /></Field></Celula>
+          <Celula span={3}><Field label="Nome fantasia"><Input aria-label="Nome Fantasia" {...campo("nome_fantasia")} /></Field></Celula>
         </Grade>
       </Secao>
       <Secao titulo="Direção e representante legal" texto="Quem dirige a instituição e quem assina os termos de estágio.">
         <Grade>
-          <Celula span={4}><Field label="Diretor"><Input aria-label="Diretor" /></Field></Celula>
-          <Celula span={2}><Field label="E-mail do diretor"><Input aria-label="Diretor E-mail" type="email" /></Field></Celula>
-          <Celula span={3}><Field label="CPF do diretor"><Input aria-label="CPF Diretor" placeholder="000.000.000-00" /></Field></Celula>
-          <Celula span={3}><Field label="RG do diretor"><Input aria-label="RG Diretor" /></Field></Celula>
-          <Celula span={4}><Field label="Representante legal"><Input aria-label="Representante Legal" /></Field></Celula>
-          <Celula span={2}><Field label="CPF do representante"><Input aria-label="Representante Legal CPF" placeholder="000.000.000-00" /></Field></Celula>
-          <Celula span={3}><Field label="Cargo do representante"><Input aria-label="Cargo Representante Legal" /></Field></Celula>
-          <Celula span={3}><Field label="E-mail do representante"><Input aria-label="Representante E-mail" type="email" /></Field></Celula>
+          <Celula span={4}><Field label="Diretor"><Input aria-label="Diretor" {...campo("diretor")} /></Field></Celula>
+          <Celula span={2}><Field label="E-mail do diretor"><Input aria-label="Diretor E-mail" {...campo("diretor_email")} type="email" /></Field></Celula>
+          <Celula span={3}><Field label="CPF do diretor"><Input aria-label="CPF Diretor" {...campo("diretor_cpf")} placeholder="000.000.000-00" /></Field></Celula>
+          <Celula span={3}><Field label="RG do diretor"><Input aria-label="RG Diretor" {...campo("diretor_rg")} /></Field></Celula>
+          <Celula span={4}><Field label="Representante legal"><Input aria-label="Representante Legal" {...campo("representante_legal")} /></Field></Celula>
+          <Celula span={2}><Field label="CPF do representante"><Input aria-label="Representante Legal CPF" {...campo("representante_cpf")} placeholder="000.000.000-00" /></Field></Celula>
+          <Celula span={3}><Field label="Cargo do representante"><Input aria-label="Cargo Representante Legal" {...campo("representante_cargo")} /></Field></Celula>
+          <Celula span={3}><Field label="E-mail do representante"><Input aria-label="Representante E-mail" {...campo("representante_email")} type="email" /></Field></Celula>
         </Grade>
       </Secao>
       <Secao titulo="Contato" texto="Telefones e e-mail da secretaria.">
         <Grade>
-          <Celula span={2}><Field label="Telefone"><Input aria-label="Telefone" placeholder="(11) 0000-0000" /></Field></Celula>
-          <Celula span={2}><Field label="Segundo telefone"><Input aria-label="Segundo telefone" placeholder="(11) 90000-0000" /></Field></Celula>
-          <Celula span={2}><Field label="E-mail"><Input aria-label="E-mail" type="email" /></Field></Celula>
+          <Celula span={2}><Field label="Telefone"><Input aria-label="Telefone" {...campo("telefone")} placeholder="(11) 0000-0000" /></Field></Celula>
+          <Celula span={2}><Field label="Segundo telefone"><Input aria-label="Segundo telefone" {...campo("telefone2")} placeholder="(11) 90000-0000" /></Field></Celula>
+          <Celula span={2}><Field label="E-mail"><Input aria-label="E-mail" {...campo("email")} type="email" /></Field></Celula>
         </Grade>
       </Secao>
       <Secao titulo="Endereço" texto="Endereço da unidade, com latitude e longitude se souber.">
         <Grade>
-          <Celula span={2}><Field label="CEP"><Input aria-label="Cep" placeholder="00000-000" /></Field></Celula>
-          <Celula span={4}><Field label="Rua"><Input aria-label="Rua" /></Field></Celula>
-          <Celula span={1}><Field label="Número"><Input aria-label="Número" /></Field></Celula>
-          <Celula span={2}><Field label="Complemento"><Input aria-label="Complemento" /></Field></Celula>
-          <Celula span={3}><Field label="Bairro"><Input aria-label="Bairro" /></Field></Celula>
-          <Celula span={4}><Field label="Cidade"><Input aria-label="Cidade" /></Field></Celula>
-          <Celula span={2}><Field label="UF"><Input aria-label="Estado" placeholder="SP" maxLength={2} className="uppercase" /></Field></Celula>
-          <Celula span={3}><Field label="Latitude"><Input aria-label="Latitude" placeholder="-23.5505" /></Field></Celula>
-          <Celula span={3}><Field label="Longitude"><Input aria-label="Longitude" placeholder="-46.6333" /></Field></Celula>
+          <Celula span={2}><Field label="CEP"><Input aria-label="Cep" {...campo("cep")} placeholder="00000-000" /></Field></Celula>
+          <Celula span={4}><Field label="Rua"><Input aria-label="Rua" {...campo("logradouro")} /></Field></Celula>
+          <Celula span={1}><Field label="Número"><Input aria-label="Número" {...campo("numero")} /></Field></Celula>
+          <Celula span={2}><Field label="Complemento"><Input aria-label="Complemento" {...campo("complemento")} /></Field></Celula>
+          <Celula span={3}><Field label="Bairro"><Input aria-label="Bairro" {...campo("bairro")} /></Field></Celula>
+          <Celula span={4}><Field label="Cidade"><Input aria-label="Cidade" {...campo("cidade")} /></Field></Celula>
+          <Celula span={2}><Field label="UF"><Input aria-label="Estado" {...campo("uf")} placeholder="SP" maxLength={2} className="uppercase" /></Field></Celula>
+          <Celula span={3}><Field label="Latitude"><Input aria-label="Latitude" {...campo("latitude")} placeholder="-23.5505" /></Field></Celula>
+          <Celula span={3}><Field label="Longitude"><Input aria-label="Longitude" {...campo("longitude")} placeholder="-46.6333" /></Field></Celula>
         </Grade>
       </Secao>
-      <div className="flex justify-end">
-        <Button type="button"><Save size={16} /> Salvar instituição</Button>
+      {salvar.isError ? <Alerta>{salvar.error.message}</Alerta> : null}
+      <div className="flex flex-wrap items-center justify-end gap-3">
+        {!podeSalvar && !salvar.isPending ? <span className="text-xs text-slate-500">Preencha a razão social para salvar.</span> : null}
+        <Button type="submit" disabled={!podeSalvar}><Save size={16} /> {salvar.isPending ? "Salvando…" : "Salvar instituição"}</Button>
       </div>
-    </div>
+    </form>
   );
 }
+
+const ROTULO_CAMPO: Record<string, string> = {
+  tipo_ensino: "Tipo de ensino", tipo_instituicao: "Tipo de instituição", cnpj_inep: "CNPJ / INEP", ie_im: "IE / IM", mantenedora: "Mantenedora",
+  razao_social: "Razão social", nome_fantasia: "Nome fantasia", diretor: "Diretor", diretor_email: "E-mail do diretor", diretor_cpf: "CPF do diretor",
+  diretor_rg: "RG do diretor", representante_legal: "Representante legal", representante_cpf: "CPF do representante", representante_cargo: "Cargo do representante",
+  representante_email: "E-mail do representante", telefone: "Telefone", telefone2: "Segundo telefone", email: "E-mail", cep: "CEP", logradouro: "Rua",
+  numero: "Número", complemento: "Complemento", bairro: "Bairro", cidade: "Cidade", uf: "UF", latitude: "Latitude", longitude: "Longitude",
+};

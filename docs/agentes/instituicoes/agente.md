@@ -1,17 +1,17 @@
 # Agente — Instituições
 
-> Última revisão: 2026-11-13 (commit "Repagina as telas restantes no padrão novo")
+> Última revisão: 2026-11-13 (commit "Corrige faturamento Todas, nomes com &amp;, rescisão pela ficha e cadastro de instituição")
 
 ## Para que serve
 
-Consulta as instituições de ensino (escolas e faculdades) cadastradas no sistema antigo, com situação do convênio, tipo de ensino e localização. A aba "Cadastrar" hoje é só o formulário visual: o botão Salvar não grava nada (a tela avisa isso num `Alerta`).
+Consulta as instituições de ensino (escolas e faculdades) cadastradas no sistema antigo, com situação do convênio, tipo de ensino e localização. A aba "Cadastrar" grava uma instituição nova em `dna_work.instituicao`.
 
 ## Rotas e abas
 
 | Rota | Componente | Arquivo | O que mostra |
 | --- | --- | --- | --- |
 | `/instituicoes` (menu "Consultar") | `ConsultarInstituicoesPage` | `frontend/src/pages/NovasAbasPage.tsx:564-695` | Título "Instituições de ensino" (`CabecalhoPagina`). Filtros em `CampoFiltro`: Buscar (razão social, fantasia, CNPJ, telefone, e-mail; ícone de busca), Tipo de ensino, Convênio (Todas/Conveniadas/Sem convênio), Cidade, UF e botão Pesquisar. `ResumoResultados` com total e "Limpar filtros". Tabela `data-table` (blocos em telas estreitas): Instituição (fantasia, razão social embaixo), CNPJ/INEP, Tipo de ensino, Convênio (selo Conveniada/Sem convênio + período), Experiência (estrelas), Local (cidade/UF, bairro embaixo). Paginação de 20 no rodapé. |
-| `/instituicoes/nova` (menu "Cadastrar") | `CadastrarInstituicaoPage` | `frontend/src/pages/NovasAbasPage.tsx:697-770` | "Nova instituição de ensino", com aviso de que ainda não grava. Seções Instituição, Direção e representante legal, Contato e Endereço (grade de 6 colunas) e "Salvar instituição" no fim. Sem ligação com a API. |
+| `/instituicoes/nova` (menu "Cadastrar") | `CadastrarInstituicaoPage` | `frontend/src/pages/NovasAbasPage.tsx:697-770` | "Nova instituição de ensino". Seções Instituição, Direção e representante legal, Contato e Endereço (grade de 6 colunas) e "Salvar instituição" no fim (só com razão social de 3+ letras). Ao salvar, tela "Instituição cadastrada" com aviso dos campos que não tinham coluna no banco, "Ver instituições" e "Cadastrar outra". |
 
 Ids de permissão: `instituicoes` e `instituicoes-nova` (`frontend/src/components/shell.tsx:41-44`, `:72-73`).
 
@@ -42,7 +42,7 @@ Somente leitura, Postgres schema `dna_work` (cópia do Lightsail):
 - `instituicao` (i): `id_instiduicao` (nome legado com erro de digitação), `razao_social`, `nome_fantasia`, `cnpj`, `telefone`, `email`, `tipo_encino` (sic), `parece` (nota, mostrada como estrelas), `bairro`, `cidade`, `uf`.
 - `instituicao_convenio` (c): o convênio mais recente por instituição (`ORDER BY id_convenio DESC LIMIT 1`, via `LEFT JOIN LATERAL` em `c.id_intituicao = i.id_instiduicao`): `convenio`, `data_inicio`, `data_termino`.
 
-Nada é gravado. Nenhum serviço externo.
+Gravação (só em "Cadastrar"): `INSERT` em `dna_work.instituicao` (`backend/src/services/instituicao.service.ts`). Nenhum serviço externo; o MySQL do sistema antigo não é tocado.
 
 ## Regras e comportamentos importantes
 
@@ -50,7 +50,12 @@ Nada é gravado. Nenhum serviço externo.
 - Ordem: `nome_fantasia` (nulos no fim), depois `razao_social`.
 - Na tabela (`Convenio` e `Experiencia`, `NovasAbasPage.tsx:546-562`): o selo "Conveniada" aparece só quando `convenio = "1"` (senão "Sem convênio"); término vazio com convênio ativo aparece como "prazo indeterminado"; Experiência repete "★" pelo número em `parece` ("—" quando 0 ou vazio).
 - Filtros só valem ao clicar Pesquisar; voltam para a página 1; não ficam na URL. Os selects mandam "Todos"/"Todas" como antes (o backend ignora). "Limpar filtros" zera a busca e remonta o formulário (`key={versao}`).
-- `CadastrarInstituicaoPage`: campos sem estado e botão `type="button"` sem `onClick` — nada é enviado.
+- Cadastrar (`POST /api/v1/instituicoes/nova`, só com a página `instituicoes-nova`; listar aceita `instituicoes` ou `instituicoes-nova`, regra em `lib/paginas.ts`):
+  - Lê as colunas da tabela em `information_schema` e grava cada campo na primeira coluna que existir da lista `COLUNAS_DO_CAMPO` (ex.: tipo de ensino → `tipo_encino`; diretor → `diretor` ou `responsavel`). Campo preenchido sem coluna volta em `ignorados` e a tela avisa — nada some em silêncio.
+  - Id: usa o padrão da coluna `id_instiduicao`; sem padrão, `max + 1` se for número ou UUID se for texto, com a tabela travada (`LOCK … SHARE ROW EXCLUSIVE`) na transação.
+  - CNPJ/INEP repetido (comparado só pelos dígitos) → 409 `INSTITUICAO_DUPLICADA`. Coluna obrigatória sem valor → 422 `CAMPO_OBRIGATORIO`; formato/tamanho → 422.
+  - Nomes perdem entidades HTML (`&amp;` → `&`); CEP, CPFs e telefones gravados só com dígitos; UF em maiúsculas; latitude/longitude aceitam vírgula.
+  - A instituição criada aparece na consulta e na busca de escola do TCE (`lib/escolas.ts` lê a mesma tabela). Ainda não cria convênio (`instituicao_convenio`).
 
 ## Cuidados ao mudar
 
@@ -66,3 +71,4 @@ Nada é gravado. Nenhum serviço externo.
 - Tela: abrir `/instituicoes`, pesquisar sem filtro e com cada filtro (tipo de ensino, convênio, cidade, UF); conferir paginação, as colunas de convênio e "Limpar filtros". Abrir `/instituicoes/nova`, conferir o aviso e confirmar que Salvar não faz chamada.
 - Testes automatizados para esta tela: não encontrado.
 - Comandos: `npm run lint -w frontend`, `npm run lint -w backend`, `npm test -w backend`, `npm run agentes:conferir`.
+- Teste: `backend/test/instituicao.test.ts` (mapeamento campo → coluna, limpeza dos valores e permissão da rota).

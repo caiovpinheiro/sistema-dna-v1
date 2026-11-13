@@ -1,3 +1,4 @@
+import { semEntidades } from "../lib/normalize.js";
 import { z } from "zod";
 import { DIAS_ESCALA } from "../lib/horario-escala.js";
 import { moneySchema, optionalCnpj, optionalCep, optionalEmail, optionalPhone } from "./common.js";
@@ -18,8 +19,8 @@ export const grupoCreateSchema = z.object({
 export const empresaCadastroSchema = z.object({
   grupo_id: z.string().uuid(),
   cnpj: optionalCnpj,
-  razao_social: z.string().trim().min(3).max(180),
-  nome_fantasia: z.string().trim().min(2).max(180),
+  razao_social: z.string().trim().transform(semEntidades).pipe(z.string().min(3, "A razão social precisa ter pelo menos 3 letras.").max(180, "A razão social pode ter até 180 letras.")),
+  nome_fantasia: z.string().trim().transform(semEntidades).pipe(z.string().min(2, "O nome fantasia precisa ter pelo menos 2 letras.").max(180, "O nome fantasia pode ter até 180 letras.")),
   cep: optionalCep.refine((value) => Boolean(value), "Informe o CEP."),
   logradouro: z.string().trim().min(3).max(180),
   numero: z.string().trim().max(20).optional(),

@@ -42,6 +42,7 @@ import type { TriagemService } from "../services/triagem.service.js";
 import type { CurriculoService } from "../services/curriculo.service.js";
 import type { TriagemMatchingService } from "../services/triagem-matching.service.js";
 import type { DossieService } from "../services/dossie.service.js";
+import type { InstituicaoService } from "../services/instituicao.service.js";
 import { prepararCurriculo } from "../lib/curriculo/arquivo.js";
 import type { CargoService } from "../services/cargo.service.js";
 import type { SyncCicloService } from "../services/sync-ciclo.service.js";
@@ -68,6 +69,7 @@ type Services = {
   curriculo: CurriculoService;
   matching: TriagemMatchingService;
   dossie: DossieService;
+  instituicoes: InstituicaoService;
   cargos: CargoService;
   sync: SyncCicloService;
 };
@@ -744,6 +746,42 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
     if (!modelo) throw new AppError(404, "MODELO_NAO_ENCONTRADO", "Modelo de vaga não encontrado.");
     return ok(modelo);
   });
+  const textoCurto = z.string().trim().max(180).optional();
+  // Gravar exige a página "instituicoes-nova" (regra própria em lib/paginas.ts); listar aceita as duas.
+  api.post("/api/v1/instituicoes/nova", {
+    schema: {
+      tags: ["instituicoes"],
+      body: z.object({
+        tipo_ensino: z.enum(["Ensino Médio", "Ensino Superior", "Ensino Supletivo", "Ensino Técnico"], { message: "Escolha o tipo de ensino." }),
+        tipo_instituicao: z.enum(["", "Particular", "Pública"]).optional(),
+        cnpj_inep: z.string().trim().max(30).optional(),
+        ie_im: z.string().trim().max(30).optional(),
+        mantenedora: textoCurto,
+        razao_social: z.string().trim().min(3, "A razão social precisa ter pelo menos 3 letras.").max(180, "A razão social pode ter até 180 letras."),
+        nome_fantasia: textoCurto,
+        diretor: textoCurto,
+        diretor_email: z.string().trim().max(180).refine((valor) => !valor || z.string().email().safeParse(valor).success, "E-mail do diretor inválido.").optional(),
+        diretor_cpf: z.string().trim().max(20).optional(),
+        diretor_rg: z.string().trim().max(30).optional(),
+        representante_legal: textoCurto,
+        representante_cpf: z.string().trim().max(20).optional(),
+        representante_cargo: textoCurto,
+        representante_email: z.string().trim().max(180).refine((valor) => !valor || z.string().email().safeParse(valor).success, "E-mail do representante inválido.").optional(),
+        telefone: z.string().trim().max(30).optional(),
+        telefone2: z.string().trim().max(30).optional(),
+        email: z.string().trim().max(180).refine((valor) => !valor || z.string().email().safeParse(valor).success, "E-mail da instituição inválido.").optional(),
+        cep: z.string().trim().max(12).optional(),
+        logradouro: textoCurto,
+        numero: z.string().trim().max(20).optional(),
+        complemento: z.string().trim().max(80).optional(),
+        bairro: z.string().trim().max(80).optional(),
+        cidade: z.string().trim().max(80).optional(),
+        uf: z.string().trim().max(2).optional(),
+        latitude: z.string().trim().refine((valor) => !valor || (Number.isFinite(Number(valor.replace(",", "."))) && Math.abs(Number(valor.replace(",", "."))) <= 90), "Latitude inválida.").transform((valor) => valor.replace(",", ".")).optional(),
+        longitude: z.string().trim().refine((valor) => !valor || (Number.isFinite(Number(valor.replace(",", "."))) && Math.abs(Number(valor.replace(",", "."))) <= 180), "Longitude inválida.").transform((valor) => valor.replace(",", ".")).optional(),
+      }),
+    },
+  }, async (request, reply) => reply.code(201).send(ok(await services.instituicoes.criar(request.body))));
   api.get("/api/v1/instituicoes", { schema: { tags: ["instituicoes"], querystring: z.object({ ...pagina, pageSize: z.coerce.number().int().min(1).max(100).default(20), q: z.string().optional(), ensino: z.string().optional(), conveniada: z.string().optional(), cidade: z.string().optional(), uf: z.string().optional() }) } }, async (request) => {
     const result = await legado.instituicoes(request.query);
     return ok(result.data, result.meta);
