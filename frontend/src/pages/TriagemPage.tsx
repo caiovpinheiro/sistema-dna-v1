@@ -7,7 +7,6 @@ import { AnaliseDaVaga, PerfilCandidato, useStatusIa, type CepDoCurriculo } from
 import { Badge, Button, Card, Empty, Field, Input, Select, Skeleton, Textarea, cn } from "@/components/ui";
 import { api } from "@/lib/api";
 import { copiarComFoto, fotoDoCargo } from "@/lib/foto-cargo";
-import { geocodeCep } from "@/lib/triagem-geo";
 import {
   PERFIL_VAZIO,
   idsParaRepetir,
@@ -235,11 +234,10 @@ export function TriagemPage() {
   });
 
   const busca = useMutation({
-    mutationFn: async ({ inteligente: _modo, ...dados }: Busca) => {
-      const geo = await geocodeCep(dados.cep);
-      const body = geo.ponto ? { ...dados, lat: geo.ponto.lat, lng: geo.ponto.lng } : dados;
-      return api<Resultado>("/api/v1/triagem/vagas", { method: "POST", body: JSON.stringify(body) });
-    },
+    // O servidor localiza o CEP (Google primeiro). O navegador não manda mais coordenada:
+    // as APIs gratuitas que ele usava erravam o ponto de vários CEPs em até ~27 km.
+    mutationFn: async ({ inteligente: _modo, ...dados }: Busca) =>
+      api<Resultado>("/api/v1/triagem/vagas", { method: "POST", body: JSON.stringify(dados) }),
     onSuccess: (resposta, dados) => {
       setMarcadas([]);
       setAvaliacoes({});

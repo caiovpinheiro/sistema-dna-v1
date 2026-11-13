@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { distanciaKm } from "../src/lib/triagem-geo.js";
+import { distanciaKm, geocodeCepServidor, limparCacheCep } from "../src/lib/triagem-geo.js";
 import { formatarHorario } from "../src/lib/triagem-horario.js";
 import { fraseHorario, gradeDe, localDe, turnosDe, vagaDaLinha } from "../src/lib/triagem-notion.js";
 import { horarioEspelho } from "../src/services/notion-sync.service.js";
@@ -278,4 +278,24 @@ test("ficha completa tem CEP de 8 dígitos, rua e cidade", async () => {
   assert.equal(fichaCompleta({ cep: "0638659", logradouro: "Rua Ana Maria", cidade: "Carapicuíba" }), false);
   assert.equal(fichaCompleta({ cep: "06386590", logradouro: " ", cidade: "Carapicuíba" }), false);
   assert.equal(fichaCompleta({ cep: "06386590", logradouro: "Rua Ana Maria", cidade: null }), false);
+});
+
+test("CEP da pessoa: Google primeiro, AwesomeAPI só de reserva, resultado guardado", async () => {
+  limparCacheCep();
+  const chamadas: string[] = [];
+  const google = async (cep: string) => { chamadas.push(`google:${cep}`); return cep === "04854410" ? { lat: -23.776, lng: -46.693 } : null; };
+  const awesome = async (cep: string) => { chamadas.push(`awesome:${cep}`); return { lat: -23.537, lng: -46.652 }; };
+  // Google acha: a AwesomeAPI (que errava esse CEP em ~27 km) nem é chamada.
+  assert.deepEqual(await geocodeCepServidor("04854410", "chave", { google, awesome }), { lat: -23.776, lng: -46.693 });
+  assert.deepEqual(chamadas, ["google:04854410"]);
+  // Mesmo CEP de novo: vem do cache, sem nova consulta.
+  await geocodeCepServidor("04854410", "chave", { google, awesome });
+  assert.deepEqual(chamadas, ["google:04854410"]);
+  // Google sem resultado: usa a AwesomeAPI.
+  assert.deepEqual(await geocodeCepServidor("01310100", "chave", { google, awesome }), { lat: -23.537, lng: -46.652 });
+  assert.deepEqual(chamadas.slice(1), ["google:01310100", "awesome:01310100"]);
+  // Nenhuma fonte acha: null (a busca usa a coordenada de quem chamou, se houver) e nada fica guardado.
+  const nada = async () => null;
+  assert.equal(await geocodeCepServidor("99999999", "chave", { google: nada, awesome: nada }), null);
+  limparCacheCep();
 });

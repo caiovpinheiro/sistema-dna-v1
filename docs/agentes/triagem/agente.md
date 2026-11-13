@@ -1,6 +1,6 @@
 # Agente — Triagem
 
-> Última revisão: 2026-11-13 (commit "Repagina as telas restantes no padrão novo")
+> Última revisão: 2026-11-13 (CEP localizado no servidor, Google primeiro)
 
 ## Para que serve
 
@@ -21,7 +21,7 @@ O menu fica em `frontend/src/components/shell.tsx` (`triagemLinks`, linhas 16-19
 - `frontend/src/pages/TriagemPage.tsx`: página da busca. Os componentes `AvisoEmpresasPendentes`, `AvisoCep`, `CartaoVaga`, `Chip`, `ComoFunciona` e `Secao` ficam no próprio arquivo.
 - `frontend/src/components/triagem-inteligente.tsx`: `useStatusIa`, `PerfilCandidato` (upload do currículo, escolaridade, turnos, tempo de experiência, habilidades) e `AnaliseDaVaga` (score, nível, confiança, explicação).
 - `frontend/src/lib/triagem-matching.ts`: regras puras da tela. `organizarVagas` (avaliadas / sem avaliação / pendentes), `ordemDeExibicao`, `proximoLote`, `idsParaRepetir`, `selecaoValida`, `problemaDoPerfil`, `perfilPreenchido`, `rotuloTurnos`, `rotuloScore` e `textoParaCandidato`, que monta o texto com emojis (reexportado pela `TriagemPage`).
-- `frontend/src/lib/triagem-geo.ts`: geocodifica o CEP **no navegador**. Usa ViaCEP para o endereço (`enderecoDoCep`, exportada e usada também no formulário de candidato para preencher o endereço) e, para a coordenada, tenta AwesomeAPI, depois BrasilAPI e por fim Photon (komoot).
+- `frontend/src/lib/triagem-geo.ts`: `enderecoDoCep` (ViaCEP: rua, bairro, cidade, UF), usada pelo formulário de candidato. `geocodeCep` (coordenada no navegador por AwesomeAPI → BrasilAPI → Photon) **não é mais usada pela Triagem**: o ponto agora vem do servidor (ver "Ponto da pessoa").
 - `frontend/src/pages/DossiePage.tsx`: página do dossiê. Tudo fica no arquivo (`Passo`, `Indicador`, `ResumoCandidato`).
 - `frontend/src/lib/foto-cargo.ts`: `fotoDoCargo` (nome do cargo → `/cargos/<chave>.jpg`, ou null) e `copiarComFoto` (texto + foto num único item da área de transferência). Também usado pela ficha da vaga.
 - `frontend/public/cargos/*.jpg`: fotos ilustrativas por cargo (1024 px, JPEG, nome = `chaveCargo` com hífens).
@@ -38,7 +38,7 @@ O menu fica em `frontend/src/components/shell.tsx` (`triagemLinks`, linhas 16-19
 - `backend/src/lib/curriculo/arquivo.ts` (`prepararCurriculo`: valida o tipo pelos bytes, limite de 5 MB, DOCX vira texto), `perfil.ts` (schema JSON da Luna, normalização, `perfilSuficiente`, `textoDoCurriculo`) e `cep.ts` (`cepDoCurriculo`: CEP escrito no currículo ou procurado no ViaCEP pelo endereço).
 - `backend/src/lib/dossie/prompts.ts`: `PROMPT_DOSSIE_CLT` e `PROMPT_DOSSIE_ESTAGIO`, copiados do workflow "gerador-dossies" do n8n.
 - `backend/src/lib/empresa-endereco.ts`: `sincronizarEnderecoEmpresas` (leva o endereço da ficha para `public.empresa` e `public.vaga`, com coordenada nova), `enderecoMudou`, `fichaCompleta`, `geocodeEndereco` (Google, endereço completo e depois CEP) e `enderecoParaGeocode`. Também usado pelo cadastro de empresa, pela edição da empresa e pelo sync de vagas.
-- `backend/src/lib/triagem-geo.ts`: `distanciaKm` (haversine), `geocodeCepServidor` (AwesomeAPI e depois Google Geocoding) e `rotuloDoCep` (ViaCEP).
+- `backend/src/lib/triagem-geo.ts`: `distanciaKm` (haversine), `geocodeCepServidor` (Google Geocoding primeiro, AwesomeAPI de reserva, cache de 24 h em memória) e `rotuloDoCep` (ViaCEP).
 - `backend/src/lib/horario-escala.ts`: `DIAS_ESCALA` e `textoDoHorario`, usados por `horarioDoEspelho`.
 - `backend/src/origem/crm-dna.ts`: `crmRequest` (CRM DNA).
 - `backend/src/lib/paginas.ts`: regra `/api/v1/triagem` → página `triagem`.
@@ -75,7 +75,7 @@ O menu fica em `frontend/src/components/shell.tsx` (`triagemLinks`, linhas 16-19
 - **OpenAI (Responses API)**: análise do currículo (Luna) e geração do dossiê. Variáveis `OPENAI_API_KEY`, `OPENAI_API_URL`, `LUNA_MODEL` e `LUNA_TIMEOUT_MS`. As chamadas usam `store: false`.
 - **JEV (TypeSafe)**: `POST {JEV_API_URL}/v1/systemone`. Variáveis `JEV_API_URL`, `JEV_API_KEY`, `JEV_MODEL`, `JEV_TIMEOUT_MS`, `JEV_CONCORRENCIA` (paralelismo) e `JEV_LOTE` (vagas por lote na tela, padrão 10).
 - **CRM DNA**: `GET /api/deals?search=<telefone>&perPage=10`, `GET /api/deals/:id` (inclui `dealPanelFields`) e `POST /api/deals/:id/notes`. Variáveis `CRM_DNA_API_URL`/`CRM_BASE_URL` e `CRM_DNA_API_TOKEN`/`CRM_API_KEY` (lidas em `origem/crm-dna.ts`).
-- **Geocodificação**: no navegador, ViaCEP, AwesomeAPI, BrasilAPI e Photon. No servidor, quando a tela não manda lat/lng, AwesomeAPI e depois Google (`GOOGLE_MAPS_API_KEY`). O rótulo da origem vem do ViaCEP. Para o CEP do currículo, ViaCEP por endereço.
+- **Geocodificação**: só no servidor. Google Geocoding primeiro (`GOOGLE_MAPS_API_KEY`, o resultado tem que ser do próprio CEP) e AwesomeAPI de reserva. A BrasilAPI não é usada. O rótulo da origem vem do ViaCEP. Para o CEP do currículo, ViaCEP por endereço.
 - **n8n**: não é chamado. A lógica copia os workflows "gerador-dossies", "enviar vagas automaticas" (nó Jev) e "resumo cv + match".
 
 **Gravações**: o currículo e a compatibilidade não gravam nada. A busca só grava quando o endereço da ficha (`dna_work.empresa`) diverge da cópia da triagem: aí atualiza `public.empresa` (endereço, `local`, `latitude`, `longitude`) e `public.vaga` (`cep`, `latitude`, `longitude`) daquela empresa. A outra escrita da seção é a nota no CRM (`/dossie/nota`).
@@ -95,7 +95,8 @@ O menu fica em `frontend/src/components/shell.tsx` (`triagemLinks`, linhas 16-19
 - **Home office** (`tipo_trabalho = "remoto"`): ganha linha própria e o trecho "home office" sai do horário (`semHomeOffice`).
 - **Salário**: zero ou vazio vira "salário a combinar". `beneficios` preenchido acrescenta "+ benefícios" ao texto.
 - **Horário do espelho** (`horarioDoEspelho`, triagem.service.ts:68): se `horario` tem `texto=…`, usa esse texto. Senão, monta a grade a partir de `1=HH:MM-HH:MM;2=…` (1 = domingo … 7 = sábado) com `textoDoHorario`.
-- **Geocodificação**: o navegador manda lat/lng. Se não conseguir, o servidor tenta. Sem ponto, a resposta é 422 `CEP_NAO_LOCALIZADO`.
+- **Ponto da pessoa** (`origem` + `geocodeCepServidor`): o servidor localiza o CEP e guarda o resultado por 24 h em memória. A tela não manda mais coordenada; `lat`/`lng` no corpo ainda são aceitos, mas só valem se o servidor não localizar. Sem ponto, a resposta é 422 `CEP_NAO_LOCALIZADO`.
+  - Por quê (2026-11-13): AwesomeAPI e BrasilAPI erram o ponto de vários CEPs. Para 04854-410 (Jardim Azano I), as duas deram um ponto perto do centro, a 26–27 km, e a Triagem mostrou vagas da Barra Funda "a 1,2 km". Em 10 CEPs reais, a BrasilAPI errou de 2,5 a 27 km em 9 e a AwesomeAPI errou em 2.
 - **Mesmo CEP = 0 km** (`distanciaDaVaga`): vaga com `cep` igual ao CEP pesquisado fica a 0 km, mesmo sem coordenada. O ponto da pessoa é o centro do CEP (AwesomeAPI/BrasilAPI) e o da empresa é o endereço completo (Google); para o mesmo endereço os dois chegam a divergir mais de 1 km.
 - **Endereço atual da empresa** (`sincronizarEnderecoEmpresas`, chamado no começo de `buscar`, na edição da empresa e no começo do sync de vagas): a coordenada da vaga é copiada da empresa quando a vaga entra em `public.vaga`. Se o endereço mudar depois na ficha, a busca media pela unidade antiga. Agora, quando a ficha (CEP, rua e número, ignorando máscara, acento e caixa) diverge de `public.empresa`, ou alguma vaga da empresa tem outro CEP, o endereço é geocodificado de novo pelo Google e gravado na empresa e em todas as vagas dela.
   - Ficha incompleta (sem CEP de 8 dígitos, rua ou cidade) não sobrescreve nada.

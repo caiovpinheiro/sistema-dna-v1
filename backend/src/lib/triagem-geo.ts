@@ -57,9 +57,37 @@ async function google(cep: string, apiKey: string): Promise<Ponto | null> {
   return location ? pontoValido(location.lat, location.lng) : null;
 }
 
-/** Usado só quando a tela não mandou a coordenada. Uma falha não derruba a busca: devolve null. */
-export async function geocodeCepServidor(cep: string, googleKey: string): Promise<Ponto | null> {
-  return await awesomeApi(cep) ?? await google(cep, googleKey);
+type Geocoder = (cep: string, googleKey: string) => Promise<Ponto | null>;
+
+const CACHE_MS = 24 * 60 * 60 * 1000;
+const CACHE_MAX = 2000;
+const cache = new Map<string, { ponto: Ponto; ate: number }>();
+
+/**
+ * Ponto do CEP da pessoa. Google primeiro: AwesomeAPI e BrasilAPI erram com frequência
+ * (em 2026-11-13, para 04854-410 / Jardim Azano I, as duas deram um ponto 26 a 27 km longe,
+ * perto do centro; a BrasilAPI errou de 2,5 a 27 km em 9 de 10 CEPs testados).
+ * Sem Google (sem chave ou sem resultado do próprio CEP), usa a AwesomeAPI. A BrasilAPI não é usada.
+ * Resultado guardado por 24 h em memória. Uma falha não derruba a busca: devolve null.
+ */
+export async function geocodeCepServidor(
+  cep: string,
+  googleKey: string,
+  fontes: { google: Geocoder; awesome: Geocoder } = { google, awesome: (valor) => awesomeApi(valor) },
+): Promise<Ponto | null> {
+  const guardado = cache.get(cep);
+  if (guardado && guardado.ate > Date.now()) return guardado.ponto;
+  const ponto = await fontes.google(cep, googleKey) ?? await fontes.awesome(cep, googleKey);
+  if (ponto) {
+    if (cache.size >= CACHE_MAX) cache.delete(cache.keys().next().value!);
+    cache.set(cep, { ponto, ate: Date.now() + CACHE_MS });
+  }
+  return ponto;
+}
+
+/** Só para testes: esvazia o cache de CEPs. */
+export function limparCacheCep() {
+  cache.clear();
 }
 
 export async function rotuloDoCep(cep: string): Promise<string> {

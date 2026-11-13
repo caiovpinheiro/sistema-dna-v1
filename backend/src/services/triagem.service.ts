@@ -179,9 +179,13 @@ export class TriagemService {
     return rows;
   }
 
+  /**
+   * Ponto da pessoa: o servidor localiza o CEP (Google primeiro, ver geocodeCepServidor).
+   * A coordenada mandada por quem chamou só é usada se o servidor não conseguir localizar.
+   */
   private async origem(input: BuscaTriagem): Promise<Ponto> {
-    if (input.lat != null && input.lng != null) return { lat: input.lat, lng: input.lng };
-    const ponto = await geocodeCepServidor(input.cep, this.config.GOOGLE_MAPS_API_KEY);
+    const doServidor = await geocodeCepServidor(input.cep, this.config.GOOGLE_MAPS_API_KEY);
+    const ponto = doServidor ?? (input.lat != null && input.lng != null ? { lat: input.lat, lng: input.lng } : null);
     if (!ponto) throw new AppError(422, "CEP_NAO_LOCALIZADO", "Não foi possível localizar esse CEP.");
     return ponto;
   }
