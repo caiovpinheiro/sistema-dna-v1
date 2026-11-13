@@ -1,6 +1,6 @@
 # Agente — Configurações
 
-> Última revisão: 2026-11-13 (commit "Repagina as telas restantes no padrão novo")
+> Última revisão: 2026-11-13 (commit "Configurações: libera o Disparador Infojobs por usuário")
 
 ## Para que serve
 
@@ -29,7 +29,8 @@ Backend
 - `backend/src/lib/paginas.ts` — `PAGINAS` (id, nome, grupo) e `IDS_PAGINA`.
 - `backend/src/app.ts` — hook que exige admin para qualquer `/api/v1/configuracoes*`.
 - `backend/src/services/sync-ciclo.service.ts` — usado só pela rota `POST /configuracoes/sync` (não chamada por esta tela).
-- `prisma/migrations/20261021193000_app_usuario/migration.sql`, `prisma/migrations/20261025040000_acesso_paginas/migration.sql`.
+- `prisma/migrations/20261021193000_app_usuario/migration.sql`, `prisma/migrations/20261025040000_acesso_paginas/migration.sql`, `prisma/migrations/20261113170000_pagina_disparador/migration.sql` (dá a página `disparador` a todos os usuários que já existiam).
+- `backend/test/paginas.test.ts` — confere a página `disparador` no catálogo, a migration e o item do menu.
 
 ## API usada
 
@@ -60,11 +61,13 @@ Variável usada: `ADMIN_EMAIL` (o administrador do ambiente). Nenhum serviço ex
 - Desmarcar "Pode entrar no sistema" bloqueia o login (`findStaff` exige `ativo`) e as requisições já abertas (403 `SEM_ACESSO`); as páginas ficam guardadas.
 - Apagar (`acesso.service.ts:87-115`): 404 se não existe; admin → 409 `ADMIN_PROTEGIDO`; o próprio usuário logado → 409 `PROPRIO_USUARIO`. Apaga páginas e usuário numa transação. É definitivo. O frontend esconde o botão para admin e pede confirmação ("isso não pode ser desfeito").
 - A mudança de páginas vale na próxima requisição da pessoa, porque a permissão é lida do banco a cada chamada (`daSessao`); o menu dela só muda quando o frontend recarregar `/auth/me`.
+- **Disparador Infojobs** (`disparador`, grupo Geral): é o link externo "Disparador" do menu (`DISPARADOR_URL` em `shell.tsx`, abre em nova aba). A caixa só mostra ou esconde o item do menu; não protege nenhuma rota da API nem o endereço externo, que tem acesso próprio. Quando a página entrou no catálogo (2026-11-13), a migration `20261113170000_pagina_disparador` liberou para todos os usuários que já tinham login, porque até ali o item aparecia para todos. Usuário novo só vê se a caixa for marcada.
 - Mensagens de sucesso: "Usuário criado.", "Acesso salvo.", "Usuário apagado."; após criar, o novo usuário fica selecionado.
 
 ## Cuidados ao mudar
 
-- O catálogo de páginas vem do backend (`PAGINAS` em `lib/paginas.ts`); os grupos da tela são o campo `grupo`. Página nova precisa estar também em `REGRAS_API` (backend) e `CAMINHOS` do `shell.tsx` (frontend), senão marcar a caixa não protege nada.
+- O catálogo de páginas vem do backend (`PAGINAS` em `lib/paginas.ts`); os grupos da tela são o campo `grupo`. Página nova precisa estar também em `REGRAS_API` (backend) e `CAMINHOS` do `shell.tsx` (frontend), senão marcar a caixa não protege nada. Exceção: link externo do menu (como `disparador`) só precisa do `permitido("<id>")` em volta do item no `shell.tsx`.
+- Página nova que antes era visível para todos: crie uma migration que dê a página aos usuários existentes (como `20261113170000_pagina_disparador`), senão todo mundo perde o acesso no deploy.
 - Renomear um id em `PAGINAS` não migra `app_usuario_pagina`: as linhas antigas viram lixo e as pessoas perdem o acesso.
 - No `Editor` de um admin o botão Salvar sem nova senha recebe 409 do backend; é esperado.
 - A validação de senha existe no frontend e no backend (zod + service); mantenha as duas iguais.
@@ -75,5 +78,6 @@ Variável usada: `ADMIN_EMAIL` (o administrador do ambiente). Nenhum serviço ex
 
 - Entrar como admin, abrir `/configuracoes`: criar usuário de teste com algumas páginas, entrar com ele em outra janela e conferir o menu; desmarcar "Pode entrar no sistema" e ver o 403/bloqueio; trocar a senha; apagar.
 - Entrar como não admin e abrir `/configuracoes`: deve aparecer "Somente o administrador configura os acessos."
-- Testes: não encontrei teste específico do `AcessoService` nem das rotas `/configuracoes`. `backend/test/triagem-rotas.test.ts` simula `app_usuario`/`app_usuario_pagina` para checar a permissão de página.
+- Disparador: marcar e desmarcar "Disparador Infojobs" (Geral) num usuário de teste, recarregar o sistema com ele e conferir o item "Disparador" no menu.
+- Testes: `backend/test/paginas.test.ts` (catálogo, migration e menu do Disparador). Não encontrei teste específico do `AcessoService` nem das rotas `/configuracoes`. `backend/test/triagem-rotas.test.ts` simula `app_usuario`/`app_usuario_pagina` para checar a permissão de página.
 - Comandos: `npm test -w backend`, `npm run lint -w backend`, `npm run lint -w frontend`.

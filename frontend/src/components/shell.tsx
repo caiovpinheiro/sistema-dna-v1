@@ -218,11 +218,13 @@ export function Shell({ email, admin, paginas, notify }: { email: string; admin:
           <Mail size={18} className="shrink-0" /> {label("E-mails")}
         </NavLink>
       ) : null}
-      {/* Ferramenta externa: abre o disparador de mensagens (Infojobs) numa aba nova. */}
-      <a href={DISPARADOR_URL} target="_blank" rel="noreferrer" onClick={() => setOpen(false)} title="Disparador (abre em nova aba)" className={linkClass({ isActive: false })}>
-        <Send size={18} className="shrink-0" /> {label("Disparador")}
-        {expanded ? <ExternalLink size={13} className="ml-auto shrink-0 text-slate-400" /> : null}
-      </a>
+      {/* Ferramenta externa: abre o disparador de mensagens (Infojobs) numa aba nova. Liberada por usuário em Configurações. */}
+      {permitido("disparador") ? (
+        <a href={DISPARADOR_URL} target="_blank" rel="noreferrer" onClick={() => setOpen(false)} title="Disparador (abre em nova aba)" className={linkClass({ isActive: false })}>
+          <Send size={18} className="shrink-0" /> {label("Disparador")}
+          {expanded ? <ExternalLink size={13} className="ml-auto shrink-0 text-slate-400" /> : null}
+        </a>
+      ) : null}
       {permitido("documentos") ? (
         <NavLink to="/documentos-pendentes" onClick={() => setOpen(false)} title="Documentos Pendentes" className={linkClass}>
           <FileWarning size={18} className="shrink-0" /> {label("Documentos Pendentes")}

@@ -21,6 +21,8 @@ export const PAGINAS = [
   { id: "comissao-empresas", nome: "Empresas da comissão", grupo: "Comissão" },
   { id: "holerite", nome: "Holerite", grupo: "Financeiro" },
   { id: "emails", nome: "E-mails", grupo: "Geral" },
+  // Link externo do menu (abre o disparador Infojobs em nova aba): a caixa só mostra ou esconde o item.
+  { id: "disparador", nome: "Disparador Infojobs", grupo: "Geral" },
   { id: "documentos", nome: "Documentos pendentes", grupo: "Geral" },
 ] as const;
 
