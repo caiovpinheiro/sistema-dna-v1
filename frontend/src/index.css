@@ -27,6 +27,24 @@ button, a, input, select, textarea {
   font: inherit;
 }
 
+/* Mãozinha em tudo que é clicável (o Tailwind v4 deixa a seta padrão nos botões). */
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]),
+summary,
+select:not(:disabled),
+label:has(> input[type="checkbox"]:not(:disabled)),
+label:has(> input[type="radio"]:not(:disabled)),
+input[type="checkbox"]:not(:disabled),
+input[type="radio"]:not(:disabled),
+input[type="file"]:not(:disabled),
+input[type="date"]:not(:disabled)::-webkit-calendar-picker-indicator,
+input[type="month"]:not(:disabled)::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+}
+button:disabled,
+select:disabled,
+input:disabled { cursor: not-allowed; }
+
 button, a {
   transition: background-color 180ms ease, color 180ms ease, transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
 }
