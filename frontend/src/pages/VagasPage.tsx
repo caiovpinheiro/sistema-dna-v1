@@ -238,7 +238,7 @@ function PrioridadeEditavel({ vaga }: { vaga: Row }) {
           value={mostrada.id}
           disabled={salvar.isPending}
           onChange={(event) => salvar.mutate(event.target.value as Prioridade)}
-          className="cursor-pointer appearance-none bg-transparent pr-4 font-semibold outline-none"
+          className="cursor-pointer appearance-none bg-transparent pr-4 font-semibold text-inherit! outline-none focus-visible:underline"
         >
           {PRIORIDADES.map((item) => <option key={item.id} value={item.id}>{item.nome}</option>)}
         </select>

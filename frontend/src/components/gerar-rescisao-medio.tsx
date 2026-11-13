@@ -1,7 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
-import { useState, type FormEvent } from "react";
-import { Button, Card, Field, Input, Textarea } from "@/components/ui";
+import { FileDown, Search } from "lucide-react";
+import { useState, type FormEvent, type ReactNode } from "react";
+import { Alerta } from "@/components/pagina";
+import { Badge, Button, Card, Field, Input, Select, Textarea } from "@/components/ui";
 import { api } from "@/lib/api";
+import { textoPlano } from "@/lib/format";
 
 type Pessoa = { id: number; nome: string | null; empresa: string | null; cargo: string | null; situacao: string };
 
@@ -62,32 +65,55 @@ function vazio(): Formulario {
   };
 }
 
-const campos: Array<{ key: keyof Formulario; label: string; date?: boolean }> = [
-  { key: "estagiario_nome", label: "Nome" },
-  { key: "estagiario_nascimento", label: "Nascimento", date: true },
-  { key: "estagiario_cpf", label: "CPF" },
-  { key: "estagiario_rg", label: "RG" },
-  { key: "estagiario_endereco", label: "Endereço" },
-  { key: "estagiario_cep", label: "CEP" },
-  { key: "estagiario_cidade", label: "Cidade" },
-  { key: "estagiario_estado", label: "Estado" },
-  { key: "estagiario_curso", label: "Curso" },
-  { key: "estagiario_periodo", label: "Período/Ano" },
-  { key: "estagiario_turno", label: "Turno" },
-  { key: "estagiario_contato", label: "Contato" },
+type Span = 1 | 2 | 3 | 4 | 6;
+type Campo = { key: keyof Formulario; label: string; date?: boolean; span: Span };
+
+/** Larguras na grade de 6 colunas: UF e datas curtas, nome e endereço largos. */
+const LARGURA: Record<Span, string> = { 1: "sm:col-span-1", 2: "sm:col-span-2", 3: "sm:col-span-3", 4: "sm:col-span-4", 6: "sm:col-span-6" };
+
+const campos: Campo[] = [
+  { key: "estagiario_nome", label: "Nome", span: 4 },
+  { key: "estagiario_nascimento", label: "Nascimento", date: true, span: 2 },
+  { key: "estagiario_cpf", label: "CPF", span: 3 },
+  { key: "estagiario_rg", label: "RG", span: 3 },
+  { key: "estagiario_endereco", label: "Endereço", span: 4 },
+  { key: "estagiario_cep", label: "CEP", span: 2 },
+  { key: "estagiario_cidade", label: "Cidade", span: 2 },
+  { key: "estagiario_estado", label: "Estado", span: 1 },
+  { key: "estagiario_contato", label: "Contato", span: 3 },
+  { key: "estagiario_curso", label: "Curso", span: 2 },
+  { key: "estagiario_periodo", label: "Período/Ano", span: 2 },
+  { key: "estagiario_turno", label: "Turno", span: 2 },
 ];
 
-const responsavel: Array<{ key: keyof Formulario; label: string; date?: boolean }> = [
-  { key: "responsavel_nome", label: "Nome" },
-  { key: "responsavel_nascimento", label: "Nascimento", date: true },
-  { key: "responsavel_cpf", label: "CPF" },
-  { key: "responsavel_rg", label: "RG" },
-  { key: "responsavel_endereco", label: "Endereço" },
-  { key: "responsavel_cep", label: "CEP" },
-  { key: "responsavel_cidade", label: "Cidade" },
-  { key: "responsavel_estado", label: "Estado" },
-  { key: "responsavel_contato", label: "Contato" },
+const responsavel: Campo[] = [
+  { key: "responsavel_nome", label: "Nome", span: 4 },
+  { key: "responsavel_nascimento", label: "Nascimento", date: true, span: 2 },
+  { key: "responsavel_cpf", label: "CPF", span: 3 },
+  { key: "responsavel_rg", label: "RG", span: 3 },
+  { key: "responsavel_endereco", label: "Endereço", span: 4 },
+  { key: "responsavel_cep", label: "CEP", span: 2 },
+  { key: "responsavel_cidade", label: "Cidade", span: 2 },
+  { key: "responsavel_estado", label: "Estado", span: 1 },
+  { key: "responsavel_contato", label: "Contato", span: 3 },
 ];
+
+/** Bloco do formulário: título, uma frase do que preencher e a grade de 6 colunas. */
+function Secao({ titulo, texto, children }: { titulo: string; texto: string; children: ReactNode }) {
+  return (
+    <Card className="grid gap-4 md:p-5">
+      <header>
+        <h2 className="text-[15px] font-bold text-navy-900">{titulo}</h2>
+        <p className="text-sm text-slate-500">{texto}</p>
+      </header>
+      <div className="grid gap-3 sm:grid-cols-6">{children}</div>
+    </Card>
+  );
+}
+
+function Col({ span, children }: { span: Span; children: ReactNode }) {
+  return <div className={LARGURA[span]}>{children}</div>;
+}
 
 export function GerarRescisaoMedio() {
   const [busca, setBusca] = useState("");
@@ -166,88 +192,110 @@ export function GerarRescisaoMedio() {
 
   const lista = pessoas.data?.data ?? [];
 
+  const texto = (chave: keyof Formulario, rotulo: string, span: Span, ariaLabel = rotulo) => (
+    <Col span={span}>
+      <Field label={rotulo}><Input aria-label={ariaLabel} value={String(form[chave] ?? "")} onChange={(event) => set(chave, event.target.value)} /></Field>
+    </Col>
+  );
+
   return (
-    <form className="grid gap-4" onSubmit={gerar}>
-      {erro ? <p className="text-sm text-rose-600" role="alert">{erro}</p> : null}
-      <Card className="grid gap-3">
-        <h2 className="font-bold">Estagiário efetivado</h2>
-        <p className="text-sm text-slate-500">Somente estágio do ensino médio. A busca traz quem já foi efetivado e preenche o termo.</p>
-        <Field label="Buscar pessoa">
-          <Input aria-label="Buscar estagiário" placeholder="Nome, empresa ou cargo" value={busca} onChange={(event) => { setBusca(event.target.value); setAberta(true); }} />
-        </Field>
-        {aberta && busca.trim().length >= 2 && lista.length ? (
-          <div className="max-h-40 overflow-auto rounded-lg border border-slate-200">
-            {lista.map((pessoa) => (
-              <button key={pessoa.id} type="button" className="block w-full px-3 py-2 text-left text-sm hover:bg-slate-50" onClick={() => void escolher(pessoa)}>
-                <span className="font-semibold">{pessoa.nome}</span>
-                <span className="ml-2 text-slate-500">{pessoa.empresa} · {pessoa.cargo} · {pessoa.situacao}</span>
-              </button>
-            ))}
+    <form className="grid gap-5" onSubmit={gerar}>
+      <Card className="grid gap-3 md:p-5">
+        <header>
+          <h2 className="text-[15px] font-bold text-navy-900">Estagiário efetivado</h2>
+          <p className="text-sm text-slate-500">Somente estágio do ensino médio. Escolha a pessoa e o termo sai preenchido com os dados do banco; confira e complete abaixo.</p>
+        </header>
+        <div className="relative grid gap-1.5 rounded-lg bg-slate-50 p-3">
+          <span className="text-sm font-semibold text-slate-700">Buscar pessoa</span>
+          <div className="relative">
+            <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <Input aria-label="Buscar estagiário" placeholder="Nome, empresa ou cargo" value={busca} onChange={(event) => { setBusca(event.target.value); setAberta(true); }} className="pl-9" />
           </div>
-        ) : null}
-        {busca.trim().length >= 2 && pessoas.isSuccess && lista.length === 0 ? <p className="text-sm text-slate-500">Nenhum estagiário do ensino médio encontrado.</p> : null}
+          {aberta && busca.trim().length >= 2 && lista.length ? (
+            <div className="max-h-56 overflow-auto rounded-lg border border-slate-200 bg-white">
+              {lista.map((pessoa) => (
+                <button key={pessoa.id} type="button" className="flex w-full flex-wrap items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-slate-50" onClick={() => void escolher(pessoa)}>
+                  <span className="min-w-0">
+                    <span className="block font-semibold text-slate-700">{pessoa.nome}</span>
+                    <span className="block text-xs text-slate-500">{[pessoa.empresa ? textoPlano(pessoa.empresa) : null, pessoa.cargo].filter(Boolean).join(" · ")}</span>
+                  </span>
+                  <Badge value={pessoa.situacao === "Ativo" ? "ativa" : "encerrada"}>{pessoa.situacao}</Badge>
+                </button>
+              ))}
+            </div>
+          ) : null}
+          {busca.trim().length >= 2 && pessoas.isSuccess && lista.length === 0 ? <p className="text-sm text-slate-500">Nenhum estagiário do ensino médio encontrado com esse nome.</p> : null}
+        </div>
       </Card>
 
-      <Card className="grid gap-3 md:grid-cols-2">
-        <h2 className="font-bold md:col-span-2">Estagiário</h2>
+      <Secao titulo="Estagiário" texto="Dados pessoais e escolares que aparecem no termo.">
         {campos.map((campo) => (
-          <Field key={campo.key} label={campo.label}>
-            <Input aria-label={campo.label} type={campo.date ? "date" : "text"} value={String(form[campo.key] ?? "")} onChange={(event) => set(campo.key, event.target.value)} />
-          </Field>
+          <Col key={campo.key} span={campo.span}>
+            <Field label={campo.label}>
+              <Input aria-label={campo.label} type={campo.date ? "date" : "text"} value={String(form[campo.key] ?? "")} onChange={(event) => set(campo.key, event.target.value)} />
+            </Field>
+          </Col>
         ))}
-        <Field label="Tipo de estágio">
-          <select aria-label="Tipo de estágio" className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm" value={form.tipo_estagio} onChange={(event) => set("tipo_estagio", event.target.value === "obrigatorio" ? "obrigatorio" : "nao_obrigatorio")}>
-            <option value="nao_obrigatorio">Não obrigatório</option>
-            <option value="obrigatorio">Obrigatório</option>
-          </select>
-        </Field>
-      </Card>
+        <Col span={3}>
+          <Field label="Tipo de estágio">
+            <Select aria-label="Tipo de estágio" value={form.tipo_estagio} onChange={(event) => set("tipo_estagio", event.target.value === "obrigatorio" ? "obrigatorio" : "nao_obrigatorio")}>
+              <option value="nao_obrigatorio">Não obrigatório</option>
+              <option value="obrigatorio">Obrigatório</option>
+            </Select>
+          </Field>
+        </Col>
+      </Secao>
 
-      <Card className="grid gap-3 md:grid-cols-2">
-        <h2 className="font-bold md:col-span-2">Responsável legal</h2>
+      <Secao titulo="Responsável legal" texto="Quem assina pelo estagiário menor de idade. Deixe em branco se não houver.">
         {responsavel.map((campo) => (
-          <Field key={campo.key} label={campo.label}>
-            <Input aria-label={`Responsável ${campo.label}`} type={campo.date ? "date" : "text"} value={String(form[campo.key] ?? "")} onChange={(event) => set(campo.key, event.target.value)} />
-          </Field>
+          <Col key={campo.key} span={campo.span}>
+            <Field label={campo.label}>
+              <Input aria-label={`Responsável ${campo.label}`} type={campo.date ? "date" : "text"} value={String(form[campo.key] ?? "")} onChange={(event) => set(campo.key, event.target.value)} />
+            </Field>
+          </Col>
         ))}
-      </Card>
+      </Secao>
 
-      <Card className="grid gap-3 md:grid-cols-2">
-        <h2 className="font-bold md:col-span-2">Concedente</h2>
-        <Field label="Razão social"><Input aria-label="Razão social da concedente" value={form.concedente_razao} onChange={(event) => set("concedente_razao", event.target.value)} /></Field>
-        <Field label="CNPJ"><Input aria-label="CNPJ da concedente" value={form.concedente_cnpj} onChange={(event) => set("concedente_cnpj", event.target.value)} /></Field>
-        <Field label="Endereço"><Input aria-label="Endereço da concedente" value={form.concedente_endereco} onChange={(event) => set("concedente_endereco", event.target.value)} /></Field>
-        <Field label="E-mail"><Input aria-label="E-mail da concedente" value={form.concedente_email} onChange={(event) => set("concedente_email", event.target.value)} /></Field>
-        <Field label="Representante"><Input aria-label="Representante da concedente" value={form.concedente_representante} onChange={(event) => set("concedente_representante", event.target.value)} /></Field>
-      </Card>
+      <Secao titulo="Concedente" texto="A empresa onde o estágio aconteceu.">
+        {texto("concedente_razao", "Razão social", 4, "Razão social da concedente")}
+        {texto("concedente_cnpj", "CNPJ", 2, "CNPJ da concedente")}
+        {texto("concedente_endereco", "Endereço", 6, "Endereço da concedente")}
+        {texto("concedente_email", "E-mail", 3, "E-mail da concedente")}
+        {texto("concedente_representante", "Representante", 3, "Representante da concedente")}
+      </Secao>
 
-      <Card className="grid gap-3 md:grid-cols-2">
-        <h2 className="font-bold md:col-span-2">Instituição de ensino</h2>
-        <Field label="Nome"><Input aria-label="Nome da instituição" value={form.escola_nome} onChange={(event) => set("escola_nome", event.target.value)} /></Field>
-        <Field label="CNPJ / INEP"><Input aria-label="CNPJ da instituição" value={form.escola_cnpj} onChange={(event) => set("escola_cnpj", event.target.value)} /></Field>
-        <Field label="Endereço"><Input aria-label="Endereço da instituição" value={form.escola_endereco} onChange={(event) => set("escola_endereco", event.target.value)} /></Field>
-        <Field label="Cidade"><Input aria-label="Cidade da instituição" value={form.escola_cidade} onChange={(event) => set("escola_cidade", event.target.value)} /></Field>
-        <Field label="Estado"><Input aria-label="Estado da instituição" value={form.escola_estado} onChange={(event) => set("escola_estado", event.target.value)} /></Field>
-        <Field label="CEP"><Input aria-label="CEP da instituição" value={form.escola_cep} onChange={(event) => set("escola_cep", event.target.value)} /></Field>
-        <Field label="E-mail"><Input aria-label="E-mail da instituição" value={form.escola_email} onChange={(event) => set("escola_email", event.target.value)} /></Field>
-        <Field label="Representante"><Input aria-label="Representante da instituição" value={form.escola_representante} onChange={(event) => set("escola_representante", event.target.value)} /></Field>
-      </Card>
+      <Secao titulo="Instituição de ensino" texto="A escola do estagiário.">
+        {texto("escola_nome", "Nome", 4, "Nome da instituição")}
+        {texto("escola_cnpj", "CNPJ / INEP", 2, "CNPJ da instituição")}
+        {texto("escola_endereco", "Endereço", 6, "Endereço da instituição")}
+        {texto("escola_cidade", "Cidade", 3, "Cidade da instituição")}
+        {texto("escola_estado", "Estado", 1, "Estado da instituição")}
+        {texto("escola_cep", "CEP", 2, "CEP da instituição")}
+        {texto("escola_email", "E-mail", 3, "E-mail da instituição")}
+        {texto("escola_representante", "Representante", 3, "Representante da instituição")}
+      </Secao>
 
-      <Card className="grid gap-3">
-        <h2 className="font-bold">Rescisão</h2>
-        <div className="grid gap-3 md:grid-cols-2">
-          <Field label="Data do TCE"><Input aria-label="Data do TCE" type="date" value={form.data_tce} onChange={(event) => set("data_tce", event.target.value)} /></Field>
-          <Field label="Data da rescisão"><Input aria-label="Data da rescisão" type="date" value={form.data_rescisao} onChange={(event) => set("data_rescisao", event.target.value)} /></Field>
-          <Field label="Motivo"><Input aria-label="Motivo da rescisão" value={form.motivo} onChange={(event) => set("motivo", event.target.value)} /></Field>
-          <Field label="Avaliação de desempenho"><Input aria-label="Avaliação de desempenho" value={form.avaliacao} onChange={(event) => set("avaliacao", event.target.value)} /></Field>
+      <Secao titulo="Rescisão" texto="Datas, motivo, avaliação e o resumo do que o estagiário fez.">
+        <Col span={2}><Field label="Data do TCE"><Input aria-label="Data do TCE" type="date" value={form.data_tce} onChange={(event) => set("data_tce", event.target.value)} /></Field></Col>
+        <Col span={2}><Field label="Data da rescisão"><Input aria-label="Data da rescisão" type="date" value={form.data_rescisao} onChange={(event) => set("data_rescisao", event.target.value)} /></Field></Col>
+        <div className="hidden sm:col-span-2 sm:block" />
+        {texto("motivo", "Motivo", 3, "Motivo da rescisão")}
+        {texto("avaliacao", "Avaliação de desempenho", 3)}
+        <Col span={6}>
+          <Field label="Resumo das atividades">
+            <Textarea aria-label="Resumo das atividades" value={form.atividades} onChange={(event) => set("atividades", event.target.value)} />
+          </Field>
+        </Col>
+      </Secao>
+
+      {/* Rodapé fixo: o botão e o erro de validação ficam sempre à vista enquanto o formulário rola. */}
+      <div className="sticky bottom-0 z-10 grid gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-lg">
+        {erro ? <Alerta>{erro}</Alerta> : null}
+        <div className="flex flex-wrap items-center justify-end gap-3">
+          <p className="text-sm text-slate-500">O PDF é baixado no seu computador; nada é gravado.</p>
+          <Button type="submit" disabled={gerando}><FileDown size={16} /> {gerando ? "Gerando…" : "Gerar rescisão"}</Button>
         </div>
-        <Field label="Resumo das atividades">
-          <Textarea aria-label="Resumo das atividades" value={form.atividades} onChange={(event) => set("atividades", event.target.value)} />
-        </Field>
-        <div>
-          <Button type="submit" disabled={gerando}>{gerando ? "Gerando…" : "Gerar rescisão"}</Button>
-        </div>
-      </Card>
+      </div>
     </form>
   );
 }

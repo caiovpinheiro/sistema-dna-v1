@@ -1,8 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
+import { ArrowLeft, ChevronRight, Eye, FileX, Send } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { DocumentosContratacao } from "@/components/documentos-contratacao";
-import { Badge, Button, Card, Field, Input, Select, Skeleton, Textarea, cn } from "@/components/ui";
+import { Alerta, FiltroChips } from "@/components/pagina";
+import { Badge, Button, Card, Field, Input, Select, Skeleton, Textarea } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 import { dateBr, formatCpf, formatPhone, money, regimeLabel, situacaoLabel, textoPlano } from "@/lib/format";
 
@@ -128,7 +130,7 @@ export function RescisaoDetailPage() {
   });
 
   const cand = candidato.data?.data;
-  const empresa = data?.empresa_fantasia || data?.empresa_razao || "—";
+  const empresa = textoPlano(data?.empresa_fantasia) || textoPlano(data?.empresa_razao) || "—";
   const periodo = useMemo(() => {
     if (!data) return "—";
     return `${dateBr(data.data_inicio)} a ${dateBr(data.data_fim_prevista)}`;
@@ -154,167 +156,194 @@ export function RescisaoDetailPage() {
   }
 
   if (query.isLoading) return <Skeleton className="h-80" />;
-  if (!data) return <p className="text-rose-600">Contratação não encontrada.</p>;
+  if (!data) {
+    return (
+      <div className="grid gap-3">
+        <Voltar />
+        <Alerta>Contratação não encontrada. Ela pode ter sido removida ou o endereço está incompleto.</Alerta>
+      </div>
+    );
+  }
+
+  const nome = textoPlano(data.candidato_nome) || "Sem nome";
+  const erroForm = message && !pedido;
 
   return (
     <div className="grid gap-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <button type="button" className="mb-2 text-sm font-semibold text-orange-500 hover:text-orange-400" onClick={() => navigate("/contratacoes/rescisao")}>
-            ← Voltar à lista
-          </button>
-          <h1 className="text-2xl font-extrabold">{data.candidato_nome}</h1>
-          <p className="text-sm text-slate-500">
-            Contratado em {data.cargo || "—"} · {empresa} · {periodo}
-          </p>
+      <Voltar />
+      <header className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+        <div className="grid min-w-0 gap-1">
+          <p className="text-xs font-semibold text-slate-500">Rescisão · contratação nº {data.id_contratacao}</p>
+          <h1 className="text-2xl font-extrabold tracking-tight text-navy-900">{nome}</h1>
+          <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500">
+            <Badge value={data.situacao}>{situacaoLabel[data.situacao] ?? data.situacao}</Badge>
+            <Badge value={data.regime}>{regimeLabel[data.regime] ?? data.regime}</Badge>
+            <span>{[textoPlano(data.cargo), empresa].filter((item) => item && item !== "—").join(" · ")} · {periodo}</span>
+          </div>
         </div>
-        <Badge value={data.situacao}>{situacaoLabel[data.situacao]}</Badge>
-      </div>
+        <Link to={`/contratacoes/${data.id_contratacao}`}><Button variant="secondary">Abrir contratação <ChevronRight size={16} /></Button></Link>
+      </header>
 
-      <Card className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        <Info label="Nome" value={cand?.nome || data.candidato_nome || "—"} />
-        <Info label="Idade" value={cand?.idade != null ? String(cand.idade) : "—"} />
-        <Info label="CPF" value={formatCpf(cand?.cpf || data.candidato_cpf)} />
-        <Info label="E-mail" value={cand?.email || "—"} />
-        <Info label="Celular" value={formatPhone(cand?.celular || cand?.telefone)} />
-        <Info label="Regime" value={regimeLabel[data.regime] || "—"} />
-        <Info label="Modalidade" value={data.modalidade || "—"} />
-        <Info label="Salário ou bolsa" value={money(data.salario)} />
-        <Info label="Carga horária" value={data.carga_horaria || "—"} />
-        <Info label="Formação" value={cand?.curriculo?.escolaridade || "—"} />
-        <Info label="Instituição" value={cand?.curriculo?.instituicao?.nome_fantasia || cand?.curriculo?.instituicao?.razao_social || "—"} />
-        <Info label="Término de estudo" value={dateBr(cand?.curriculo?.terminoestudo)} />
-        <Info label="Bairro" value={cand?.bairro || "—"} />
-        <Info label="Cidade / UF" value={[cand?.cidade, cand?.uf].filter(Boolean).join(" / ") || "—"} />
-        <div className="flex flex-wrap gap-4 text-sm md:col-span-2 xl:col-span-3">
-          <Link className="font-semibold text-cyan-800" to={`/candidatos/${data.id_candidato}`}>Abrir candidato</Link>
-          <Link className="font-semibold text-cyan-800" to={`/empresas/${data.id_empresa}`}>Abrir empresa</Link>
-          <Link className="font-semibold text-cyan-800" to={`/vagas/${data.id_vaga}`}>Abrir vaga</Link>
-          <Link className="font-semibold text-cyan-800" to={`/contratacoes/${data.id_contratacao}`}>Abrir contratação</Link>
+      <Card className="grid gap-4">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-[15px] font-bold text-navy-900">Dados do contratado</h2>
+          <div className="flex flex-wrap gap-4 text-sm">
+            <Link className="font-semibold text-cyan-700 hover:underline" to={`/candidatos/${data.id_candidato}`}>Abrir candidato</Link>
+            <Link className="font-semibold text-cyan-700 hover:underline" to={`/empresas/${data.id_empresa}`}>Abrir empresa</Link>
+            <Link className="font-semibold text-cyan-700 hover:underline" to={`/vagas/${data.id_vaga}`}>Abrir vaga</Link>
+          </div>
         </div>
+        <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2 xl:grid-cols-4">
+          <Info label="Nome" value={textoPlano(cand?.nome) || nome} />
+          <Info label="Idade" value={cand?.idade != null ? `${cand.idade} anos` : "—"} />
+          <Info label="CPF" value={formatCpf(cand?.cpf || data.candidato_cpf)} />
+          <Info label="E-mail" value={cand?.email || "—"} />
+          <Info label="Celular" value={formatPhone(cand?.celular || cand?.telefone)} />
+          <Info label="Regime" value={regimeLabel[data.regime] || "—"} />
+          <Info label="Modalidade" value={textoPlano(data.modalidade) || "—"} />
+          <Info label="Salário ou bolsa" value={money(data.salario)} />
+          <Info label="Carga horária" value={data.carga_horaria || "—"} />
+          <Info label="Formação" value={cand?.curriculo?.escolaridade || "—"} />
+          <Info label="Instituição" value={textoPlano(cand?.curriculo?.instituicao?.nome_fantasia || cand?.curriculo?.instituicao?.razao_social) || "—"} />
+          <Info label="Término de estudo" value={dateBr(cand?.curriculo?.terminoestudo)} />
+          <Info label="Bairro" value={cand?.bairro || "—"} />
+          <Info label="Cidade / UF" value={[cand?.cidade, cand?.uf].filter(Boolean).join(" / ") || "—"} />
+        </dl>
       </Card>
 
       {data.situacao === "ativa" ? (
-        <Card className="grid max-w-3xl gap-4">
-          <h2 className="text-xl font-extrabold">Demitir</h2>
+        <Card className="grid max-w-4xl gap-5 md:p-5">
+          <div>
+            <h2 className="text-[15px] font-bold text-navy-900">Demitir</h2>
+            <p className="text-sm text-slate-500">Preencha os dados da rescisão. Ao confirmar, o documento é gerado e o vínculo é encerrado.</p>
+          </div>
 
-          <Field label="Motivo da demissão (em contrato)">
-            <Select aria-label="Motivo da demissão" value={motivo} onChange={(event) => setMotivo(event.target.value)}>
-              <option value="">Selecione</option>
-              {MOTIVOS.map((item) => <option key={item} value={item}>{item}</option>)}
-            </Select>
-          </Field>
-
-          <Field label="Data de demissão">
-            <Input type="date" aria-label="Data de demissão" value={dataDemissao} onChange={(event) => setDataDemissao(event.target.value)} />
-          </Field>
+          <div className="grid gap-3 sm:grid-cols-6">
+            <div className="sm:col-span-4">
+              <Field label="Motivo da demissão (vai no documento)">
+                <Select aria-label="Motivo da demissão" value={motivo} onChange={(event) => setMotivo(event.target.value)}>
+                  <option value="">Selecione</option>
+                  {MOTIVOS.map((item) => <option key={item} value={item}>{item}</option>)}
+                </Select>
+              </Field>
+            </div>
+            <div className="sm:col-span-2">
+              <Field label="Data de demissão">
+                <Input type="date" aria-label="Data de demissão" value={dataDemissao} onChange={(event) => setDataDemissao(event.target.value)} />
+              </Field>
+            </div>
+          </div>
 
           <div className="grid gap-2">
             <span className="text-sm font-medium text-slate-700">Avaliação de desempenho</span>
-            <div className="flex flex-wrap gap-2">
-              {AVALIACOES.map((item) => (
-                <button
-                  key={item}
-                  type="button"
-                  onClick={() => setAvaliacao(item)}
-                  className={cn(
-                    "rounded-full px-3 py-1.5 text-sm font-semibold ring-1 transition",
-                    avaliacao === item ? "bg-orange-500 text-navy-950 ring-orange-400" : "bg-slate-100 text-slate-600 ring-slate-200 hover:bg-slate-200",
-                  )}
-                >
-                  {item}
-                </button>
-              ))}
-            </div>
+            <FiltroChips
+              rotulo="Avaliação de desempenho"
+              opcoes={AVALIACOES.map((item) => ({ id: item, rotulo: item }))}
+              valor={avaliacao}
+              onChange={(item) => setAvaliacao(item as (typeof AVALIACOES)[number])}
+            />
           </div>
 
           <Field label="Resumo das atividades">
             <Textarea aria-label="Resumo das atividades" value={resumo} onChange={(event) => setResumo(event.target.value)} rows={6} />
           </Field>
 
-          <Field label="Motivo interno">
-            <Textarea aria-label="Motivo interno" value={motivoInterno} onChange={(event) => setMotivoInterno(event.target.value)} rows={4} placeholder="Anotação interna (não vai no contrato)" />
+          <Field label="Motivo interno (não vai no documento)">
+            <Textarea aria-label="Motivo interno" value={motivoInterno} onChange={(event) => setMotivoInterno(event.target.value)} rows={4} placeholder="Anotação interna da equipe" />
           </Field>
 
-          <button type="button" className="justify-self-start text-sm font-semibold text-slate-600 underline-offset-2 hover:text-navy-900 hover:underline" onClick={gerarPrevia}>
-            Gerar prévia
-          </button>
+          {erroForm ? <Alerta>{message}</Alerta> : null}
 
-          <Button
-            className="justify-self-start bg-orange-500 text-navy-950 hover:bg-orange-400"
-            disabled={demitir.isPending}
-            onClick={confirmarDemissao}
-          >
-            {demitir.isPending ? "Gerando…" : "Gerar rescisão e demitir"}
-          </Button>
-
-          {message ? <p className="text-sm text-slate-600">{message}</p> : null}
+          <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4">
+            <Button variant="danger" disabled={demitir.isPending} onClick={confirmarDemissao}>
+              <FileX size={16} /> {demitir.isPending ? "Gerando…" : "Gerar rescisão e demitir"}
+            </Button>
+            <Button variant="secondary" type="button" onClick={gerarPrevia}>
+              <Eye size={16} /> Ver prévia
+            </Button>
+            <span className="text-xs text-slate-500">A prévia só aparece na tela; nada é gravado.</span>
+          </div>
 
           {previa ? (
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
-              <h3 className="mb-2 font-bold text-navy-900">Prévia da rescisão</h3>
-              <p><span className="text-slate-500">Candidato:</span> {data.candidato_nome}</p>
-              <p><span className="text-slate-500">Empresa:</span> {empresa}</p>
-              <p><span className="text-slate-500">Cargo:</span> {data.cargo}</p>
-              <p><span className="text-slate-500">Motivo:</span> {motivo}</p>
-              <p><span className="text-slate-500">Data:</span> {dateBr(dataDemissao)}</p>
-              <p><span className="text-slate-500">Avaliação:</span> {avaliacao || "—"}</p>
-              <p className="mt-2 whitespace-pre-line"><span className="text-slate-500">Atividades:</span>{"\n"}{resumo || "—"}</p>
-              {motivoInterno ? <p className="mt-2 whitespace-pre-line"><span className="text-slate-500">Motivo interno:</span>{"\n"}{motivoInterno}</p> : null}
+            <div className="grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm">
+              <h3 className="text-[15px] font-bold text-navy-900">Prévia da rescisão</h3>
+              <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-3">
+                <Info label="Candidato" value={nome} />
+                <Info label="Empresa" value={empresa} />
+                <Info label="Cargo" value={textoPlano(data.cargo) || "—"} />
+                <Info label="Motivo" value={motivo} />
+                <Info label="Data" value={dateBr(dataDemissao)} />
+                <Info label="Avaliação" value={avaliacao || "—"} />
+              </dl>
+              <div>
+                <p className="text-xs text-slate-500">Atividades</p>
+                <p className="whitespace-pre-line text-slate-700">{resumo || "—"}</p>
+              </div>
+              {motivoInterno ? (
+                <div>
+                  <p className="text-xs text-slate-500">Motivo interno</p>
+                  <p className="whitespace-pre-line text-slate-700">{motivoInterno}</p>
+                </div>
+              ) : null}
             </div>
           ) : null}
         </Card>
       ) : (
-        <Card>
-          <h2 className="mb-2 font-bold">Demissão</h2>
-          <p className="text-sm text-slate-500">Este vínculo já está encerrado em {dateBr(data.data_encerramento)}.</p>
+        <Card className="grid gap-1">
+          <h2 className="text-[15px] font-bold text-navy-900">Demissão</h2>
+          <p className="text-sm text-slate-500">
+            Este vínculo já está encerrado em {dateBr(data.data_encerramento)}.{" "}
+            <Link className="font-semibold text-cyan-700 hover:underline" to={`/contratacoes/${data.id_contratacao}`}>Abrir nas informações da contratação</Link>
+          </p>
         </Card>
       )}
 
       <DocumentosContratacao id={String(data.id_contratacao)} />
       {pedido ? (
         <div className="fixed inset-0 z-50 grid place-items-center bg-slate-900/40 p-4" role="dialog" aria-modal="true" aria-label="Assinatura digital">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 text-slate-800 shadow-xl">
-            <h2 className="text-2xl font-extrabold text-navy-900">Assinatura digital</h2>
-            {pedido === "perguntar" ? (
-              <p className="mt-3 text-sm">Enviar este documento para assinatura digital?</p>
-            ) : (
-              <div className="mt-3 grid gap-2 text-sm">
-                <p>Documento enviado para assinatura.</p>
-                <p>Envelope enviado.</p>
-              </div>
-            )}
-            {message ? <p className="mt-3 text-sm text-rose-600">{message}</p> : null}
-            <div className="mt-5 flex flex-wrap gap-2">
+          <div className="grid w-full max-w-md gap-4 rounded-2xl border border-slate-200 bg-white p-6 text-slate-700 shadow-xl">
+            <div>
+              <h2 className="text-xl font-extrabold text-navy-900">Assinatura digital</h2>
+              {pedido === "perguntar" ? (
+                <p className="mt-2 text-sm">A rescisão foi gerada e o vínculo encerrado. Enviar este documento para assinatura digital na ZapSign?</p>
+              ) : (
+                <p className="mt-2 text-sm">Documento enviado para assinatura. Envelope enviado.</p>
+              )}
+            </div>
+            {message ? <Alerta>{message}</Alerta> : null}
+            <div className="flex flex-wrap items-center gap-2">
               {pedido === "perguntar" ? (
                 <>
-                  <Button className="bg-orange-500 text-navy-950 hover:bg-orange-400" disabled={enviarAssinatura.isPending} onClick={() => enviarAssinatura.mutate()}>
-                    {enviarAssinatura.isPending ? "Enviando…" : "Sim"}
+                  <Button disabled={enviarAssinatura.isPending} onClick={() => enviarAssinatura.mutate()}>
+                    <Send size={16} /> {enviarAssinatura.isPending ? "Enviando…" : "Sim, enviar"}
                   </Button>
-                  <Button variant="secondary" onClick={() => navigate(`/contratacoes/${id}`)}>Não</Button>
+                  <Button variant="secondary" onClick={() => navigate(`/contratacoes/${id}`)}>Não, agora não</Button>
                 </>
               ) : null}
+              <button type="button" className="ml-auto text-sm font-semibold text-cyan-700 hover:underline" onClick={() => navigate(`/contratacoes/${id}`)}>
+                Ver documento
+              </button>
             </div>
-            <button type="button" className="mt-4 text-sm font-semibold text-orange-600" onClick={() => navigate(`/contratacoes/${id}`)}>
-              Ver documento
-            </button>
           </div>
         </div>
-      ) : null}
-      {data.situacao === "encerrada" ? (
-        <p className="text-sm">
-          <Link className="font-semibold text-cyan-800" to={`/contratacoes/${data.id_contratacao}`}>Abrir nas informações da contratação</Link>
-        </p>
       ) : null}
     </div>
   );
 }
 
+function Voltar() {
+  return (
+    <Link to="/contratacoes/rescisao" className="inline-flex w-fit items-center gap-1 text-sm font-semibold text-slate-500 hover:text-navy-900">
+      <ArrowLeft size={16} /> Rescisão
+    </Link>
+  );
+}
+
 function Info({ label, value }: { label: string; value: string }) {
   return (
-    <div>
-      <p className="text-xs text-slate-500">{label}</p>
-      <p className="font-semibold">{value || "—"}</p>
+    <div className="grid min-w-0 gap-0.5">
+      <dt className="text-xs text-slate-500">{label}</dt>
+      <dd className="break-words text-slate-700">{value || "—"}</dd>
     </div>
   );
 }

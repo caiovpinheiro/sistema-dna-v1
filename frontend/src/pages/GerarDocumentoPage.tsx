@@ -1,9 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { useRef, useState, type FormEvent, type ReactNode } from "react";
+import { FileDown, Search } from "lucide-react";
 import { GerarRescisaoMedio } from "@/components/gerar-rescisao-medio";
+import { Alerta, CabecalhoPagina, FiltroChips } from "@/components/pagina";
 import { Button, Card, Field, Input, Select } from "@/components/ui";
 import { api } from "@/lib/api";
-import { formatCnpj, formatPhone } from "@/lib/format";
+import { formatCnpj, formatPhone, textoPlano } from "@/lib/format";
 
 type Modelo = "contrato" | "adesao" | "rescisao";
 type Modalidade = "direta" | "estagio" | "ambas";
@@ -86,14 +88,18 @@ function BuscaEmpresa({ rotulo, onEscolher }: { rotulo: string; onEscolher: (emp
   });
   const lista = empresas.data?.data ?? [];
   return (
-    <div className="grid gap-1.5">
-      <Input aria-label={rotulo} placeholder={rotulo} value={busca} onChange={(event) => setBusca(event.target.value)} />
+    <div className="grid gap-1.5 rounded-lg bg-slate-50 p-3">
+      <span className="text-sm font-semibold text-slate-700">{rotulo}</span>
+      <div className="relative">
+        <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+        <Input aria-label={rotulo} placeholder="Nome, razão social ou CNPJ" value={busca} onChange={(event) => setBusca(event.target.value)} className="pl-9" />
+      </div>
       {lista.length ? (
-        <div className="max-h-36 overflow-auto rounded-lg border border-slate-200">
+        <div className="max-h-44 overflow-auto rounded-lg border border-slate-200 bg-white">
           {lista.map((item) => (
             <button key={item.id_empresa} type="button" className="block w-full px-3 py-2 text-left text-sm hover:bg-slate-50" onClick={() => { onEscolher(item); setBusca(item.nome_fantasia || item.razao_social); }}>
-              <span className="font-semibold">{item.nome_fantasia || item.razao_social}</span>
-              <span className="ml-2 text-slate-500">{cnpjEmpresa(item.cnpj)}</span>
+              <span className="font-semibold text-slate-700">{textoPlano(item.nome_fantasia || item.razao_social)}</span>
+              <span className="ml-2 tabular-nums text-slate-500">{cnpjEmpresa(item.cnpj)}</span>
             </button>
           ))}
         </div>
@@ -101,6 +107,45 @@ function BuscaEmpresa({ rotulo, onEscolher }: { rotulo: string; onEscolher: (emp
     </div>
   );
 }
+
+/** Bloco do formulário: título, uma frase do que preencher e a grade de 6 colunas. */
+function Secao({ titulo, texto, children }: { titulo: string; texto: string; children: ReactNode }) {
+  return (
+    <Card className="grid gap-4 md:p-5">
+      <header>
+        <h2 className="text-[15px] font-bold text-navy-900">{titulo}</h2>
+        <p className="text-sm text-slate-500">{texto}</p>
+      </header>
+      {children}
+    </Card>
+  );
+}
+
+function Grade({ children }: { children: ReactNode }) {
+  return <div className="grid gap-3 sm:grid-cols-6">{children}</div>;
+}
+
+/** Célula da grade: larguras proporcionais ao conteúdo (CNPJ/datas curtos, nomes e endereços largos). */
+function Col({ span, children }: { span: 2 | 3 | 4 | 6; children: ReactNode }) {
+  const largura = { 2: "sm:col-span-2", 3: "sm:col-span-3", 4: "sm:col-span-4", 6: "sm:col-span-6" }[span];
+  return <div className={largura}>{children}</div>;
+}
+
+function Subtitulo({ children }: { children: ReactNode }) {
+  return <p className="border-b border-slate-200 pb-1.5 text-sm font-semibold text-slate-700">{children}</p>;
+}
+
+const DOCUMENTOS: Array<{ id: Modelo; rotulo: string }> = [
+  { id: "contrato", rotulo: "Contrato de prestação de serviços" },
+  { id: "adesao", rotulo: "Termo de adesão" },
+  { id: "rescisao", rotulo: "Rescisão de estágio do ensino médio" },
+];
+
+const DESCRICAO_DOCUMENTO: Record<Modelo, string> = {
+  contrato: "Modelo 1 em Word (.docx), com o Anexo I de condições comerciais preenchido.",
+  adesao: "Modelo 2 em Word (.docx): a aderente entra no contrato de uma contratante que já assinou.",
+  rescisao: "PDF da rescisão do estágio do ensino médio, preenchido com os dados do estagiário efetivado.",
+};
 
 function Marcacao({ nome, marcado, onChange, children }: { nome: string; marcado: boolean; onChange: (valor: boolean) => void; children: ReactNode }) {
   return (
@@ -294,144 +339,159 @@ export function GerarDocumentoPage() {
     }
   }
 
+  const cabecalho = () => (
+    <CabecalhoPagina
+      titulo="Gerar documento"
+      descricao="Escolha o documento e preencha os dados. Nada é gravado no sistema: o arquivo é baixado na hora."
+    >
+      <div className="mt-2 grid gap-1.5">
+        <FiltroChips rotulo="Documento" opcoes={DOCUMENTOS} valor={modelo} onChange={trocarModelo} />
+        <p className="text-xs text-slate-500">{DESCRICAO_DOCUMENTO[modelo]}</p>
+      </div>
+    </CabecalhoPagina>
+  );
+
   if (modelo === "rescisao") {
     return (
-      <div className="mx-auto grid w-full max-w-5xl gap-4">
-        <div>
-          <h1 className="text-2xl font-extrabold">Gerar documento</h1>
-          <p className="text-sm text-slate-500">Escolha o estagiário efetivado. O termo sai preenchido com os dados do banco.</p>
-        </div>
-        <Card className="grid gap-3 md:grid-cols-2">
-          <Field label="Documento">
-            <Select aria-label="Documento" value={modelo} onChange={(event) => trocarModelo(event.target.value === "adesao" ? "adesao" : event.target.value === "rescisao" ? "rescisao" : "contrato")}>
-              <option value="contrato">Contrato de prestação de serviços (Modelo 1)</option>
-              <option value="adesao">Termo de adesão — Aderente (Modelo 2)</option>
-              <option value="rescisao">Rescisão estágio ensino médio</option>
-            </Select>
-          </Field>
-        </Card>
+      <div className="mx-auto grid w-full max-w-5xl gap-5">
+        {cabecalho()}
         <GerarRescisaoMedio />
       </div>
     );
   }
 
+  const botaoGerar = <Button type="submit" disabled={gerando}><FileDown size={16} /> {gerando ? "Gerando…" : modelo === "contrato" ? "Gerar contrato" : "Gerar termo de adesão"}</Button>;
   return (
-    <form className="mx-auto grid w-full max-w-5xl gap-4" onSubmit={gerar}>
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-extrabold">Gerar documento</h1>
-          <p className="text-sm text-slate-500">O arquivo sai no mesmo formato do modelo, com os dados preenchidos aqui.</p>
-        </div>
-        <Button type="submit" disabled={gerando}>{gerando ? "Gerando…" : "Gerar documento"}</Button>
-      </div>
-      {erro ? <p className="text-sm text-rose-600" role="alert">{erro}</p> : null}
-      <Card className="grid gap-3 md:grid-cols-2">
-        <Field label="Documento">
-          <Select aria-label="Documento" value={modelo} onChange={(event) => trocarModelo(event.target.value === "adesao" ? "adesao" : event.target.value === "rescisao" ? "rescisao" : "contrato")}>
-            <option value="contrato">Contrato de prestação de serviços (Modelo 1)</option>
-            <option value="adesao">Termo de adesão — Aderente (Modelo 2)</option>
-            <option value="rescisao">Rescisão estágio ensino médio</option>
-          </Select>
-        </Field>
-        <Field label={modelo === "contrato" ? "Data do contrato" : "Data da adesão"}>
-          <Input aria-label="Data" type="date" value={data} onChange={(event) => setData(event.target.value)} />
-        </Field>
-      </Card>
+    <form className="mx-auto grid w-full max-w-5xl gap-5" onSubmit={gerar}>
+      {cabecalho()}
 
-      <Card className="grid gap-3 md:grid-cols-2">
-        <h2 className="md:col-span-2 font-bold">{modelo === "contrato" ? "Contratante" : "Aderente"}</h2>
-        <div className="md:col-span-2">
-          <BuscaEmpresa rotulo="Buscar empresa já cadastrada" onEscolher={modelo === "contrato" ? (empresa) => { setRazao(empresa.razao_social); setCnpj(cnpjEmpresa(empresa.cnpj)); setEndereco(enderecoEmpresa(empresa)); setEmail(empresa.email ?? ""); } : preencherAderente} />
-        </div>
-        <Field label="Razão social"><Input aria-label="Razão social" value={razao} onChange={(event) => setRazao(event.target.value)} /></Field>
-        <Field label="CNPJ"><Input aria-label="CNPJ" value={cnpj} onChange={(event) => setCnpj(event.target.value)} /></Field>
-        <Field label="Endereço completo"><Input aria-label="Endereço completo" value={endereco} onChange={(event) => setEndereco(event.target.value)} /></Field>
-        <Field label="E-mail"><Input aria-label="E-mail" type="email" value={email} onChange={(event) => setEmail(event.target.value)} /></Field>
-      </Card>
+      <Secao
+        titulo={modelo === "contrato" ? "Contratante" : "Aderente"}
+        texto={modelo === "contrato" ? "A empresa que contrata a DNA Work. Pesquise para preencher sozinho." : "A empresa que adere ao contrato. Pesquise para preencher sozinho, inclusive o faturamento."}
+      >
+        <BuscaEmpresa rotulo="Buscar empresa já cadastrada" onEscolher={modelo === "contrato" ? (empresa) => { setRazao(empresa.razao_social); setCnpj(cnpjEmpresa(empresa.cnpj)); setEndereco(enderecoEmpresa(empresa)); setEmail(empresa.email ?? ""); } : preencherAderente} />
+        <Grade>
+          <Col span={4}><Field label="Razão social"><Input aria-label="Razão social" value={razao} onChange={(event) => setRazao(event.target.value)} /></Field></Col>
+          <Col span={2}><Field label="CNPJ"><Input aria-label="CNPJ" placeholder="00.000.000/0000-00" value={cnpj} onChange={(event) => setCnpj(event.target.value)} /></Field></Col>
+          <Col span={6}><Field label="Endereço completo"><Input aria-label="Endereço completo" value={endereco} onChange={(event) => setEndereco(event.target.value)} /></Field></Col>
+          <Col span={4}><Field label="E-mail"><Input aria-label="E-mail" type="email" value={email} onChange={(event) => setEmail(event.target.value)} /></Field></Col>
+          <Col span={2}><Field label={modelo === "contrato" ? "Data do contrato" : "Data da adesão"}><Input aria-label="Data" type="date" value={data} onChange={(event) => setData(event.target.value)} /></Field></Col>
+        </Grade>
+      </Secao>
 
       {modelo === "adesao" ? (
-        <Card className="grid gap-3 md:grid-cols-2">
-          <h2 className="md:col-span-2 font-bold">Contrato ao qual adere</h2>
-          <div className="md:col-span-2">
-            <BuscaEmpresa rotulo="Buscar a contratante signatária" onEscolher={(empresa) => { setContratanteRazao(empresa.razao_social); setContratanteCnpj(cnpjEmpresa(empresa.cnpj)); }} />
-          </div>
-          <Field label="Razão social da contratante"><Input aria-label="Razão social da contratante" value={contratanteRazao} onChange={(event) => setContratanteRazao(event.target.value)} /></Field>
-          <Field label="CNPJ da contratante"><Input aria-label="CNPJ da contratante" value={contratanteCnpj} onChange={(event) => setContratanteCnpj(event.target.value)} /></Field>
-          <Field label="Data do contrato original"><Input aria-label="Data do contrato original" type="date" value={contratoData} onChange={(event) => setContratoData(event.target.value)} /></Field>
-          <Field label="Local da assinatura"><Input aria-label="Local da assinatura" value={local} onChange={(event) => setLocal(event.target.value)} /></Field>
-        </Card>
+        <Secao titulo="Contrato ao qual adere" texto="A contratante que já assinou o contrato original e onde a adesão é assinada.">
+          <BuscaEmpresa rotulo="Buscar a contratante signatária" onEscolher={(empresa) => { setContratanteRazao(empresa.razao_social); setContratanteCnpj(cnpjEmpresa(empresa.cnpj)); }} />
+          <Grade>
+            <Col span={4}><Field label="Razão social da contratante"><Input aria-label="Razão social da contratante" value={contratanteRazao} onChange={(event) => setContratanteRazao(event.target.value)} /></Field></Col>
+            <Col span={2}><Field label="CNPJ da contratante"><Input aria-label="CNPJ da contratante" placeholder="00.000.000/0000-00" value={contratanteCnpj} onChange={(event) => setContratanteCnpj(event.target.value)} /></Field></Col>
+            <Col span={2}><Field label="Data do contrato original"><Input aria-label="Data do contrato original" type="date" value={contratoData} onChange={(event) => setContratoData(event.target.value)} /></Field></Col>
+            <Col span={4}><Field label="Local da assinatura"><Input aria-label="Local da assinatura" value={local} onChange={(event) => setLocal(event.target.value)} /></Field></Col>
+          </Grade>
+        </Secao>
       ) : null}
 
-      <Card className="grid gap-3">
-        <h2 className="font-bold">{modelo === "contrato" ? "Anexo I — condições comerciais" : "Adesão"}</h2>
-        <Field label={modelo === "contrato" ? "Modalidades contratadas" : "Modalidades a que adere"}>
-          <Select aria-label="Modalidade" value={modalidade} onChange={(event) => setModalidade(event.target.value as Modalidade)}>
-            <option value="ambas">Ambas</option>
-            <option value="direta">Somente contratação direta</option>
-            <option value="estagio">Somente estágio</option>
-          </Select>
-        </Field>
-        {modelo === "adesao" ? (
-          <Field label="Condições comerciais">
-            <Select aria-label="Condições comerciais" value={condicoes} onChange={(event) => setCondicoes(event.target.value === "anexo_especifico" ? "anexo_especifico" : "anexo_contrato")}>
-              <option value="anexo_contrato">As do Anexo I do contrato</option>
-              <option value="anexo_especifico">Anexo I específico da aderente</option>
-            </Select>
-          </Field>
-        ) : null}
-        {modelo === "contrato" && direta ? (
-          <div className="grid gap-3">
-            <p className="text-sm font-semibold text-slate-700">Contratação direta</p>
-            <div className="grid gap-2 md:grid-cols-2">
-              {regimeOpcoes.map((item) => (
-                <Marcacao key={item.chave} nome={item.chave} marcado={regimes[item.chave]} onChange={(valor) => setRegimes((atual) => ({ ...atual, [item.chave]: valor }))}>{item.rotulo}</Marcacao>
-              ))}
-            </div>
-            {regimes.outros ? <Field label="Outro regime"><Input aria-label="Outro regime" value={regimes.outros_texto} onChange={(event) => setRegimes((atual) => ({ ...atual, outros_texto: event.target.value }))} /></Field> : null}
-            <div className="grid gap-3 md:grid-cols-3">
-              <Field label="Taxa de recrutamento (%)"><Input aria-label="Taxa de recrutamento" inputMode="decimal" placeholder="80" value={taxaPercentual} onChange={(event) => setTaxaPercentual(event.target.value)} /></Field>
-              <Field label="Vencimento (dias)"><Input aria-label="Vencimento em dias" inputMode="numeric" value={vencimentoDias} onChange={(event) => setVencimentoDias(event.target.value)} /></Field>
-              <Field label="Garantia de reposição">
-                <Select aria-label="Garantia de reposição" value={garantia} onChange={(event) => setGarantia(event.target.value === "nao" ? "nao" : "sim")}>
-                  <option value="sim">Sim</option>
-                  <option value="nao">Não se aplica</option>
+      <Secao
+        titulo={modelo === "contrato" ? "Anexo I — condições comerciais" : "Adesão"}
+        texto={modelo === "contrato" ? "Escolha as modalidades; só aparecem as taxas da modalidade escolhida." : "As modalidades a que a aderente adere e para onde vão as cobranças."}
+      >
+        <Grade>
+          <Col span={3}>
+            <Field label={modelo === "contrato" ? "Modalidades contratadas" : "Modalidades a que adere"}>
+              <Select aria-label="Modalidade" value={modalidade} onChange={(event) => setModalidade(event.target.value as Modalidade)}>
+                <option value="ambas">Ambas</option>
+                <option value="direta">Somente contratação direta</option>
+                <option value="estagio">Somente estágio</option>
+              </Select>
+            </Field>
+          </Col>
+          {modelo === "adesao" ? (
+            <Col span={3}>
+              <Field label="Condições comerciais">
+                <Select aria-label="Condições comerciais" value={condicoes} onChange={(event) => setCondicoes(event.target.value === "anexo_especifico" ? "anexo_especifico" : "anexo_contrato")}>
+                  <option value="anexo_contrato">As do Anexo I do contrato</option>
+                  <option value="anexo_especifico">Anexo I específico da aderente</option>
                 </Select>
               </Field>
-              {garantia === "sim" ? <Field label="Prazo da garantia (dias)"><Input aria-label="Prazo da garantia" inputMode="numeric" value={garantiaDias} onChange={(event) => setGarantiaDias(event.target.value)} /></Field> : null}
-            </div>
+            </Col>
+          ) : null}
+        </Grade>
+        {modelo === "contrato" && direta ? (
+          <div className="grid gap-3">
+            <Subtitulo>Contratação direta</Subtitulo>
+            <fieldset className="grid gap-2">
+              <legend className="mb-2 text-sm font-medium text-slate-700">Regimes de contratação</legend>
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {regimeOpcoes.map((item) => (
+                  <Marcacao key={item.chave} nome={item.chave} marcado={regimes[item.chave]} onChange={(valor) => setRegimes((atual) => ({ ...atual, [item.chave]: valor }))}>{item.rotulo}</Marcacao>
+                ))}
+              </div>
+            </fieldset>
+            <Grade>
+              {regimes.outros ? <Col span={6}><Field label="Outro regime"><Input aria-label="Outro regime" value={regimes.outros_texto} onChange={(event) => setRegimes((atual) => ({ ...atual, outros_texto: event.target.value }))} /></Field></Col> : null}
+              <Col span={2}><Field label="Taxa de recrutamento (%)"><Input aria-label="Taxa de recrutamento" inputMode="decimal" placeholder="80" value={taxaPercentual} onChange={(event) => setTaxaPercentual(event.target.value)} /></Field></Col>
+              <Col span={2}><Field label="Vencimento (dias)"><Input aria-label="Vencimento em dias" inputMode="numeric" value={vencimentoDias} onChange={(event) => setVencimentoDias(event.target.value)} /></Field></Col>
+              <Col span={2}>
+                <Field label="Garantia de reposição">
+                  <Select aria-label="Garantia de reposição" value={garantia} onChange={(event) => setGarantia(event.target.value === "nao" ? "nao" : "sim")}>
+                    <option value="sim">Sim</option>
+                    <option value="nao">Não se aplica</option>
+                  </Select>
+                </Field>
+              </Col>
+              {garantia === "sim" ? <Col span={2}><Field label="Prazo da garantia (dias)"><Input aria-label="Prazo da garantia" inputMode="numeric" value={garantiaDias} onChange={(event) => setGarantiaDias(event.target.value)} /></Field></Col> : null}
+            </Grade>
           </div>
         ) : null}
         {modelo === "contrato" && estagio ? (
-          <div className="grid gap-3 md:grid-cols-2">
-            <p className="md:col-span-2 text-sm font-semibold text-slate-700">Estágio</p>
-            <Field label="Taxa administrativa mensal (R$)"><Input aria-label="Taxa administrativa" inputMode="decimal" placeholder="150,00" value={taxaAdministrativa} onChange={(event) => setTaxaAdministrativa(event.target.value)} /></Field>
-            <Field label="Taxa de recrutamento (R$)"><Input aria-label="Taxa de recrutamento do estágio" inputMode="decimal" placeholder="500,00" value={taxaEstagio} onChange={(event) => setTaxaEstagio(event.target.value)} /></Field>
-            <Field label="Vencimento diverso da taxa administrativa"><Input aria-label="Vencimento diverso" placeholder="Deixe em branco para manter o dia 10" value={vencimentoDiverso} onChange={(event) => setVencimentoDiverso(event.target.value)} /></Field>
-            <Field label="Conversão após 12 meses">
-              <Select aria-label="Conversão após 12 meses" value={conversao} onChange={(event) => setConversao(event.target.value === "percentual" ? "percentual" : "isento")}>
-                <option value="isento">Isento</option>
-                <option value="percentual">Percentual</option>
-              </Select>
-            </Field>
-            {conversao === "percentual" ? <Field label="Percentual após 12 meses"><Input aria-label="Percentual após 12 meses" inputMode="decimal" value={conversaoPercentual} onChange={(event) => setConversaoPercentual(event.target.value)} /></Field> : null}
+          <div className="grid gap-3">
+            <Subtitulo>Estágio</Subtitulo>
+            <Grade>
+              <Col span={2}><Field label="Taxa administrativa mensal (R$)"><Input aria-label="Taxa administrativa" inputMode="decimal" placeholder="150,00" value={taxaAdministrativa} onChange={(event) => setTaxaAdministrativa(event.target.value)} /></Field></Col>
+              <Col span={2}><Field label="Taxa de recrutamento (R$)"><Input aria-label="Taxa de recrutamento do estágio" inputMode="decimal" placeholder="500,00" value={taxaEstagio} onChange={(event) => setTaxaEstagio(event.target.value)} /></Field></Col>
+              <Col span={2}>
+                <Field label="Conversão após 12 meses">
+                  <Select aria-label="Conversão após 12 meses" value={conversao} onChange={(event) => setConversao(event.target.value === "percentual" ? "percentual" : "isento")}>
+                    <option value="isento">Isento</option>
+                    <option value="percentual">Percentual</option>
+                  </Select>
+                </Field>
+              </Col>
+              <Col span={4}><Field label="Vencimento diverso da taxa administrativa"><Input aria-label="Vencimento diverso" placeholder="Deixe em branco para manter o dia 10" value={vencimentoDiverso} onChange={(event) => setVencimentoDiverso(event.target.value)} /></Field></Col>
+              {conversao === "percentual" ? <Col span={2}><Field label="Percentual após 12 meses"><Input aria-label="Percentual após 12 meses" inputMode="decimal" value={conversaoPercentual} onChange={(event) => setConversaoPercentual(event.target.value)} /></Field></Col> : null}
+            </Grade>
           </div>
         ) : null}
         {modelo === "contrato" ? (
-          <div className="grid gap-3 md:grid-cols-2">
-            <Field label="Registro de condições por vaga"><Input aria-label="Registro de condições por vaga" value={registro} onChange={(event) => setRegistro(event.target.value)} /></Field>
-            <Field label="Observações"><Input aria-label="Observações" value={observacoes} onChange={(event) => setObservacoes(event.target.value)} /></Field>
+          <div className="grid gap-3">
+            <Subtitulo>Outras condições</Subtitulo>
+            <Grade>
+              <Col span={3}><Field label="Registro de condições por vaga"><Input aria-label="Registro de condições por vaga" value={registro} onChange={(event) => setRegistro(event.target.value)} /></Field></Col>
+              <Col span={3}><Field label="Observações"><Input aria-label="Observações" value={observacoes} onChange={(event) => setObservacoes(event.target.value)} /></Field></Col>
+            </Grade>
           </div>
         ) : (
-          <div className="grid gap-3 md:grid-cols-2">
-            <p className="md:col-span-2 text-sm font-semibold text-slate-700">Faturamento e comunicações</p>
-            <Field label="Responsável"><Input aria-label="Responsável" value={responsavel} onChange={(event) => setResponsavel(event.target.value)} /></Field>
-            <Field label="Cargo"><Input aria-label="Cargo" value={cargo} onChange={(event) => setCargo(event.target.value)} /></Field>
-            <Field label="E-mail"><Input aria-label="E-mail de faturamento" type="email" value={emailFaturamento} onChange={(event) => setEmailFaturamento(event.target.value)} /></Field>
-            <Field label="Telefone"><Input aria-label="Telefone" value={telefone} onChange={(event) => setTelefone(event.target.value)} /></Field>
-            <div className="md:col-span-2"><Field label="Endereço de faturamento"><Input aria-label="Endereço de faturamento" value={enderecoFaturamento} onChange={(event) => setEnderecoFaturamento(event.target.value)} /></Field></div>
+          <div className="grid gap-3">
+            <Subtitulo>Faturamento e comunicações</Subtitulo>
+            <Grade>
+              <Col span={4}><Field label="Responsável"><Input aria-label="Responsável" value={responsavel} onChange={(event) => setResponsavel(event.target.value)} /></Field></Col>
+              <Col span={2}><Field label="Cargo"><Input aria-label="Cargo" value={cargo} onChange={(event) => setCargo(event.target.value)} /></Field></Col>
+              <Col span={4}><Field label="E-mail"><Input aria-label="E-mail de faturamento" type="email" value={emailFaturamento} onChange={(event) => setEmailFaturamento(event.target.value)} /></Field></Col>
+              <Col span={2}><Field label="Telefone"><Input aria-label="Telefone" value={telefone} onChange={(event) => setTelefone(event.target.value)} /></Field></Col>
+              <Col span={6}><Field label="Endereço de faturamento"><Input aria-label="Endereço de faturamento" value={enderecoFaturamento} onChange={(event) => setEnderecoFaturamento(event.target.value)} /></Field></Col>
+            </Grade>
           </div>
         )}
-      </Card>
+      </Secao>
+
+      {/* Rodapé fixo: o botão e o erro de validação ficam sempre à vista enquanto o formulário rola. */}
+      <div className="sticky bottom-0 z-10 grid gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-lg">
+        {erro ? <Alerta>{erro}</Alerta> : null}
+        <div className="flex flex-wrap items-center justify-end gap-3">
+          <p className="text-sm text-slate-500">Confira os dados: o arquivo é baixado no seu computador.</p>
+          {botaoGerar}
+        </div>
+      </div>
     </form>
   );
 }

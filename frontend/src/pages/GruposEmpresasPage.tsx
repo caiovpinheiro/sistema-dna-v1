@@ -1,9 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { ArrowLeft, ChevronRight, Save, Search } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { BuscaOpcao, normalizarBusca } from "@/components/busca-opcao";
 import { CobrancaEmpresa, type ValorEmpresa } from "@/components/cobranca-empresa";
-import { Button, Card, Empty, Field, Input, Select, Textarea } from "@/components/ui";
+import { Alerta, CabecalhoPagina, FiltroChips } from "@/components/pagina";
+import { Button, Card, Empty, Field, Input, Select, Skeleton, Textarea, cn } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 import { formatCnpj } from "@/lib/format";
 import { cargoDoModelo, type CargoOpcao } from "@/lib/cargo";
@@ -34,7 +36,38 @@ const abas: Array<{ id: Aba; label: string }> = [
 ];
 
 function Aviso({ texto }: { texto: string }) {
-  return texto ? <p role="alert" className="text-sm font-semibold text-rose-600">{texto}</p> : null;
+  return texto ? <Alerta>{texto}</Alerta> : null;
+}
+
+function Sucesso({ children }: { children: ReactNode }) {
+  return <p role="status" className="rounded-lg bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800">{children}</p>;
+}
+
+/** Bloco numerado do formulário (mesmo visual do gerador de TCE): número, título e uma frase do que vai nele. */
+function Bloco({ numero, titulo, texto, children }: { numero: number; titulo: string; texto: string; children: ReactNode }) {
+  return (
+    <section className="grid gap-4 rounded-xl border border-slate-200 bg-white p-4 md:p-5">
+      <header className="flex items-start gap-3">
+        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-cyan-700 text-sm font-bold text-white">{numero}</span>
+        <div>
+          <h2 className="text-base font-bold text-navy-900">{titulo}</h2>
+          <p className="text-sm text-slate-500">{texto}</p>
+        </div>
+      </header>
+      {children}
+    </section>
+  );
+}
+
+/** Grade de 6 colunas: campos curtos (UF, número) ocupam 1, longos (nome, endereço) 3 ou 4. */
+function Grade({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={cn("grid gap-3 sm:grid-cols-6", className)}>{children}</div>;
+}
+
+const LARGURAS = { 1: "sm:col-span-1", 2: "sm:col-span-2", 3: "sm:col-span-3", 4: "sm:col-span-4", 6: "sm:col-span-6" } as const;
+
+function Celula({ span, children }: { span: keyof typeof LARGURAS; children: ReactNode }) {
+  return <div className={cn("min-w-0", LARGURAS[span])}>{children}</div>;
 }
 
 function limpar(values: Record<string, string>) {
@@ -53,18 +86,11 @@ export function GruposEmpresasPage() {
   }
   return (
     <div className="grid gap-5">
-      <div>
-        <h1 className="text-2xl font-extrabold">Grupos, Empresas e Vagas</h1>
-        <p className="text-sm text-slate-500">Primeiro o grupo, depois a empresa do grupo, depois a vaga da empresa.</p>
-      </div>
-      <div className="flex gap-2">
-        {abas.map((item) => (
-          <button key={item.id} type="button" onClick={() => abrir(item.id)}
-            className={`rounded-xl px-4 py-2 text-sm font-semibold ${aba === item.id ? "bg-navy-900 text-white" : "bg-white text-slate-600 ring-1 ring-slate-200"}`}>
-            {item.label}
-          </button>
-        ))}
-      </div>
+      <CabecalhoPagina
+        titulo="Grupos, empresas e vagas"
+        descricao="Cadastre nesta ordem: primeiro o grupo, depois a empresa do grupo e por fim a vaga da empresa."
+      />
+      <FiltroChips rotulo="O que cadastrar" opcoes={abas.map((item) => ({ id: item.id, rotulo: item.label }))} valor={aba} onChange={(id) => abrir(id)} />
       {aba === "grupo" ? <AbaGrupo selecionado={grupoId} onSelect={(id) => abrir("grupo", id)} /> : null}
       {aba === "empresa" ? <AbaEmpresa grupoInicial={grupoId} /> : null}
       {aba === "vaga" ? (
@@ -80,7 +106,7 @@ export function GruposEmpresasPage() {
 
 function Erro({ error }: { error: unknown }) {
   if (!(error instanceof ApiError)) return null;
-  return <p className="text-sm text-rose-600">{error.message}</p>;
+  return <Alerta>{error.message}</Alerta>;
 }
 
 function AbaGrupo({ selecionado, onSelect }: { selecionado: string; onSelect: (id: string) => void }) {
@@ -112,52 +138,62 @@ function AbaGrupo({ selecionado, onSelect }: { selecionado: string; onSelect: (i
   if (selecionado) {
     return (
       <div className="grid gap-4">
-        <div><Button type="button" variant="secondary" onClick={() => onSelect("")}>Voltar</Button></div>
-        {detalhe.isLoading ? <p className="text-sm text-slate-500">Carregando empresas do grupo…</p> : null}
+        <div>
+          <Button type="button" variant="ghost" className="-ml-2" onClick={() => onSelect("")}><ArrowLeft size={16} /> Voltar para os grupos</Button>
+        </div>
+        {detalhe.isLoading ? <Skeleton className="h-48" /> : null}
         {detalhe.isError ? <Erro error={detalhe.error} /> : null}
         {grupo ? (
-          <Card className="grid gap-4">
-            <div>
-              <h2 className="text-xl font-extrabold">{grupo.nome}</h2>
-              <p className="text-sm text-slate-600">{[grupo.email, grupo.telefone].filter(Boolean).join(" · ") || "Sem contato"}</p>
-            </div>
-            <h3 className="text-sm font-bold text-slate-700">Empresas associadas</h3>
-            {grupo.empresas.length ? (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
-                  <thead className="text-slate-500"><tr className="border-b"><th className="py-2 pr-3">Empresa</th><th className="py-2 pr-3">CNPJ</th><th className="py-2">Endereço</th></tr></thead>
-                  <tbody>
-                    {grupo.empresas.map((empresa) => (
-                      <tr key={empresa.id} className="cursor-pointer border-b border-slate-100 last:border-0 hover:bg-slate-50" onClick={() => navigate(`/empresas/${empresa.id}`)}>
-                        <td className="py-2 pr-3">
-                          <Link to={`/empresas/${empresa.id}`} className="font-semibold text-cyan-800 hover:underline" onClick={(event) => event.stopPropagation()}>
-                            {empresa.nome_fantasia || empresa.razao_social}
-                          </Link>
-                          <div className="text-xs text-slate-500">{empresa.razao_social}</div>
-                        </td>
-                        <td className="py-2 pr-3">{formatCnpj(empresa.cnpj)}</td>
-                        <td className="py-2 text-slate-600">{empresa.local || "Endereço não informado"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+          <Card className="grid gap-4 p-0">
+            <header className="flex flex-wrap items-end justify-between gap-3 px-4 pt-4 md:px-5 md:pt-5">
+              <div>
+                <h2 className="text-xl font-extrabold text-navy-900">{grupo.nome}</h2>
+                <p className="text-sm text-slate-500">{[grupo.email, grupo.telefone].filter(Boolean).join(" · ") || "Sem contato"}</p>
               </div>
-            ) : <p className="text-sm text-slate-500">Nenhuma empresa neste grupo.</p>}
+              <Link to={`/grupos-empresas?aba=empresa&grupo=${grupo.id}`} className="text-sm font-semibold text-cyan-700 hover:underline">Cadastrar empresa neste grupo</Link>
+            </header>
+            <div className="grid gap-2">
+              <h3 className="px-4 text-[15px] font-bold text-navy-900 md:px-5">Empresas do grupo</h3>
+              {grupo.empresas.length ? (
+                <div className="overflow-x-auto">
+                  <table className="data-table">
+                    <thead><tr><th>Empresa</th><th>CNPJ</th><th>Endereço</th><th><span className="sr-only">Ações</span></th></tr></thead>
+                    <tbody>
+                      {grupo.empresas.map((empresa) => (
+                        <tr key={empresa.id} className="cursor-pointer" onClick={() => navigate(`/empresas/${empresa.id}`)}>
+                          <td className="max-w-80">
+                            <Link to={`/empresas/${empresa.id}`} className="block truncate" onClick={(event) => event.stopPropagation()}>
+                              {empresa.nome_fantasia || empresa.razao_social}
+                            </Link>
+                            {empresa.nome_fantasia && empresa.razao_social !== empresa.nome_fantasia ? <p className="truncate text-xs text-slate-500">{empresa.razao_social}</p> : null}
+                          </td>
+                          <td className="whitespace-nowrap tabular-nums text-slate-600">{formatCnpj(empresa.cnpj)}</td>
+                          <td className="text-slate-600">{empresa.local || <span className="text-slate-400">Endereço não informado</span>}</td>
+                          <td className="w-px whitespace-nowrap text-right">
+                            <Link to={`/empresas/${empresa.id}`} onClick={(event) => event.stopPropagation()} aria-label={`Abrir ${empresa.nome_fantasia || empresa.razao_social}`} className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs">Abrir <ChevronRight size={14} /></Link>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : <p className="px-4 pb-4 text-sm text-slate-500 md:px-5">Nenhuma empresa neste grupo ainda.</p>}
+            </div>
           </Card>
         ) : null}
         {grupo && grupo.empresas.length ? (
-          <Card className="grid gap-3">
+          <Card className="grid gap-3 md:p-5">
             <div>
-              <h3 className="font-bold text-navy-900">Cobrança das empresas</h3>
+              <h3 className="text-[15px] font-bold text-navy-900">Cobrança das empresas</h3>
               <p className="text-sm text-slate-500">Condições do contrato de cada empresa. Clique para ver os detalhes.</p>
             </div>
-            {cobranca.isLoading ? <p className="text-sm text-slate-500">Carregando cobrança…</p> : null}
+            {cobranca.isLoading ? <Skeleton className="h-20" /> : null}
             <Erro error={cobranca.error} />
             {(cobranca.data?.data ?? []).map((item) => item.cobranca
               ? <CobrancaEmpresa key={item.id_empresa} valor={item.cobranca} />
               : (
-                <div key={item.id_empresa} className="rounded-2xl border border-dashed border-slate-200 p-4 text-sm">
-                  <span className="font-semibold">{item.nome}</span>
+                <div key={item.id_empresa} className="rounded-xl border border-dashed border-slate-200 p-4 text-sm">
+                  <span className="font-semibold text-navy-900">{item.nome}</span>
                   <span className="text-slate-500"> · sem condições de cobrança cadastradas</span>
                 </div>
               ))}
@@ -167,34 +203,51 @@ function AbaGrupo({ selecionado, onSelect }: { selecionado: string; onSelect: (i
     );
   }
   return (
-    <div className="grid gap-5 lg:grid-cols-[320px_1fr]">
-      <Card className="content-start">
+    <div className="grid items-start gap-5 lg:grid-cols-[340px_minmax(0,1fr)]">
+      <Card className="md:p-5">
         <form className="grid content-start gap-3" onSubmit={(event) => { event.preventDefault(); save.mutate(); }}>
-          <h2 className="font-extrabold">Novo grupo</h2>
+          <div>
+            <h2 className="text-[15px] font-bold text-navy-900">Novo grupo</h2>
+            <p className="text-sm text-slate-500">O grupo junta as empresas de um mesmo dono ou rede.</p>
+          </div>
           <Erro error={save.error} />
-          {save.isSuccess ? <p className="text-sm font-semibold text-emerald-700">Grupo gravado.</p> : null}
+          {save.isSuccess ? <Sucesso>Grupo gravado.</Sucesso> : null}
           <Field label="Nome"><Input required minLength={2} value={form.nome} onChange={(event) => setForm({ ...form, nome: event.target.value })} /></Field>
           {/* Basta um dos dois contatos: cada um só é exigido enquanto o outro estiver vazio. */}
           <Field label="E-mail"><Input type="email" required={!form.telefone.trim()} value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></Field>
           <Field label="Telefone"><Input required={!form.email.trim()} value={form.telefone} onChange={(event) => setForm({ ...form, telefone: event.target.value })} /></Field>
-          <p className="text-xs text-slate-500">E-mail ou telefone, pode informar os dois.</p>
-          <Button disabled={save.isPending}>{save.isPending ? "Salvando…" : "Salvar grupo"}</Button>
+          <p className="text-xs text-slate-500">Informe o e-mail ou o telefone (ou os dois).</p>
+          <Button disabled={save.isPending}><Save size={16} /> {save.isPending ? "Salvando…" : "Salvar grupo"}</Button>
         </form>
       </Card>
-      <Card className="grid content-start gap-3">
-        <Field label="Pesquisar grupo">
-          <Input value={busca} placeholder="Nome, e-mail ou telefone" autoComplete="off" onChange={(event) => setBusca(event.target.value)} />
-        </Field>
-        {grupos.isLoading ? <p className="text-sm text-slate-500">Carregando grupos…</p> : grupos.isError ? <Erro error={grupos.error} /> : lista.length ? (
-          <div className="grid max-h-[36rem] gap-1 overflow-y-auto">
-            {lista.map((item) => (
-              <button key={item.id} type="button" onClick={() => onSelect(item.id)} className="rounded-xl px-3 py-2 text-left text-sm hover:bg-slate-50">
-                <span className="block font-semibold">{item.nome}</span>
-                <span className="block text-xs text-slate-500">{[item.email, item.telefone].filter(Boolean).join(" · ") || "Sem contato"}</span>
-              </button>
-            ))}
+      <Card className="grid content-start gap-3 p-0">
+        <div className="grid gap-1.5 px-4 pt-4 md:px-5 md:pt-5">
+          <span className="text-xs font-semibold text-slate-500">Pesquisar grupo</span>
+          <div className="relative">
+            <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <Input value={busca} aria-label="Pesquisar grupo" placeholder="Nome, e-mail ou telefone" autoComplete="off" className="pl-9" onChange={(event) => setBusca(event.target.value)} />
           </div>
-        ) : <Empty title="Nenhum grupo" text={busca.trim() ? "Nenhum grupo encontrado para essa pesquisa." : "Cadastre o grupo antes da empresa."} />}
+          {grupos.data ? <p className="text-sm text-slate-500"><span className="font-bold tabular-nums text-navy-900">{lista.length}</span> {lista.length === 1 ? "grupo" : "grupos"}{busca.trim() ? " com essa pesquisa" : ""}. Clique num grupo para ver as empresas e a cobrança.</p> : null}
+        </div>
+        {grupos.isLoading ? <div className="px-4 pb-4 md:px-5"><Skeleton className="h-48" /></div> : grupos.isError ? <div className="px-4 pb-4 md:px-5"><Erro error={grupos.error} /></div> : lista.length ? (
+          <ul className="max-h-[36rem] overflow-y-auto">
+            {lista.map((item) => (
+              <li key={item.id} className="border-t border-slate-100">
+                <button type="button" onClick={() => onSelect(item.id)} className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left hover:bg-slate-50 md:px-5">
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-semibold text-cyan-700">{item.nome}</span>
+                    <span className="block truncate text-xs text-slate-500">{[item.email, item.telefone].filter(Boolean).join(" · ") || "Sem contato"}</span>
+                  </span>
+                  <ChevronRight size={16} className="shrink-0 text-slate-400" aria-hidden />
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div className="px-4 pb-4 md:px-5">
+            <Empty title={busca.trim() ? "Nenhum grupo com essa pesquisa" : "Nenhum grupo cadastrado"} text={busca.trim() ? "Confira o nome digitado ou apague a pesquisa para ver todos." : "Cadastre o grupo antes da empresa, no formulário ao lado."} />
+          </div>
+        )}
       </Card>
     </div>
   );
@@ -236,35 +289,46 @@ function AbaEmpresa({ grupoInicial }: { grupoInicial: string }) {
     }));
   }
   return (
-    <form className="grid w-full gap-3" onSubmit={(event) => { event.preventDefault(); if (!form.grupo_id) { setAviso("Escolha o grupo da empresa."); return; } setAviso(""); save.mutate(); }}>
+    <form className="grid w-full gap-4" onSubmit={(event) => { event.preventDefault(); if (!form.grupo_id) { setAviso("Escolha o grupo da empresa."); return; } setAviso(""); save.mutate(); }}>
       <Erro error={save.error} />
       <Aviso texto={aviso} />
-      {save.isSuccess ? <p className="text-sm font-semibold text-emerald-700">{save.data.data.reativada ? "Empresa reativada e copiada para o grupo." : "Empresa gravada."}</p> : null}
-      <Card className="grid gap-3 md:grid-cols-3">
-        <Field label="Grupo">
-          <BuscaOpcao
-            value={form.grupo_id}
-            onChange={(grupoId) => setForm({ ...form, grupo_id: grupoId })}
-            opcoes={(grupos.data?.data ?? []).map((grupo) => ({ id: grupo.id, label: grupo.nome }))}
-            placeholder="Pesquisar grupo"
-          />
-        </Field>
-        <Field label="CNPJ (opcional)"><Input value={form.cnpj} placeholder="Deixe em branco se a empresa não tem CNPJ" onChange={(event) => setForm({ ...form, cnpj: event.target.value })} /></Field>
-        <Field label="Razão social"><Input required value={form.razao_social} onChange={(event) => setForm({ ...form, razao_social: event.target.value })} /></Field>
-        <Field label="Nome fantasia"><Input required value={form.nome_fantasia} onChange={(event) => setForm({ ...form, nome_fantasia: event.target.value })} /></Field>
-        <Field label="CEP"><Input required value={form.cep} onBlur={() => void buscarCep()} onChange={(event) => setForm({ ...form, cep: event.target.value })} /></Field>
-        <Field label="Endereço"><Input required value={form.logradouro} onChange={(event) => setForm({ ...form, logradouro: event.target.value })} /></Field>
-        <Field label="Número"><Input value={form.numero} onChange={(event) => setForm({ ...form, numero: event.target.value })} /></Field>
-        <Field label="Complemento"><Input value={form.complemento} onChange={(event) => setForm({ ...form, complemento: event.target.value })} /></Field>
-        <Field label="Bairro"><Input required value={form.bairro} onChange={(event) => setForm({ ...form, bairro: event.target.value })} /></Field>
-        <Field label="Cidade"><Input required value={form.cidade} onChange={(event) => setForm({ ...form, cidade: event.target.value })} /></Field>
-        <Field label="UF"><Input required minLength={2} maxLength={2} value={form.uf} onChange={(event) => setForm({ ...form, uf: event.target.value })} /></Field>
-        <Field label="E-mail"><Input type="email" required={!form.telefone.trim()} value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></Field>
-        <Field label="Telefone"><Input required={!form.email.trim()} value={form.telefone} onChange={(event) => setForm({ ...form, telefone: event.target.value })} /></Field>
-        <p className="text-xs text-slate-500">E-mail ou telefone, pode informar os dois.</p>
-      </Card>
-      {avisoCep ? <p className="text-sm text-amber-700">{avisoCep}</p> : null}
-      <div><Button disabled={save.isPending}>{save.isPending ? "Salvando…" : "Salvar empresa"}</Button></div>
+      {save.isSuccess ? <Sucesso>{save.data.data.reativada ? "Empresa reativada e copiada para o grupo." : "Empresa gravada."}</Sucesso> : null}
+      <Bloco numero={1} titulo="Grupo e identificação" texto="O grupo da empresa e os nomes como aparecem no contrato.">
+        <Grade>
+          <Celula span={4}>
+            <Field label="Grupo">
+              <BuscaOpcao
+                value={form.grupo_id}
+                onChange={(grupoId) => setForm({ ...form, grupo_id: grupoId })}
+                opcoes={(grupos.data?.data ?? []).map((grupo) => ({ id: grupo.id, label: grupo.nome }))}
+                placeholder="Pesquisar grupo"
+              />
+            </Field>
+          </Celula>
+          <Celula span={2}><Field label="CNPJ (opcional)"><Input value={form.cnpj} placeholder="Em branco se não tiver CNPJ" onChange={(event) => setForm({ ...form, cnpj: event.target.value })} /></Field></Celula>
+          <Celula span={3}><Field label="Razão social"><Input required value={form.razao_social} onChange={(event) => setForm({ ...form, razao_social: event.target.value })} /></Field></Celula>
+          <Celula span={3}><Field label="Nome fantasia"><Input required value={form.nome_fantasia} onChange={(event) => setForm({ ...form, nome_fantasia: event.target.value })} /></Field></Celula>
+        </Grade>
+      </Bloco>
+      <Bloco numero={2} titulo="Endereço" texto="Digite o CEP e saia do campo: rua, bairro, cidade e UF são preenchidos sozinhos.">
+        <Grade>
+          <Celula span={2}><Field label="CEP"><Input required value={form.cep} placeholder="00000-000" onBlur={() => void buscarCep()} onChange={(event) => setForm({ ...form, cep: event.target.value })} /></Field></Celula>
+          <Celula span={4}><Field label="Endereço"><Input required value={form.logradouro} onChange={(event) => setForm({ ...form, logradouro: event.target.value })} /></Field></Celula>
+          <Celula span={1}><Field label="Número"><Input value={form.numero} onChange={(event) => setForm({ ...form, numero: event.target.value })} /></Field></Celula>
+          <Celula span={2}><Field label="Complemento"><Input value={form.complemento} onChange={(event) => setForm({ ...form, complemento: event.target.value })} /></Field></Celula>
+          <Celula span={3}><Field label="Bairro"><Input required value={form.bairro} onChange={(event) => setForm({ ...form, bairro: event.target.value })} /></Field></Celula>
+          <Celula span={4}><Field label="Cidade"><Input required value={form.cidade} onChange={(event) => setForm({ ...form, cidade: event.target.value })} /></Field></Celula>
+          <Celula span={2}><Field label="UF"><Input required minLength={2} maxLength={2} placeholder="SP" className="uppercase" value={form.uf} onChange={(event) => setForm({ ...form, uf: event.target.value })} /></Field></Celula>
+        </Grade>
+        {avisoCep ? <Alerta tom="aviso">{avisoCep}</Alerta> : null}
+      </Bloco>
+      <Bloco numero={3} titulo="Contato" texto="Informe o e-mail ou o telefone da empresa (ou os dois).">
+        <Grade>
+          <Celula span={3}><Field label="E-mail"><Input type="email" required={!form.telefone.trim()} value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></Field></Celula>
+          <Celula span={3}><Field label="Telefone"><Input required={!form.email.trim()} value={form.telefone} placeholder="(11) 90000-0000" onChange={(event) => setForm({ ...form, telefone: event.target.value })} /></Field></Celula>
+        </Grade>
+      </Bloco>
+      <div className="flex justify-end"><Button disabled={save.isPending}><Save size={16} /> {save.isPending ? "Salvando…" : "Salvar empresa"}</Button></div>
     </form>
   );
 }
@@ -454,10 +518,11 @@ export function ModeloFormPage() {
   const { id } = useParams();
   return (
     <div className="grid gap-5">
-      <div>
-        <h1 className="text-2xl font-extrabold">{id ? "Editar modelo" : "Criar modelo"}</h1>
-        <p className="text-sm text-slate-500">Um modelo por cargo e modalidade, para todas as empresas. Ao abrir uma vaga, ele preenche tudo menos a empresa.</p>
-      </div>
+      <CabecalhoPagina
+        titulo={id ? "Editar modelo de vaga" : "Novo modelo de vaga"}
+        descricao="Um modelo por cargo e modalidade, para todas as empresas. Ao abrir uma vaga, ele preenche tudo menos a empresa."
+        acoes={<Link to="/vagas/modelos"><Button type="button" variant="secondary"><ArrowLeft size={16} /> Voltar aos modelos</Button></Link>}
+      />
       <AbaVaga key={id ?? "novo"} modo="modelo" empresaInicial="" modeloInicial={id ?? ""} />
     </div>
   );
@@ -589,6 +654,9 @@ function AbaVaga({ empresaInicial, modeloInicial, modo = "vaga" }: { empresaInic
     .map((modelo) => ({ modelo, rotulo: rotuloModelo(modelo) }))
     .filter((item) => normalizarBusca(item.rotulo).includes(termoModelo))
     .slice(0, 20);
+  /** Número de cada bloco: no modelo não há o bloco da empresa, então tudo sobe um. */
+  const ordemBlocos = ehModelo ? ["cargo", "horario", "perfil", "atividades"] : ["empresa", "cargo", "horario", "perfil", "atividades"];
+  const numero = (bloco: string) => ordemBlocos.indexOf(bloco) + 1;
   function aplicarModelo(modelo: Modelo, rotulo: string) {
     setBuscaModelo(rotulo);
     setModeloAberto(false);
@@ -597,7 +665,7 @@ function AbaVaga({ empresaInicial, modeloInicial, modo = "vaga" }: { empresaInic
     setModos(modosDoModelo(modelo));
   }
   return (
-    <form className="grid w-full gap-3" onSubmit={(event) => {
+    <form className="grid w-full gap-4" onSubmit={(event) => {
       event.preventDefault();
       const escolha = resolverCargo();
       const novoIncompleto = escolha.novo && (escolha.novo.nome.trim().length < 2 || escolha.novo.descricao.trim().length < 3 || escolha.novo.requisitos.trim().length < 3);
@@ -617,124 +685,153 @@ function AbaVaga({ empresaInicial, modeloInicial, modo = "vaga" }: { empresaInic
       <Aviso texto={aviso} />
       <Erro error={detalhe.error} />
       <Erro error={cargos.error} />
-      {save.isSuccess ? <p className="text-sm font-semibold text-emerald-700">{save.data.data.quantidade} vaga(s) abertas com o código {save.data.data.codigo}.{save.data.data.cargo.reaproveitado ? ` O cargo ${save.data.data.cargo.nome} já existia: a vaga usa a descrição e os requisitos dele.` : ""}</p> : null}
-      <Card className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {ehModelo ? null : (<>
-        <div className="sm:col-span-2">
-        <Field label="Empresa">
-          <BuscaOpcao
-            value={form.empresa_id}
-            onChange={(empresaId) => setForm({ ...form, empresa_id: empresaId })}
-            opcoes={(empresas.data?.data ?? []).map((empresa) => ({ id: empresa.id, label: empresa.nome_fantasia || empresa.razao_social }))}
-            placeholder="Pesquisar empresa"
-          />
-        </Field>
-        </div>
-        <div className="sm:col-span-2">
-          <Field label="Modelo">
-            <div className="relative">
-              <Input
-                value={buscaModelo}
-                placeholder={modelos.isLoading ? "Carregando modelos…" : lista.length ? "Pesquisar modelo pelo cargo" : "Nenhum modelo criado"}
-                autoComplete="off"
-                onChange={(event) => { setBuscaModelo(event.target.value); setModeloAberto(true); }}
-                onFocus={() => setModeloAberto(true)}
-                onBlur={() => window.setTimeout(() => setModeloAberto(false), 150)}
+      {save.isSuccess ? <Sucesso>{save.data.data.quantidade} vaga(s) abertas com o código {save.data.data.codigo}.{save.data.data.cargo.reaproveitado ? ` O cargo ${save.data.data.cargo.nome} já existia: a vaga usa a descrição e os requisitos dele.` : ""}</Sucesso> : null}
+      {ehModelo ? null : (
+        <Bloco numero={numero("empresa")} titulo="Empresa e modelo" texto="A empresa da vaga e, se quiser, um modelo para preencher o resto do formulário.">
+          <Grade>
+            <Celula span={3}>
+              <Field label="Empresa">
+                <BuscaOpcao
+                  value={form.empresa_id}
+                  onChange={(empresaId) => setForm({ ...form, empresa_id: empresaId })}
+                  opcoes={(empresas.data?.data ?? []).map((empresa) => ({ id: empresa.id, label: empresa.nome_fantasia || empresa.razao_social }))}
+                  placeholder="Pesquisar empresa"
+                />
+              </Field>
+            </Celula>
+            <Celula span={2}>
+              <Field label="Modelo (opcional)">
+                <div className="relative">
+                  <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <Input
+                    value={buscaModelo}
+                    className="pl-9"
+                    placeholder={modelos.isLoading ? "Carregando modelos…" : lista.length ? "Pesquisar modelo pelo cargo" : "Nenhum modelo criado"}
+                    autoComplete="off"
+                    onChange={(event) => { setBuscaModelo(event.target.value); setModeloAberto(true); }}
+                    onFocus={() => setModeloAberto(true)}
+                    onBlur={() => window.setTimeout(() => setModeloAberto(false), 150)}
+                  />
+                  {modeloAberto ? (
+                    <ul className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
+                      {modelosVisiveis.length ? modelosVisiveis.map(({ modelo, rotulo }) => (
+                        <li key={modelo.vagaId}>
+                          <button type="button" className="w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50" onMouseDown={(event) => { event.preventDefault(); aplicarModelo(modelo, rotulo); }}>
+                            {rotulo}
+                          </button>
+                        </li>
+                      )) : <li className="px-3 py-2 text-sm text-slate-500">{lista.length ? "Nenhum modelo encontrado" : "Nenhum modelo criado"}</li>}
+                    </ul>
+                  ) : null}
+                </div>
+              </Field>
+            </Celula>
+            <Celula span={1}><Field label="Quantidade"><Input type="number" required min={1} max={20} value={form.quantidade} onChange={(event) => setForm({ ...form, quantidade: event.target.value })} /></Field></Celula>
+          </Grade>
+        </Bloco>
+      )}
+      <Bloco numero={numero("cargo")} titulo="Cargo e remuneração" texto="Modalidade, carga semanal, cargo e salário (ou bolsa).">
+        <Grade>
+          <Celula span={1}>
+            <Field label="Tipo">
+              <Select value={form.tipo} onChange={(event) => {
+                const tipo = event.target.value;
+                setForm((atual) => preencherDias(atual, { ...atual, tipo, carga_horaria: tipo === "estagio" ? "30" : "40" }, modos));
+              }}>
+                <option value="estagio">Estágio</option>
+                <option value="clt">CLT</option>
+              </Select>
+            </Field>
+          </Celula>
+          <Celula span={1}>
+            <Field label="Carga horária">
+              <Select value={form.carga_horaria} onChange={(event) => { const carga_horaria = event.target.value; setForm((atual) => preencherDias(atual, { ...atual, carga_horaria }, modos)); }}>
+                {cargas.map((carga) => <option key={carga} value={carga}>{carga} horas</option>)}
+              </Select>
+            </Field>
+          </Celula>
+          <Celula span={2}>
+            <Field label="Cargo">
+              <BuscaOpcao
+                value={cargoNovo ? NOVO_CARGO : form.cargo_id}
+                onChange={escolherCargo}
+                opcoes={listaCargos.map((cargo) => ({ id: cargo.id, label: cargo.nome }))}
+                fixas={[{ id: NOVO_CARGO, label: "+ Novo cargo" }]}
+                preservarTexto={[NOVO_CARGO]}
+                onTexto={(texto) => { textoCargoRef.current = texto; }}
+                placeholder={cargos.isLoading ? "Carregando cargos…" : "Pesquisar cargo"}
               />
-              {modeloAberto ? (
-                <ul className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-xl border border-slate-200 bg-white shadow-lg">
-                  {modelosVisiveis.length ? modelosVisiveis.map(({ modelo, rotulo }) => (
-                    <li key={modelo.vagaId}>
-                      <button type="button" className="w-full px-3 py-2 text-left text-sm hover:bg-slate-50" onMouseDown={(event) => { event.preventDefault(); aplicarModelo(modelo, rotulo); }}>
-                        {rotulo}
-                      </button>
-                    </li>
-                  )) : <li className="px-3 py-2 text-sm text-slate-500">{lista.length ? "Nenhum modelo encontrado" : "Nenhum modelo criado"}</li>}
-                </ul>
-              ) : null}
-            </div>
-          </Field>
-        </div>
-        </>)}
-        <Field label="Tipo">
-          <Select value={form.tipo} onChange={(event) => {
-            const tipo = event.target.value;
-            setForm((atual) => preencherDias(atual, { ...atual, tipo, carga_horaria: tipo === "estagio" ? "30" : "40" }, modos));
-          }}>
-            <option value="estagio">Estágio</option>
-            <option value="clt">CLT</option>
-          </Select>
-        </Field>
-        <Field label="Carga horária">
-          <Select value={form.carga_horaria} onChange={(event) => { const carga_horaria = event.target.value; setForm((atual) => preencherDias(atual, { ...atual, carga_horaria }, modos)); }}>
-            {cargas.map((carga) => <option key={carga} value={carga}>{carga} horas</option>)}
-          </Select>
-        </Field>
-        <Field label="Cargo">
-          <BuscaOpcao
-            value={cargoNovo ? NOVO_CARGO : form.cargo_id}
-            onChange={escolherCargo}
-            opcoes={listaCargos.map((cargo) => ({ id: cargo.id, label: cargo.nome }))}
-            fixas={[{ id: NOVO_CARGO, label: "+ Novo cargo" }]}
-            preservarTexto={[NOVO_CARGO]}
-            onTexto={(texto) => { textoCargoRef.current = texto; }}
-            placeholder={cargos.isLoading ? "Carregando cargos…" : "Pesquisar cargo"}
-          />
-        </Field>
+            </Field>
+          </Celula>
+          <Celula span={2}><Field label="Salário"><Input required placeholder="1800,00" value={form.salario} onChange={(event) => setForm({ ...form, salario: event.target.value })} /></Field></Celula>
+        </Grade>
         {cargoNovo ? (
-          <div className="grid gap-3 rounded-xl border border-dashed border-slate-300 p-3 sm:col-span-2 lg:col-span-4">
-            <p className="text-sm font-medium text-slate-700">Novo cargo: a descrição e os requisitos valem para todas as vagas deste cargo.</p>
+          <div className="grid gap-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-3">
+            <p className="text-sm font-semibold text-slate-700">Novo cargo: a descrição e os requisitos valem para todas as vagas deste cargo.</p>
             <Field label="Nome do cargo"><Input required minLength={2} value={cargoNovo.nome} onChange={(event) => definirCargoNovo({ ...cargoNovo, nome: event.target.value })} /></Field>
-            <Field label="Descrição"><Textarea required minLength={3} className="min-h-20" value={cargoNovo.descricao} onChange={(event) => definirCargoNovo({ ...cargoNovo, descricao: event.target.value })} /></Field>
-            <Field label="Requisitos"><Textarea required minLength={3} className="min-h-20" value={cargoNovo.requisitos} onChange={(event) => definirCargoNovo({ ...cargoNovo, requisitos: event.target.value })} /></Field>
+            <div className="grid gap-3 md:grid-cols-2">
+              <Field label="Descrição"><Textarea required minLength={3} className="min-h-20" value={cargoNovo.descricao} onChange={(event) => definirCargoNovo({ ...cargoNovo, descricao: event.target.value })} /></Field>
+              <Field label="Requisitos"><Textarea required minLength={3} className="min-h-20" value={cargoNovo.requisitos} onChange={(event) => definirCargoNovo({ ...cargoNovo, requisitos: event.target.value })} /></Field>
+            </div>
           </div>
         ) : null}
-        <Field label="Salário"><Input required placeholder="1800,00" value={form.salario} onChange={(event) => setForm({ ...form, salario: event.target.value })} /></Field>
-        <Field label="Entrada"><Input type="time" required value={form.horario_entrada} onChange={(event) => { const horario_entrada = event.target.value; setForm((atual) => preencherDias(atual, { ...atual, horario_entrada }, modos)); }} /></Field>
-        <Field label="Saída"><Input type="time" required value={form.horario_saida} onChange={(event) => { const horario_saida = event.target.value; setForm((atual) => preencherDias(atual, { ...atual, horario_saida }, modos)); }} /></Field>
-        <Field label="Sexo">
-          <Select value={form.sexo} onChange={(event) => setForm({ ...form, sexo: event.target.value })}>
-            <option value="I">Aceita os dois</option>
-            <option value="F">Feminina</option>
-            <option value="M">Masculina</option>
-          </Select>
-        </Field>
-        <Field label="Idade"><Input type="number" required min={14} max={80} value={form.idade} onChange={(event) => setForm({ ...form, idade: event.target.value })} /></Field>
-        <Field label="Idade até"><Input type="number" required min={14} max={80} value={form.idade_ate} onChange={(event) => setForm({ ...form, idade_ate: event.target.value })} /></Field>
-        {ehModelo ? null : <Field label="Quantidade"><Input type="number" required min={1} max={20} value={form.quantidade} onChange={(event) => setForm({ ...form, quantidade: event.target.value })} /></Field>}
-        <div className="grid gap-2 sm:col-span-2 lg:col-span-4">
-          <p className="text-sm font-medium text-slate-700">Dias do horário</p>
-          <p className="text-xs text-slate-500">Escala: a pessoa trabalha nesse dia conforme a escala da empresa, não toda semana. Folga: não trabalha.</p>
+      </Bloco>
+      <Bloco numero={numero("horario")} titulo="Horário" texto="Entrada e saída de um dia normal; os dias fixos se preenchem pela carga. Ajuste cada dia se precisar.">
+        <Grade>
+          <Celula span={1}><Field label="Entrada"><Input type="time" required value={form.horario_entrada} onChange={(event) => { const horario_entrada = event.target.value; setForm((atual) => preencherDias(atual, { ...atual, horario_entrada }, modos)); }} /></Field></Celula>
+          <Celula span={1}><Field label="Saída"><Input type="time" required value={form.horario_saida} onChange={(event) => { const horario_saida = event.target.value; setForm((atual) => preencherDias(atual, { ...atual, horario_saida }, modos)); }} /></Field></Celula>
+        </Grade>
+        <div className="grid gap-2">
+          <p className="text-xs text-slate-500">Fixo: trabalha toda semana. Escala: trabalha nesse dia conforme a escala da empresa, não toda semana. Folga: não trabalha.</p>
           <div className="grid gap-x-6 gap-y-2 md:grid-cols-2 xl:grid-cols-3">
             {diasHorario.map((dia, indice) => {
               const chave = DIAS_ESCALA[indice];
               const folga = modos[chave] === "folga";
               return (
                 <div key={dia.nome} className="grid min-w-0 grid-cols-[4.5rem_6rem_minmax(0,1fr)_minmax(0,1fr)] items-center gap-1.5">
-                  <span className="text-sm text-slate-600">{dia.nome}</span>
+                  <span className="text-sm font-medium text-slate-700">{dia.nome}</span>
                   <Select aria-label={`${dia.nome} tipo`} className="min-w-0 px-2" value={modos[chave]} onChange={(event) => setModos({ ...modos, [chave]: event.target.value as ModoDia })}>
                     <option value="fixo">Fixo</option>
                     <option value="escala">Escala</option>
                     <option value="folga">Folga</option>
                   </Select>
-                  <Input type="time" className="min-w-0" aria-label={`${dia.nome} entrada`} disabled={folga} required={modos[chave] === "escala"} value={folga ? "" : form[dia.entrada]} onChange={(event) => setForm({ ...form, [dia.entrada]: event.target.value })} />
-                  <Input type="time" className="min-w-0" aria-label={`${dia.nome} saída`} disabled={folga} required={modos[chave] === "escala"} value={folga ? "" : form[dia.saida]} onChange={(event) => setForm({ ...form, [dia.saida]: event.target.value })} />
+                  <Input type="time" className="min-w-0 disabled:opacity-50" aria-label={`${dia.nome} entrada`} disabled={folga} required={modos[chave] === "escala"} value={folga ? "" : form[dia.entrada]} onChange={(event) => setForm({ ...form, [dia.entrada]: event.target.value })} />
+                  <Input type="time" className="min-w-0 disabled:opacity-50" aria-label={`${dia.nome} saída`} disabled={folga} required={modos[chave] === "escala"} value={folga ? "" : form[dia.saida]} onChange={(event) => setForm({ ...form, [dia.saida]: event.target.value })} />
                 </div>
               );
             })}
           </div>
-          {textoPrevisto(form, modos) ? <p className="text-sm text-slate-600">Texto do horário: <span className="font-medium text-navy-900">{textoPrevisto(form, modos)}</span></p> : null}
+          {textoPrevisto(form, modos) ? <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">Texto do horário: <span className="font-semibold text-navy-900">{textoPrevisto(form, modos)}</span></p> : null}
         </div>
-        <div className="sm:col-span-2 lg:col-span-4"><Field label="Atividades"><Textarea required minLength={3} className="min-h-20" value={form.atividades} onChange={(event) => setForm({ ...form, atividades: event.target.value })} /></Field></div>
-        <div className="sm:col-span-2 lg:col-span-4"><Field label="Benefícios"><Textarea className="min-h-24" placeholder={"Um por linha. Ex.: Auxílio Transporte — Mensal"} value={form.beneficios} onChange={(event) => setForm({ ...form, beneficios: event.target.value })} /></Field></div>
-      </Card>
-      <div className="flex gap-2">
+      </Bloco>
+      <Bloco numero={numero("perfil")} titulo="Perfil do candidato" texto="Sexo aceito e faixa de idade.">
+        <Grade>
+          <Celula span={2}>
+            <Field label="Sexo">
+              <Select value={form.sexo} onChange={(event) => setForm({ ...form, sexo: event.target.value })}>
+                <option value="I">Aceita os dois</option>
+                <option value="F">Feminina</option>
+                <option value="M">Masculina</option>
+              </Select>
+            </Field>
+          </Celula>
+          <Celula span={1}><Field label="Idade de"><Input type="number" required min={14} max={80} value={form.idade} onChange={(event) => setForm({ ...form, idade: event.target.value })} /></Field></Celula>
+          <Celula span={1}><Field label="Idade até"><Input type="number" required min={14} max={80} value={form.idade_ate} onChange={(event) => setForm({ ...form, idade_ate: event.target.value })} /></Field></Celula>
+        </Grade>
+      </Bloco>
+      <Bloco numero={numero("atividades")} titulo="Atividades e benefícios" texto="O que a pessoa vai fazer e o que a vaga oferece além do salário.">
+        <div className="grid gap-3 md:grid-cols-2">
+          <Field label="Atividades"><Textarea required minLength={3} className="min-h-28" value={form.atividades} onChange={(event) => setForm({ ...form, atividades: event.target.value })} /></Field>
+          <Field label="Benefícios"><Textarea className="min-h-28" placeholder={"Um por linha. Ex.: Auxílio Transporte — Mensal"} value={form.beneficios} onChange={(event) => setForm({ ...form, beneficios: event.target.value })} /></Field>
+        </div>
+      </Bloco>
+      <div className="flex flex-wrap justify-end gap-2">
         {ehModelo ? (
           <>
-            <Button disabled={salvarModelo.isPending}>{salvarModelo.isPending ? "Salvando…" : "Salvar modelo"}</Button>
             <Button type="button" variant="secondary" onClick={() => navigate("/vagas/modelos")}>Cancelar</Button>
+            <Button disabled={salvarModelo.isPending}><Save size={16} /> {salvarModelo.isPending ? "Salvando…" : "Salvar modelo"}</Button>
           </>
-        ) : <Button disabled={save.isPending}>{save.isPending ? "Salvando…" : "Salvar vaga"}</Button>}
+        ) : <Button disabled={save.isPending}><Save size={16} /> {save.isPending ? "Salvando…" : "Abrir vaga"}</Button>}
       </div>
     </form>
   );

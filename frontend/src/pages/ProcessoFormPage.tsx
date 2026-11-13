@@ -1,9 +1,11 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
-import { Button, Field, Input, Textarea } from "@/components/ui";
+import { useState, type ReactNode } from "react";
+import { ArrowLeft, Check, Plus, Search } from "lucide-react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Alerta, CabecalhoPagina } from "@/components/pagina";
+import { Button, Field, Input, Textarea, cn } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
-import { formatCpf } from "@/lib/format";
+import { formatCpf, textoPlano } from "@/lib/format";
 
 type Company = { id_empresa: string; razao_social: string; nome_fantasia: string | null };
 type Job = { id_vaga: string; cargo: string };
@@ -39,58 +41,135 @@ export function ProcessoFormPage() {
     }),
     onSuccess: (result) => navigate(`/processos/${result.data.id}`),
   });
+  const empresaEscolhida = companies.data?.data.find((item) => item.id_empresa === companyId);
+  const pronto = Boolean(personId && companyId && jobId);
   return (
-    <form className="grid max-w-3xl gap-5" onSubmit={(event) => { event.preventDefault(); save.mutate(); }}>
-      <div className="flex items-end justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight text-white">Novo processo</h1>
-          <p className="text-sm text-slate-400">Informe quem enviou o candidato e para qual vaga.</p>
-        </div>
-        <Button disabled={!personId || !companyId || !jobId || save.isPending}>Abrir processo</Button>
-      </div>
-      {save.error instanceof ApiError ? <p className="text-sm text-rose-300">{save.error.message}</p> : null}
-      <section className="grid gap-3 rounded-xl bg-[#12141a] p-4 ring-1 ring-white/10">
+    <form className="grid max-w-4xl gap-5" onSubmit={(event) => { event.preventDefault(); save.mutate(); }}>
+      <Link to="/processos" className="inline-flex w-fit items-center gap-1 text-sm font-semibold text-slate-500 hover:text-navy-900">
+        <ArrowLeft size={16} /> Processos
+      </Link>
+      <CabecalhoPagina titulo="Novo processo" descricao="Informe a vaga, o candidato e quem o enviou. O processo começa na etapa certa conforme a origem." />
+
+      <Bloco numero={1} titulo="Empresa e vaga" texto="Busque a empresa (pelo menos 2 letras) e escolha uma das vagas dela." feito={Boolean(companyId && jobId)}>
         <Field label="Empresa">
-          <Input aria-label="Buscar empresa" placeholder="Nome da empresa" value={companyQuery} onChange={(event) => setCompanyQuery(event.target.value)} />
+          <BuscaCampo aria-label="Buscar empresa" placeholder="Nome da empresa" value={companyQuery} onChange={setCompanyQuery} />
         </Field>
-        <div className="grid gap-2">
-          {companies.data?.data.map((item) => (
-            <button type="button" key={item.id_empresa} className={`rounded-lg px-3 py-2 text-left text-sm ${companyId === item.id_empresa ? "bg-cyan-400/15 text-cyan-100" : "text-slate-300 hover:bg-white/5"}`} onClick={() => { setCompanyId(item.id_empresa); setJobId(""); }}>
-              {item.nome_fantasia || item.razao_social}
-            </button>
-          ))}
-        </div>
-        <Field label="Vaga">
-          <div className="grid gap-2">
-            {(jobs.data?.data ?? []).map((item) => (
-              <button type="button" key={item.id_vaga} className={`rounded-lg px-3 py-2 text-left text-sm ${jobId === item.id_vaga ? "bg-cyan-400/15 text-cyan-100" : "text-slate-300 hover:bg-white/5"}`} onClick={() => setJobId(item.id_vaga)}>{item.cargo}</button>
+        {companyQuery.length >= 2 && companies.data && companies.data.data.length === 0 ? <p className="text-sm text-slate-500">Nenhuma empresa encontrada com esse texto.</p> : null}
+        {companies.data?.data.length ? (
+          <div className="grid gap-2 sm:grid-cols-2">
+            {companies.data.data.map((item) => (
+              <Opcao key={item.id_empresa} ativo={companyId === item.id_empresa} onClick={() => { setCompanyId(item.id_empresa); setJobId(""); }}>
+                <span className="block truncate font-semibold text-navy-900">{textoPlano(item.nome_fantasia) || textoPlano(item.razao_social)}</span>
+              </Opcao>
             ))}
-            {companyId && jobs.data && jobs.data.data.length === 0 ? <p className="text-sm text-slate-400">Esta empresa não tem vagas.</p> : null}
           </div>
-        </Field>
-      </section>
-      <section className="grid gap-3 rounded-xl bg-[#12141a] p-4 ring-1 ring-white/10">
-        <Field label="Candidato">
-          <Input aria-label="Buscar candidato" placeholder="Nome do candidato" value={personQuery} onChange={(event) => setPersonQuery(event.target.value)} />
-        </Field>
-        <div className="grid gap-2">
-          {people.data?.data.map((item) => (
-            <button type="button" key={item.id_candidato} className={`rounded-lg px-3 py-2 text-left text-sm ${personId === item.id_candidato ? "bg-cyan-400/15 text-cyan-100" : "text-slate-300 hover:bg-white/5"}`} onClick={() => setPersonId(item.id_candidato)}>
-              {item.nome} <span className="text-slate-500">{formatCpf(item.cpf)}</span>
-            </button>
-          ))}
+        ) : null}
+        <div className="grid gap-1.5">
+          <span className="text-sm font-medium text-slate-700">Vaga{empresaEscolhida ? ` de ${textoPlano(empresaEscolhida.nome_fantasia) || textoPlano(empresaEscolhida.razao_social)}` : ""}</span>
+          {!companyId ? <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-500">Escolha a empresa para ver as vagas.</p> : null}
+          {companyId && jobs.isLoading ? <p className="text-sm text-slate-500">Carregando vagas…</p> : null}
+          {(jobs.data?.data ?? []).length ? (
+            <div className="grid gap-2 sm:grid-cols-2">
+              {(jobs.data?.data ?? []).map((item) => (
+                <Opcao key={item.id_vaga} ativo={jobId === item.id_vaga} onClick={() => setJobId(item.id_vaga)}>
+                  <span className="block truncate font-semibold text-navy-900">{textoPlano(item.cargo)}</span>
+                </Opcao>
+              ))}
+            </div>
+          ) : null}
+          {companyId && jobs.data && jobs.data.data.length === 0 ? <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">Esta empresa não tem vagas.</p> : null}
         </div>
-      </section>
-      <section className="grid gap-4 rounded-xl bg-[#12141a] p-4 ring-1 ring-white/10 md:grid-cols-2">
-        <fieldset className="grid gap-2 md:col-span-2">
-          <legend className="text-sm text-slate-300">Origem</legend>
-          <label className="flex items-center gap-2 text-sm text-slate-200"><input type="radio" name="origem" checked={origem === "dnawork"} onChange={() => setOrigem("dnawork")} /> Captado pela DNAWORK</label>
-          <label className="flex items-center gap-2 text-sm text-slate-200"><input type="radio" name="origem" checked={origem === "empresa"} onChange={() => setOrigem("empresa")} /> Enviado pela empresa</label>
+      </Bloco>
+
+      <Bloco numero={2} titulo="Candidato" texto="Busque o candidato pelo nome (pelo menos 2 letras)." feito={Boolean(personId)}>
+        <Field label="Candidato">
+          <BuscaCampo aria-label="Buscar candidato" placeholder="Nome do candidato" value={personQuery} onChange={setPersonQuery} />
+        </Field>
+        {personQuery.length >= 2 && people.data && people.data.data.length === 0 ? <p className="text-sm text-slate-500">Nenhum candidato com esse nome.</p> : null}
+        {people.data?.data.length ? (
+          <div className="grid gap-2 sm:grid-cols-2">
+            {people.data.data.map((item) => (
+              <Opcao key={item.id_candidato} ativo={personId === item.id_candidato} onClick={() => setPersonId(item.id_candidato)}>
+                <span className="block truncate font-semibold text-navy-900">{textoPlano(item.nome)}</span>
+                <span className="block text-xs tabular-nums text-slate-500">CPF {formatCpf(item.cpf)}</span>
+              </Opcao>
+            ))}
+          </div>
+        ) : null}
+        {personId && !people.data?.data.some((item) => item.id_candidato === personId) ? <p className="text-xs text-slate-500">Candidato já escolhido pelo link de origem. Busque outro nome para trocar.</p> : null}
+      </Bloco>
+
+      <Bloco numero={3} titulo="Origem e datas" texto="Quem trouxe o candidato. Captado pela DNAWORK exige a data de encaminhamento." feito={false}>
+        <fieldset className="grid gap-2">
+          <legend className="mb-1.5 text-sm font-medium text-slate-700">Origem</legend>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <OrigemOpcao nome="Captado pela DNAWORK" texto="Veio pelo atendimento da DNA Work." ativo={origem === "dnawork"} onChange={() => setOrigem("dnawork")} />
+            <OrigemOpcao nome="Enviado pela empresa" texto="A própria empresa indicou o candidato." ativo={origem === "empresa"} onChange={() => setOrigem("empresa")} />
+          </div>
         </fieldset>
-        <Field label="Data de recebimento"><Input type="date" value={recebimento} onChange={(event) => setRecebimento(event.target.value)} required /></Field>
-        <Field label="Data de encaminhamento"><Input type="date" value={encaminhamento} onChange={(event) => setEncaminhamento(event.target.value)} required={origem === "dnawork"} /></Field>
-        <div className="md:col-span-2"><Field label="Observação"><Textarea value={observacao} onChange={(event) => setObservacao(event.target.value)} /></Field></div>
-      </section>
+        <div className="grid gap-3 sm:grid-cols-6">
+          <div className="sm:col-span-2"><Field label="Data de recebimento"><Input type="date" value={recebimento} onChange={(event) => setRecebimento(event.target.value)} required /></Field></div>
+          <div className="sm:col-span-2"><Field label={origem === "dnawork" ? "Data de encaminhamento (obrigatória)" : "Data de encaminhamento"}><Input type="date" value={encaminhamento} onChange={(event) => setEncaminhamento(event.target.value)} required={origem === "dnawork"} /></Field></div>
+          <div className="sm:col-span-6"><Field label="Observação"><Textarea value={observacao} onChange={(event) => setObservacao(event.target.value)} placeholder="Opcional. Fica no primeiro registro do histórico." /></Field></div>
+        </div>
+      </Bloco>
+
+      {save.error instanceof ApiError ? <Alerta>{save.error.message}</Alerta> : null}
+      <div className="flex flex-wrap items-center gap-3">
+        <Button className="h-11" disabled={!pronto || save.isPending}><Plus size={16} /> {save.isPending ? "Abrindo…" : "Abrir processo"}</Button>
+        {!pronto ? <p className="text-sm text-slate-500">Escolha a empresa, a vaga e o candidato para liberar o botão.</p> : null}
+      </div>
     </form>
+  );
+}
+
+function Bloco({ numero, titulo, texto, feito, children }: { numero: number; titulo: string; texto: string; feito: boolean; children: ReactNode }) {
+  return (
+    <section className="grid gap-4 rounded-xl border border-slate-200 bg-white p-4 md:p-5">
+      <header className="flex items-start gap-3">
+        <span className={cn("grid h-7 w-7 shrink-0 place-items-center rounded-full text-sm font-bold", feito ? "bg-emerald-50 text-emerald-800" : "bg-cyan-700 text-white")}>
+          {feito ? <Check size={14} /> : numero}
+        </span>
+        <div>
+          <h2 className="text-base font-bold text-navy-900">{titulo}</h2>
+          <p className="text-sm text-slate-500">{texto}</p>
+        </div>
+      </header>
+      {children}
+    </section>
+  );
+}
+
+function BuscaCampo({ value, onChange, placeholder, "aria-label": ariaLabel }: { value: string; onChange: (valor: string) => void; placeholder: string; "aria-label": string }) {
+  return (
+    <div className="relative">
+      <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+      <Input aria-label={ariaLabel} placeholder={placeholder} value={value} autoComplete="off" className="pl-9" onChange={(event) => onChange(event.target.value)} />
+    </div>
+  );
+}
+
+function Opcao({ ativo, onClick, children }: { ativo: boolean; onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      aria-pressed={ativo}
+      onClick={onClick}
+      className={cn("w-full min-w-0 rounded-lg border px-3 py-2.5 text-left text-sm transition", ativo ? "border-cyan-700 bg-cyan-50" : "border-slate-200 bg-white hover:bg-slate-50")}
+    >
+      {children}
+    </button>
+  );
+}
+
+function OrigemOpcao({ nome, texto, ativo, onChange }: { nome: string; texto: string; ativo: boolean; onChange: () => void }) {
+  return (
+    <label className={cn("flex cursor-pointer items-start gap-2.5 rounded-lg border px-3 py-2.5 text-sm transition", ativo ? "border-cyan-700 bg-cyan-50" : "border-slate-200 bg-white hover:bg-slate-50")}>
+      <input type="radio" name="origem" className="mt-0.5 accent-cyan-700" checked={ativo} onChange={onChange} />
+      <span>
+        <span className="block font-semibold text-navy-900">{nome}</span>
+        <span className="block text-xs text-slate-500">{texto}</span>
+      </span>
+    </label>
   );
 }

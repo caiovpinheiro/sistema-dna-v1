@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Eye, Mail, Plus, Save, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Button, Card, Field, Input, Textarea } from "@/components/ui";
+import { Alerta, CabecalhoPagina } from "@/components/pagina";
+import { Button, Card, Empty, Field, Input, Select, Skeleton, Textarea, cn } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 
 type Modelo = { id: number; vinculo: number; descricao: string; assunto: string | null; texto: string | null; remetente: string | null };
@@ -58,8 +60,6 @@ const CAMPOS = [
   { token: "@Entrevista-Complemento-Empresa", nome: "Complemento da entrevista", exemplo: "Sala 1" },
   { token: "@Nome-Assinatura-Digita", nome: "Nome de quem assina no texto antigo", exemplo: "Maria Souza" },
 ] as const;
-
-const campoClasse = "h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:ring-4 focus:ring-cyan-700/30";
 
 function marcador(nome: string) {
   return `{{${nome}}}`;
@@ -218,70 +218,96 @@ export function EmailsPage() {
 
   return (
     <div className="grid gap-5">
-      <div>
-        <h1 className="text-2xl font-extrabold">E-mails</h1>
-        <p className="text-sm text-slate-500">Escolha o modelo, ajuste o nome e coloque as variáveis direto na mensagem.</p>
-      </div>
-      {lista.isLoading ? <p className="text-sm text-slate-500">Carregando modelos…</p> : null}
-      {lista.isError ? <p className="text-sm text-rose-600">Não foi possível carregar os modelos.</p> : null}
-      <div className="grid items-start gap-5 lg:grid-cols-[240px_minmax(0,1fr)]">
-        <Card className="grid max-h-[78vh] content-start gap-1 overflow-auto p-2">
-          {modelos.map((item) => (
-            <button key={item.vinculo} type="button" onClick={() => setId(item.vinculo)} className={`rounded-xl px-3 py-2.5 text-left text-sm font-semibold leading-5 ${item.vinculo === atual?.vinculo ? "bg-navy-900 text-white" : "text-slate-700 hover:bg-slate-50"}`}>
-              {item.descricao}
-            </button>
-          ))}
-        </Card>
-        {atual ? (
-          <div className="grid min-w-0 items-start gap-5 xl:grid-cols-2">
-            <Card className="grid min-w-0 gap-3">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Como o e-mail sai</p>
-                <h2 className="text-lg font-extrabold">{nome || atual.descricao}</h2>
-              </div>
-              <div className="grid gap-1 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm break-words">
-                <p><span className="mr-2 text-slate-400">De</span>{atual.remetente || "documentos@dnawork.ai"}</p>
-                <p><span className="mr-2 text-slate-400">Para</span>maria.souza@exemplo.com</p>
-                <p><span className="mr-2 text-slate-400">Assunto</span>{previewAssunto}</p>
-              </div>
-              <iframe key={`${escuro ? "escuro" : "claro"}:${previewHtml}`} title="Prévia do e-mail" sandbox="" srcDoc={documentoDaPrevia(previewHtml, escuro)} className="h-[640px] w-full rounded-2xl border border-slate-200 bg-white" />
-            </Card>
-            <Card className="grid min-w-0 gap-4">
-              <Field label="Nome do modelo"><Input value={nome} onChange={(event) => setNome(event.target.value)} /></Field>
-              <Field label="Assunto"><Input value={assunto} onChange={(event) => setAssunto(event.target.value)} /></Field>
-              <Field label="Mensagem">
-                <Textarea ref={mensagem} className="min-h-[360px] w-full text-sm leading-6" value={texto} onChange={(event) => setTexto(event.target.value)} />
-              </Field>
-              <div className="grid gap-3">
-                <p className="text-sm font-semibold">Campos da mensagem</p>
-                <p className="text-xs leading-5 text-slate-500">Escolha um campo, como nome do candidato ou nome da empresa, e coloque na mensagem. No envio ele é preenchido com o dado real.</p>
-                <div className="flex flex-wrap gap-2">
-                  <select aria-label="Campo para inserir" className={`${campoClasse} min-w-64 flex-1`} value={campoNovo} onChange={(event) => setCampoNovo(event.target.value)}>
-                    {CAMPOS.map((campo) => <option key={campo.token} value={campo.nome}>{campo.nome}</option>)}
-                  </select>
-                  <Button type="button" variant="secondary" onClick={() => inserirCampo(campoNovo)}>Colocar na mensagem</Button>
+      <CabecalhoPagina
+        titulo="E-mails"
+        descricao="Modelos dos e-mails que o sistema envia sozinho. Escolha o modelo, ajuste o texto com os campos variáveis e confira a prévia antes de salvar."
+      />
+      {lista.isLoading ? (
+        <div className="grid gap-5 lg:grid-cols-[260px_minmax(0,1fr)]">
+          <Skeleton className="h-96" />
+          <Skeleton className="h-96" />
+        </div>
+      ) : null}
+      {lista.isError ? <Alerta>Não foi possível carregar os modelos. Atualize a página; se continuar, avise o suporte.</Alerta> : null}
+      {!lista.isLoading && !lista.isError && modelos.length === 0 ? (
+        <Empty title="Nenhum modelo de e-mail" text="Os modelos usados pelo TCE, pela cobrança e pela régua aparecem aqui quando estiverem cadastrados." />
+      ) : null}
+      {modelos.length ? (
+        <div className="grid items-start gap-5 lg:grid-cols-[260px_minmax(0,1fr)]">
+          <Card className="grid max-h-[78vh] content-start gap-1 overflow-auto p-2 lg:sticky lg:top-0">
+            <p className="px-2 pb-1 pt-1 text-xs font-semibold text-slate-500">{modelos.length} {modelos.length === 1 ? "modelo" : "modelos"}</p>
+            {modelos.map((item) => {
+              const ativo = item.vinculo === atual?.vinculo;
+              return (
+                <button key={item.vinculo} type="button" aria-pressed={ativo} onClick={() => setId(item.vinculo)} className={cn("flex items-start gap-2 rounded-lg px-3 py-2.5 text-left text-sm font-semibold leading-5 transition", ativo ? "bg-cyan-700 text-white" : "text-slate-700 hover:bg-slate-50")}>
+                  <Mail size={15} className={cn("mt-0.5 shrink-0", ativo ? "" : "text-slate-400")} />
+                  <span className="min-w-0">{item.descricao}</span>
+                </button>
+              );
+            })}
+          </Card>
+          {atual ? (
+            <div className="grid min-w-0 items-start gap-5 xl:grid-cols-2">
+              <Card className="grid min-w-0 gap-4">
+                <div>
+                  <h2 className="text-[15px] font-bold text-navy-900">Editar modelo</h2>
+                  <p className="text-sm text-slate-500">O nome é a chave usada no envio: só troque se souber onde ele é usado.</p>
                 </div>
-                {variaveis.map((nomeCampo) => (
-                  <div key={nomeCampo} className="grid gap-2 rounded-2xl border border-slate-100 p-3">
-                    <select aria-label={`Campo ${nomeCampo}`} className={campoClasse} value={CAMPOS.some((campo) => campo.nome === nomeCampo) ? nomeCampo : ""} onChange={(event) => trocarCampo(nomeCampo, event.target.value)}>
-                      {CAMPOS.some((campo) => campo.nome === nomeCampo) ? null : <option value="">{nomeCampo}</option>}
-                      {CAMPOS.map((campo) => <option key={campo.token} value={campo.nome}>{campo.nome}</option>)}
-                    </select>
-                    <Input aria-label={`Exemplo de ${nomeCampo}`} placeholder="Exemplo na prévia" value={exemplos[nomeCampo] ?? CAMPOS.find((campo) => campo.nome === nomeCampo)?.exemplo ?? ""} onChange={(event) => setExemplos((atualExemplos) => ({ ...atualExemplos, [nomeCampo]: event.target.value }))} />
-                    <Button type="button" variant="secondary" className="justify-self-start" onClick={() => inserirCampo(nomeCampo)}>Colocar de novo</Button>
+                <Field label="Nome do modelo"><Input value={nome} onChange={(event) => setNome(event.target.value)} /></Field>
+                <Field label="Assunto"><Input value={assunto} onChange={(event) => setAssunto(event.target.value)} /></Field>
+                <Field label="Mensagem">
+                  <Textarea ref={mensagem} className="min-h-[360px] w-full text-sm leading-6" value={texto} onChange={(event) => setTexto(event.target.value)} />
+                </Field>
+                <div className="grid gap-3 border-t border-slate-100 pt-4">
+                  <div>
+                    <h3 className="text-sm font-bold text-navy-900">Campos da mensagem</h3>
+                    <p className="text-xs leading-5 text-slate-500">Escolha um campo, como o nome do candidato ou da empresa, e coloque na mensagem onde o cursor estiver. No envio ele é trocado pelo dado real.</p>
                   </div>
-                ))}
-              </div>
-              {erro ? <p className="text-sm text-rose-600">{erro}</p> : null}
-              {aviso ? <p className="text-sm text-emerald-700">{aviso}</p> : null}
-              <div className="flex flex-wrap gap-2">
-                <Button type="button" disabled={salvar.isPending || !nome.trim() || !assunto.trim() || !texto.trim()} onClick={() => salvar.mutate()}>{salvar.isPending ? "Salvando…" : "Salvar modelo"}</Button>
-                <Button type="button" variant="danger" disabled={excluir.isPending} onClick={() => { if (window.confirm(`Excluir o modelo ${nome}?`)) excluir.mutate(); }}>Excluir modelo</Button>
-              </div>
-            </Card>
-          </div>
-        ) : null}
-      </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Select aria-label="Campo para inserir" className="min-w-56 flex-1" value={campoNovo} onChange={(event) => setCampoNovo(event.target.value)}>
+                      {CAMPOS.map((campo) => <option key={campo.token} value={campo.nome}>{campo.nome}</option>)}
+                    </Select>
+                    <Button type="button" variant="secondary" onClick={() => inserirCampo(campoNovo)}><Plus size={16} /> Colocar na mensagem</Button>
+                  </div>
+                  {variaveis.length ? (
+                    <div className="grid gap-2">
+                      <p className="text-xs font-semibold text-slate-500">Campos usados neste modelo e o exemplo mostrado na prévia</p>
+                      {variaveis.map((nomeCampo) => (
+                        <div key={nomeCampo} className="grid gap-2 rounded-lg border border-slate-200 p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-center">
+                          <Select aria-label={`Campo ${nomeCampo}`} value={CAMPOS.some((campo) => campo.nome === nomeCampo) ? nomeCampo : ""} onChange={(event) => trocarCampo(nomeCampo, event.target.value)}>
+                            {CAMPOS.some((campo) => campo.nome === nomeCampo) ? null : <option value="">{nomeCampo}</option>}
+                            {CAMPOS.map((campo) => <option key={campo.token} value={campo.nome}>{campo.nome}</option>)}
+                          </Select>
+                          <Input aria-label={`Exemplo de ${nomeCampo}`} placeholder="Exemplo na prévia" value={exemplos[nomeCampo] ?? CAMPOS.find((campo) => campo.nome === nomeCampo)?.exemplo ?? ""} onChange={(event) => setExemplos((atualExemplos) => ({ ...atualExemplos, [nomeCampo]: event.target.value }))} />
+                          <button type="button" className="acao acao-cyan justify-self-start" onClick={() => inserirCampo(nomeCampo)}>Colocar de novo</button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+                {erro ? <Alerta>{erro}</Alerta> : null}
+                {aviso ? <Alerta tom="info">{aviso}</Alerta> : null}
+                <div className="flex flex-wrap justify-between gap-2 border-t border-slate-100 pt-4">
+                  <Button type="button" variant="secondary" className="text-rose-700" disabled={excluir.isPending} onClick={() => { if (window.confirm(`Excluir o modelo ${nome}?`)) excluir.mutate(); }}><Trash2 size={16} /> Excluir modelo</Button>
+                  <Button type="button" disabled={salvar.isPending || !nome.trim() || !assunto.trim() || !texto.trim()} onClick={() => salvar.mutate()}><Save size={16} /> {salvar.isPending ? "Salvando…" : "Salvar alterações"}</Button>
+                </div>
+              </Card>
+              <Card className="grid min-w-0 gap-3 xl:sticky xl:top-0">
+                <div>
+                  <h2 className="flex items-center gap-2 text-[15px] font-bold text-navy-900"><Eye size={16} className="text-cyan-700" /> Como o e-mail sai</h2>
+                  <p className="text-sm text-slate-500">Prévia com os exemplos acima. Nada é enviado por esta tela.</p>
+                </div>
+                <dl className="grid gap-1 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm break-words">
+                  <div className="flex gap-2"><dt className="w-16 shrink-0 text-slate-500">De</dt><dd className="min-w-0 text-slate-700">{atual.remetente || "documentos@dnawork.ai"}</dd></div>
+                  <div className="flex gap-2"><dt className="w-16 shrink-0 text-slate-500">Para</dt><dd className="min-w-0 text-slate-700">maria.souza@exemplo.com</dd></div>
+                  <div className="flex gap-2"><dt className="w-16 shrink-0 text-slate-500">Assunto</dt><dd className="min-w-0 font-semibold text-navy-900">{previewAssunto}</dd></div>
+                </dl>
+                <iframe key={`${escuro ? "escuro" : "claro"}:${previewHtml}`} title="Prévia do e-mail" sandbox="" srcDoc={documentoDaPrevia(previewHtml, escuro)} className="h-[640px] w-full rounded-lg border border-slate-200 bg-white" />
+              </Card>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Card } from "@/components/ui";
 import { dateBr } from "@/lib/format";
 
@@ -40,47 +41,95 @@ export function FichaCandidato({ data }: { data: FichaCandidatoDados }) {
   const temDadosAtendimento = atendimento.escolaridade || atendimento.idade || atendimento.tipo_de_vaga;
   return (
     <>
-      {atendimento.resumo_cv ? <Card><h2 className="mb-2 font-bold">Currículo do atendimento</h2><p className="whitespace-pre-wrap text-sm text-slate-600">{atendimento.resumo_cv}</p></Card> : null}
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card><p className="text-xs text-slate-500">Objetivo</p><p className="font-semibold">{cv.objetivo || "Não informado"}</p></Card>
-        <Card><p className="text-xs text-slate-500">Último cargo</p><p className="font-semibold">{cv.ultimo_cargo || "Sem experiência"}</p></Card>
-        <Card><p className="text-xs text-slate-500">Entrevistas</p><p className="font-semibold">{cv.entrevistas ? `${cv.entrevistas} encaminhamento(s)` : "Ainda não foi encaminhado para entrevista"}</p></Card>
-      </div>
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Card>
-          <h2 className="mb-2 font-bold">Perfil comportamental</h2>
-          {atendimento.teste_comportamental ? <p className="whitespace-pre-wrap text-sm text-slate-600">{atendimento.teste_comportamental}</p> : null}
-          {cv.disc ? <p className="mt-2 text-sm text-slate-600">DISC: {cv.disc}</p> : null}
-          {!atendimento.teste_comportamental && !cv.disc ? <p className="text-sm text-slate-600">Não analisado. O teste comportamental ainda não foi feito.</p> : null}
+      <dl className="grid gap-3 sm:grid-cols-3">
+        <Destaque rotulo="Objetivo">{cv.objetivo || "Não informado"}</Destaque>
+        <Destaque rotulo="Último cargo">{cv.ultimo_cargo || "Sem experiência"}</Destaque>
+        <Destaque rotulo="Entrevistas">{cv.entrevistas ? `${cv.entrevistas} ${cv.entrevistas === 1 ? "encaminhamento" : "encaminhamentos"}` : "Ainda não foi encaminhado"}</Destaque>
+      </dl>
+      {atendimento.resumo_cv ? (
+        <Card className="grid gap-2">
+          <Titulo>Currículo do atendimento</Titulo>
+          <p className="whitespace-pre-wrap text-sm text-slate-700">{atendimento.resumo_cv}</p>
         </Card>
-        <Card><h2 className="mb-2 font-bold">Conhecimentos técnicos</h2>{cv.conhecimentos.length ? cv.conhecimentos.map((item) => <p key={`${item.descricao}-${item.nivel}`} className="text-sm">{item.descricao}{item.nivel ? ` · nível ${item.nivel}` : ""}</p>) : <p className="text-sm text-slate-500">O candidato não informou conhecimentos extracurriculares.</p>}</Card>
-        <Card>
-          <h2 className="mb-2 font-bold">Formação acadêmica</h2>
-          <p className="text-sm">Modalidade: {cv.escolaridade || data.curso || "Não informada"}</p>
-          <p className="text-sm">Escola: {escola || "Não informada"}</p>
-          <p className="text-sm">Turno: {data.periodo || "Não informado"}</p>
-          <p className="text-sm">Ano escolar: {cv.ano_escolar || "Não informado"}</p>
-          <p className="text-sm">Término: {dateBr(cv.terminoestudo)}</p>
-          <p className="text-sm">Conveniada: {cv.instituicao?.conveniada === "1" ? "Sim" : "Não"}</p>
-          <p className="text-sm">Experiência da instituição: {cv.instituicao?.parece || "Não informada"}</p>
+      ) : null}
+      <div className="grid gap-5 lg:grid-cols-3 lg:items-start">
+        <Card className="grid gap-3">
+          <Titulo>Formação acadêmica</Titulo>
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
+            <Par rotulo="Modalidade" largo>{cv.escolaridade || data.curso || "Não informada"}</Par>
+            <Par rotulo="Escola" largo>{escola || "Não informada"}</Par>
+            <Par rotulo="Turno">{data.periodo || "Não informado"}</Par>
+            <Par rotulo="Ano escolar">{cv.ano_escolar || "Não informado"}</Par>
+            <Par rotulo="Término">{dateBr(cv.terminoestudo)}</Par>
+            <Par rotulo="Conveniada">{cv.instituicao?.conveniada === "1" ? "Sim" : "Não"}</Par>
+            <Par rotulo="Experiência da instituição" largo>{cv.instituicao?.parece || "Não informada"}</Par>
+          </dl>
+        </Card>
+        <Card className="grid gap-2">
+          <Titulo>Perfil comportamental</Titulo>
+          {atendimento.teste_comportamental ? <p className="whitespace-pre-wrap text-sm text-slate-700">{atendimento.teste_comportamental}</p> : null}
+          {cv.disc ? <p className="text-sm text-slate-700"><span className="text-xs text-slate-500">DISC</span> <span className="font-semibold">{cv.disc}</span></p> : null}
+          {!atendimento.teste_comportamental && !cv.disc ? <p className="text-sm text-slate-500">Não analisado. O teste comportamental ainda não foi feito.</p> : null}
+        </Card>
+        <Card className="grid gap-2">
+          <Titulo>Conhecimentos técnicos</Titulo>
+          {cv.conhecimentos.length ? (
+            <ul className="flex flex-wrap gap-1.5">
+              {cv.conhecimentos.map((item) => (
+                <li key={`${item.descricao}-${item.nivel}`} className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
+                  {item.descricao}{item.nivel ? <span className="font-normal text-slate-500"> · {item.nivel}</span> : null}
+                </li>
+              ))}
+            </ul>
+          ) : <p className="text-sm text-slate-500">O candidato não informou conhecimentos extracurriculares.</p>}
         </Card>
       </div>
       {temDadosAtendimento ? (
-        <Card>
-          <h2 className="mb-2 font-bold">Dados do atendimento</h2>
-          <div className="grid gap-1 text-sm text-slate-600">
-            {atendimento.escolaridade ? <p>Escolaridade: {atendimento.escolaridade}</p> : null}
-            {atendimento.idade ? <p>Idade: {atendimento.idade}</p> : null}
-            {atendimento.tipo_de_vaga ? <p>Tipo de vaga: {atendimento.tipo_de_vaga}</p> : null}
-          </div>
+        <Card className="grid gap-3">
+          <Titulo>Dados do atendimento</Titulo>
+          <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-3">
+            {atendimento.escolaridade ? <Par rotulo="Escolaridade">{atendimento.escolaridade}</Par> : null}
+            {atendimento.idade ? <Par rotulo="Idade">{atendimento.idade}</Par> : null}
+            {atendimento.tipo_de_vaga ? <Par rotulo="Tipo de vaga">{atendimento.tipo_de_vaga}</Par> : null}
+          </dl>
         </Card>
       ) : null}
-      <Card>
-        <h2 className="mb-3 font-bold">Experiência profissional</h2>
-        {cv.experiencias.length ? cv.experiencias.map((item) => (
-          <p key={`${item.cargo}-${item.empresa}`} className="text-sm"><strong>{item.cargo || "Cargo não informado"}</strong>{item.empresa ? ` na ${item.empresa}` : ""}{item.atribuicoes ? ` — ${item.atribuicoes}` : ""}</p>
-        )) : <p className="text-sm text-slate-500">O candidato não informou experiência profissional.</p>}
+      <Card className="grid gap-3">
+        <Titulo>Experiência profissional</Titulo>
+        {cv.experiencias.length ? (
+          <ul className="grid">
+            {cv.experiencias.map((item) => (
+              <li key={`${item.cargo}-${item.empresa}`} className="border-t border-slate-100 py-2.5 first:border-0 first:pt-0 last:pb-0">
+                <p className="text-sm font-semibold text-slate-700">{item.cargo || "Cargo não informado"}{item.empresa ? <span className="font-normal text-slate-500"> na {item.empresa}</span> : null}</p>
+                {item.atribuicoes ? <p className="text-sm text-slate-600">{item.atribuicoes}</p> : null}
+              </li>
+            ))}
+          </ul>
+        ) : <p className="text-sm text-slate-500">O candidato não informou experiência profissional.</p>}
       </Card>
     </>
+  );
+}
+
+function Titulo({ children }: { children: ReactNode }) {
+  return <h2 className="text-[15px] font-bold text-navy-900">{children}</h2>;
+}
+
+/** Número/frase em destaque no topo da ficha. */
+function Destaque({ rotulo, children }: { rotulo: string; children: ReactNode }) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-4">
+      <dt className="text-xs text-slate-500">{rotulo}</dt>
+      <dd className="mt-0.5 font-semibold text-navy-900">{children}</dd>
+    </div>
+  );
+}
+
+function Par({ rotulo, largo, children }: { rotulo: string; largo?: boolean; children: ReactNode }) {
+  return (
+    <div className={largo ? "col-span-2 min-w-0" : "min-w-0"}>
+      <dt className="text-xs text-slate-500">{rotulo}</dt>
+      <dd className="break-words text-sm text-slate-700">{children}</dd>
+    </div>
   );
 }

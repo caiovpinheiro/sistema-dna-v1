@@ -1,8 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Fragment, useState } from "react";
-import { Button, Card, Skeleton } from "@/components/ui";
+import { Copy, ExternalLink, FileText, Printer, Send, X } from "lucide-react";
+import { Alerta } from "@/components/pagina";
+import { Badge, Button, Card, Skeleton } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
-import { dateBr } from "@/lib/format";
+import { dateBr, textoPlano } from "@/lib/format";
 
 export type ParteAssinatura = {
   papel: string;
@@ -49,7 +51,7 @@ function quando(value: string | null) {
   if (Number.isNaN(data.getTime())) return dateBr(value);
   const dia = data.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
   const hora = data.toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" });
-  return `${dia} as ${hora}`;
+  return `${dia} às ${hora}`;
 }
 
 export function DocumentosContratacao({ id }: { id: string }) {
@@ -86,21 +88,26 @@ export function DocumentosContratacao({ id }: { id: string }) {
   }
 
   return (
-    <Card>
-      <h2 className="mb-3 font-bold">Documentos gerados</h2>
-      {query.isLoading ? <Skeleton className="h-16" /> : null}
-      {query.isError ? <p className="text-sm text-rose-600">Não foi possível carregar os documentos.</p> : null}
+    <Card className="p-0">
+      <div className="px-4 pb-3 pt-4">
+        <h2 className="text-[15px] font-bold text-navy-900">Documentos gerados</h2>
+        <p className="text-sm text-slate-500">Rescisão gerada aqui e contratos do sistema antigo. Clique no nome para ver a assinatura ou o texto.</p>
+      </div>
+      {query.isLoading ? <div className="px-4 pb-4"><Skeleton className="h-16" /></div> : null}
+      {query.isError ? <div className="px-4 pb-4"><Alerta>Não foi possível carregar os documentos.</Alerta></div> : null}
       {!query.isLoading && !query.isError && linhas.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-slate-300 px-4 py-8 text-center text-sm text-slate-500">
-          Nenhum documento gerado para esta contratação.
+        <div className="px-4 pb-4">
+          <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+            Nenhum documento gerado para esta contratação.
+          </div>
         </div>
       ) : null}
       {linhas.length > 0 ? (
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="text-slate-500">
-              <tr className="border-b">
-                <th className="px-3 py-2">Nome</th>
+        <div className="overflow-x-auto border-t border-slate-100">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Documento</th>
                 <th>Vaga</th>
                 <th>Empresa</th>
                 <th>Data</th>
@@ -112,11 +119,12 @@ export function DocumentosContratacao({ id }: { id: string }) {
             <tbody>
               {linhas.map((item) => (
                 <Fragment key={`${item.origem ?? item.status}-${item.id}`}>
-                  <tr className="border-b border-slate-100">
-                    <td className="px-3 py-3 font-semibold">
+                  <tr>
+                    <td className="max-w-64">
                       <button
                         type="button"
-                        className="text-left text-cyan-800"
+                        className="flex items-center gap-1.5 text-left font-semibold text-cyan-700 hover:underline"
+                        aria-expanded={item.origem === "rescisao" ? undefined : aberto === item.id}
                         onClick={() => {
                           if (item.origem === "rescisao") {
                             setPainel(true);
@@ -126,28 +134,30 @@ export function DocumentosContratacao({ id }: { id: string }) {
                           setAberto(aberto === item.id ? null : item.id);
                         }}
                       >
+                        <FileText size={14} className="shrink-0" />
                         {item.nome}
                       </button>
+                      {item.origem === "historico" ? <p className="text-xs text-slate-500">Sistema antigo</p> : null}
                     </td>
-                    <td>{item.vaga || "—"}</td>
-                    <td>{item.empresa || "—"}</td>
-                    <td>{dateBr(item.data)}</td>
-                    <td>{item.devolvido_por || "—"}</td>
+                    <td className="max-w-56 text-slate-700">{textoPlano(item.vaga) || "—"}</td>
+                    <td className="max-w-56 text-slate-700">{textoPlano(item.empresa) || "—"}</td>
+                    <td className="whitespace-nowrap tabular-nums text-slate-600">{dateBr(item.data)}</td>
+                    <td className="text-slate-600">{item.devolvido_por || "—"}</td>
                     <td>
-                      <div className="grid gap-1">
-                        <span>{item.assinatura || "—"}</span>
+                      <div className="grid justify-items-start gap-1">
+                        {item.assinatura ? <Badge value={valorAssinatura(item.assinatura)}>{item.assinatura}</Badge> : <span className="text-slate-400">—</span>}
                         {item.origem === "rescisao" ? (
-                          <button type="button" className="text-left text-xs font-semibold text-cyan-800" onClick={() => setPainel(true)}>
+                          <button type="button" className="text-left text-xs font-semibold text-cyan-700 hover:underline" onClick={() => setPainel(true)}>
                             Abrir assinatura
                           </button>
                         ) : null}
                       </div>
                     </td>
-                    <td>{item.status}</td>
+                    <td className="whitespace-nowrap text-slate-700">{item.status}</td>
                   </tr>
                   {aberto === item.id && item.origem !== "rescisao" ? (
-                    <tr className="border-b border-slate-100 bg-slate-50">
-                      <td className="px-3 py-3 text-sm text-slate-600" colSpan={7}>
+                    <tr>
+                      <td className="bg-slate-50 text-sm text-slate-600" colSpan={7}>
                         <p className="whitespace-pre-line">{item.texto || item.resumo || "Documento sem texto gravado."}</p>
                       </td>
                     </tr>
@@ -158,7 +168,7 @@ export function DocumentosContratacao({ id }: { id: string }) {
           </table>
         </div>
       ) : null}
-      {erro ? <p className="mt-3 text-sm text-rose-600">{erro}</p> : null}
+      {erro ? <div className="px-4 pb-4 pt-3"><Alerta>{erro}</Alerta></div> : null}
       {painel ? (
         <AssinaturaPainel
           id={id}
@@ -176,6 +186,15 @@ export function DocumentosContratacao({ id }: { id: string }) {
   );
 }
 
+/** Cor do selo pelo texto da assinatura: assinado, recusado, aguardando/enviado. */
+function valorAssinatura(texto: string) {
+  const valor = texto.toLowerCase();
+  if (valor.startsWith("assinad")) return "assinado";
+  if (valor.startsWith("recusad")) return "recusado";
+  if (valor.startsWith("aguard") || valor.startsWith("enviad")) return "enviado";
+  return "";
+}
+
 function AssinaturaPainel({ id, carregando, dados, falha, aviso, enviando, onFechar, onCopiar, onEnviar }: {
   id: string;
   carregando: boolean;
@@ -191,47 +210,58 @@ function AssinaturaPainel({ id, carregando, dados, falha, aviso, enviando, onFec
   const enviado = Boolean(dados?.enviado_em) || partes.some((item) => item.url);
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-slate-900/40 p-4" role="dialog" aria-modal="true" aria-label="Assinatura digital">
-      <div className="max-h-[90vh] w-full max-w-5xl overflow-auto rounded-2xl bg-white p-5 text-slate-800 shadow-xl">
+      <div className="grid max-h-[90vh] w-full max-w-5xl gap-4 overflow-auto rounded-2xl border border-slate-200 bg-white p-5 text-slate-700 shadow-xl">
+        <div className="flex items-start justify-between gap-3">
+          <div className="grid gap-1">
+            <p className="text-xs font-semibold text-slate-500">Assinatura digital</p>
+            <h3 className="text-xl font-extrabold text-navy-900">{dados?.nome ?? "Documento"}</h3>
+            {dados ? (
+              <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500">
+                <Badge value={valorAssinatura(dados.status)}>{dados.status}</Badge>
+                {dados.enviado_em ? <span>Enviado para assinatura em {quando(dados.enviado_em)}</span> : <span>Ainda não enviado</span>}
+              </div>
+            ) : null}
+          </div>
+          <button type="button" aria-label="Fechar" className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100" onClick={onFechar}><X size={18} /></button>
+        </div>
         {carregando ? <Skeleton className="h-40" /> : null}
-        {falha ? <p className="text-sm text-rose-600">Não foi possível acompanhar a assinatura.</p> : null}
+        {falha ? <Alerta>Não foi possível acompanhar a assinatura.</Alerta> : null}
         {dados ? (
           <>
-            <h3 className="text-xl font-extrabold text-navy-900">{dados.nome}.</h3>
-            <p className="mt-1 font-semibold">Status: {dados.status}</p>
-            {dados.enviado_em ? <p className="mt-3 text-sm">Enviado para assinatura {quando(dados.enviado_em)}</p> : null}
-            <div className="mt-4 overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead className="text-slate-500">
-                  <tr className="border-b">
-                    <th className="py-2 pr-3">Partes</th>
-                    <th className="py-2 pr-3">Nome</th>
-                    <th className="py-2 pr-3">E-mail</th>
-                    <th className="py-2 pr-3">Status</th>
-                    <th className="py-2 pr-3">Data Assinatura</th>
-                    <th className="py-2">Link</th>
+            <div className="overflow-x-auto rounded-lg border border-slate-200">
+              <table className="data-table compact">
+                <thead>
+                  <tr>
+                    <th>Parte</th>
+                    <th>Nome</th>
+                    <th>E-mail</th>
+                    <th>Status</th>
+                    <th>Data da assinatura</th>
+                    <th><span className="sr-only">Link</span></th>
                   </tr>
                 </thead>
                 <tbody>
+                  {partes.length === 0 ? <tr><td colSpan={6} className="text-slate-500">Nenhum signatário com e-mail cadastrado.</td></tr> : null}
                   {partes.map((item) => (
                     <Fragment key={`${item.papel}-${item.email}`}>
-                      <tr className="border-b border-slate-100">
-                        <td className="py-2 pr-3">{item.papel}</td>
-                        <td className="py-2 pr-3">{item.nome || "—"}</td>
-                        <td className="py-2 pr-3">{item.email || "—"}</td>
-                        <td className="py-2 pr-3">{item.status}</td>
-                        <td className="py-2 pr-3">{item.status === "Assinado" ? quando(item.assinado_em) || "Assinado" : ""}</td>
-                        <td className="py-2">
+                      <tr>
+                        <td className="whitespace-nowrap font-semibold text-slate-700">{item.papel}</td>
+                        <td className="text-slate-700">{item.nome || "—"}</td>
+                        <td className="text-slate-600">{item.email || "—"}</td>
+                        <td className="whitespace-nowrap"><Badge value={valorAssinatura(item.status)}>{item.status}</Badge></td>
+                        <td className="whitespace-nowrap tabular-nums text-slate-600">{item.status === "Assinado" ? quando(item.assinado_em) || "Assinado" : ""}</td>
+                        <td className="w-px whitespace-nowrap text-right">
                           {item.url && item.status !== "Assinado" ? (
-                            <button type="button" className="rounded-md bg-teal-700 px-2 py-1 text-xs font-semibold text-white" onClick={() => onCopiar(item.url!)}>
-                              Copiar link
+                            <button type="button" className="acao acao-cyan inline-flex items-center gap-1" onClick={() => onCopiar(item.url!)}>
+                              <Copy size={14} /> Copiar link
                             </button>
                           ) : null}
                         </td>
                       </tr>
                       {item.url && item.status !== "Assinado" ? (
-                        <tr className="border-b border-slate-100">
-                          <td className="py-2 pr-3 text-slate-500">{item.papel}</td>
-                          <td className="py-2 text-cyan-800" colSpan={5}>{item.url}</td>
+                        <tr>
+                          <td className="text-xs text-slate-500">Link de {item.papel.toLowerCase()}</td>
+                          <td className="break-all text-xs text-cyan-700" colSpan={5}>{item.url}</td>
                         </tr>
                       ) : null}
                     </Fragment>
@@ -239,29 +269,27 @@ function AssinaturaPainel({ id, carregando, dados, falha, aviso, enviando, onFec
                 </tbody>
               </table>
             </div>
-            {!enviado ? (
-              <div className="mt-4">
-                <Button className="bg-orange-500 text-navy-950 hover:bg-orange-400" disabled={enviando} onClick={onEnviar}>
-                  {enviando ? "Enviando…" : "Enviar para assinatura"}
+            {aviso ? <Alerta tom="info">{aviso}</Alerta> : null}
+            <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4">
+              {!enviado ? (
+                <Button disabled={enviando} onClick={onEnviar}>
+                  <Send size={16} /> {enviando ? "Enviando…" : "Enviar para assinatura"}
                 </Button>
-              </div>
-            ) : null}
-            {aviso ? <p className="mt-3 text-sm font-semibold text-emerald-700">{aviso}</p> : null}
-            <div className="mt-4 flex flex-wrap gap-2">
-              <a className="rounded-md bg-orange-500 px-3 py-2 text-sm font-semibold text-navy-950" href={`/api/v1/contratacoes/${id}/rescisao.pdf`} target="_blank" rel="noreferrer">
-                Imprimir original
+              ) : null}
+              <a className="inline-flex items-center gap-2 rounded-lg bg-white px-3.5 py-2 text-sm font-semibold text-navy-900 ring-1 ring-slate-200 hover:bg-slate-50" href={`/api/v1/contratacoes/${id}/rescisao.pdf`} target="_blank" rel="noreferrer">
+                <Printer size={16} /> Imprimir original
               </a>
               {dados.preview_url ? (
-                <a className="rounded-md bg-emerald-600 px-3 py-2 text-sm font-semibold text-white" href={dados.preview_url} target="_blank" rel="noreferrer">
-                  Preview assinaturas
+                <a className="inline-flex items-center gap-2 rounded-lg bg-white px-3.5 py-2 text-sm font-semibold text-navy-900 ring-1 ring-slate-200 hover:bg-slate-50" href={dados.preview_url} target="_blank" rel="noreferrer">
+                  <ExternalLink size={16} /> Ver assinaturas na ZapSign
                 </a>
               ) : null}
+              <Button variant="ghost" className="ml-auto" onClick={onFechar}>Fechar</Button>
             </div>
           </>
-        ) : null}
-        <button type="button" className="mt-4 rounded-md px-3 py-2 text-sm font-semibold text-slate-600 ring-1 ring-slate-200" onClick={onFechar}>
-          Fechar
-        </button>
+        ) : (
+          <div className="flex justify-end"><Button variant="ghost" onClick={onFechar}>Fechar</Button></div>
+        )}
       </div>
     </div>
   );

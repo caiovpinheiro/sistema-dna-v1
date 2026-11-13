@@ -1,9 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Check, ExternalLink, FileText, ListChecks, Plus, Search, Send } from "lucide-react";
 import { useState } from "react";
+import { Alerta, CabecalhoPagina, CampoFiltro, ResumoResultados } from "@/components/pagina";
 import { RelatorioEmpresaPainel } from "@/components/relatorio-empresa";
-import { Badge, Button, Card, Field, Input, Select } from "@/components/ui";
+import { Badge, Button, Card, Empty, Field, Input, Select, Skeleton } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
-import { money } from "@/lib/format";
+import { dateBr, formatCnpj, money, textoPlano } from "@/lib/format";
 
 type Nota = { id: string; tipo: string; valor: number; status: string; pdf_url: string | null };
 type ItemNota = { tipo: string; codigo: string; iss: string; descricao: string; valor: string };
@@ -237,175 +239,236 @@ export function ContasReceberPage() {
     await atualizar();
   }
 
+  const filtrando = de !== monthStart() || ate !== monthEnd() || Boolean(situacao) || Boolean(busca) || Boolean(empresaId);
+  function limparFiltros() {
+    setDe(monthStart());
+    setAte(monthEnd());
+    setSituacao("");
+    setBusca("");
+    setEmpresaId("");
+  }
+
   return (
     <div className="grid gap-5">
-      <div>
-        <h1 className="text-2xl font-extrabold">Contas a receber</h1>
-        <p className="text-sm text-slate-500">Cobranças enviadas ao Asaas. O cliente da empresa é criado ou atualizado na hora de faturar.</p>
-      </div>
-      {erro ? <p className="text-sm text-rose-600">{erro}</p> : null}
-      <Card className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
-        <div className="relative md:col-span-2">
-          <Field label="Empresa">
-            <Input value={busca} placeholder="Razão social, fantasia ou CNPJ" onChange={(event) => { setBusca(event.target.value); setEmpresaId(""); }} />
-          </Field>
-          {/* Depois de escolher, a lista fecha: aberta, ela cobria o botão "Gerar cobrança". */}
-          {!empresaId && empresas.data?.data.length ? (
-            <div className="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-xl border border-slate-200 bg-white shadow-lg">
-              {empresas.data.data.map((empresa) => (
-                <button key={empresa.id_empresa} type="button" className="block w-full px-3 py-2 text-left text-sm transition duration-150 hover:bg-cyan-50 active:bg-cyan-100" onClick={() => { setEmpresaId(empresa.id_empresa); setBusca(semEntidades(empresa.nome_fantasia || empresa.razao_social || "")); setErro(""); }}>
-                  <span className="font-medium">{semEntidades(empresa.nome_fantasia || empresa.razao_social || "")}</span>
-                  <span className="block text-xs text-slate-500">{semEntidades(empresa.razao_social || "")} · {empresa.cnpj}</span>
-                </button>
-              ))}
-            </div>
-          ) : null}
-          {empresaId || busca ? (
-            <p className="mt-1 text-xs text-slate-500">
-              {empresaId ? <span className="text-emerald-700">Empresa selecionada. A lista abaixo mostra só ela. </span> : null}
-              <button type="button" className="font-semibold text-cyan-700 hover:underline" onClick={() => { setBusca(""); setEmpresaId(""); }}>Limpar e ver todas</button>
-            </p>
-          ) : null}
+      <CabecalhoPagina
+        titulo="Contas a receber"
+        descricao="Cobranças enviadas ao Asaas: gere uma cobrança avulsa, envie o relatório, dê baixa e emita a nota fiscal."
+      />
+      {erro ? <Alerta>{erro}</Alerta> : null}
+
+      <Card className="grid gap-4">
+        <div>
+          <h2 className="text-[15px] font-bold text-navy-900">Nova cobrança</h2>
+          <p className="text-sm text-slate-500">Escolha a empresa e preencha os dados. O cliente é criado ou atualizado no Asaas e a fatura sai por e-mail.</p>
         </div>
-        <Field label="Valor"><Input inputMode="decimal" value={valor} onChange={(event) => setValor(event.target.value)} /></Field>
-        <Field label="Vencimento"><Input type="date" value={vencimento} onChange={(event) => setVencimento(event.target.value)} /></Field>
-        <Field label="Forma">
-          <Select value={forma} onChange={(event) => setForma(event.target.value)}>
-            <option value="UNDEFINED">Cliente escolhe</option>
-            <option value="BOLETO">Boleto</option>
-            <option value="PIX">Pix</option>
-            <option value="CREDIT_CARD">Cartão</option>
-          </Select>
-        </Field>
-        <Field label="Descrição"><Input value={descricao} onChange={(event) => setDescricao(event.target.value)} /></Field>
-        <Button type="button" className="self-end" disabled={criar.isPending || !empresaId} onClick={() => criar.mutate()}>{criar.isPending ? "Gerando…" : "Gerar cobrança"}</Button>
+        <div className="grid gap-3 sm:grid-cols-6 xl:grid-cols-12 xl:items-start">
+          <div className="relative sm:col-span-6 xl:col-span-4">
+            <Field label="Empresa">
+              <div className="relative">
+                <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <Input value={busca} placeholder="Razão social, fantasia ou CNPJ" className="pl-9" onChange={(event) => { setBusca(event.target.value); setEmpresaId(""); }} />
+              </div>
+            </Field>
+            {/* Depois de escolher, a lista fecha: aberta, ela cobria o botão "Gerar cobrança". */}
+            {!empresaId && empresas.data?.data.length ? (
+              <div className="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-xl border border-slate-200 bg-white shadow-lg">
+                {empresas.data.data.map((empresa) => (
+                  <button key={empresa.id_empresa} type="button" className="block w-full px-3 py-2 text-left text-sm transition duration-150 hover:bg-slate-50" onClick={() => { setEmpresaId(empresa.id_empresa); setBusca(semEntidades(empresa.nome_fantasia || empresa.razao_social || "")); setErro(""); }}>
+                    <span className="font-medium text-navy-900">{semEntidades(empresa.nome_fantasia || empresa.razao_social || "")}</span>
+                    <span className="block text-xs text-slate-500">{semEntidades(empresa.razao_social || "")} · {formatCnpj(empresa.cnpj)}</span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            {empresaId || busca ? (
+              <p className="mt-1.5 flex flex-wrap items-center gap-x-2 text-xs text-slate-500">
+                {empresaId ? <span className="inline-flex items-center gap-1 font-semibold text-emerald-800"><Check size={13} /> Empresa selecionada. A lista abaixo mostra só ela.</span> : null}
+                <button type="button" className="font-semibold text-cyan-700 hover:underline" onClick={() => { setBusca(""); setEmpresaId(""); }}>Limpar e ver todas</button>
+              </p>
+            ) : null}
+          </div>
+          <div className="sm:col-span-2 xl:col-span-2"><Field label="Valor"><Input inputMode="decimal" placeholder="0,00" value={valor} onChange={(event) => setValor(event.target.value)} /></Field></div>
+          <div className="sm:col-span-2 xl:col-span-2"><Field label="Vencimento"><Input type="date" value={vencimento} onChange={(event) => setVencimento(event.target.value)} /></Field></div>
+          <div className="sm:col-span-2 xl:col-span-2">
+            <Field label="Forma de pagamento">
+              <Select value={forma} onChange={(event) => setForma(event.target.value)}>
+                <option value="UNDEFINED">Cliente escolhe</option>
+                <option value="BOLETO">Boleto</option>
+                <option value="PIX">Pix</option>
+                <option value="CREDIT_CARD">Cartão</option>
+              </Select>
+            </Field>
+          </div>
+          <div className="sm:col-span-6 xl:col-span-2"><Field label="Descrição"><Input placeholder="Ex.: Faturamento 11/2026" value={descricao} onChange={(event) => setDescricao(event.target.value)} /></Field></div>
+        </div>
+        <div className="flex flex-wrap items-center justify-end gap-3 border-t border-slate-100 pt-3">
+          {!empresaId ? <span className="text-xs text-slate-500">Escolha a empresa na lista para liberar o botão.</span> : null}
+          <Button type="button" disabled={criar.isPending || !empresaId} onClick={() => criar.mutate()}><Plus size={16} /> {criar.isPending ? "Gerando…" : "Gerar cobrança"}</Button>
+        </div>
       </Card>
-      <Card className="grid items-end gap-3 md:grid-cols-4">
-        <Field label="De"><Input type="date" value={de} onChange={(event) => setDe(event.target.value)} /></Field>
-        <Field label="Até"><Input type="date" value={ate} onChange={(event) => setAte(event.target.value)} /></Field>
-        <Field label="Status">
-          <Select value={situacao} onChange={(event) => setSituacao(event.target.value)}>
-            <option value="">Todas</option>
-            <option value="aberta">A pagar</option>
-            <option value="paga">Paga</option>
-            <option value="cancelada">Cancelada</option>
-          </Select>
-        </Field>
+
+      <Card>
+        <div className="grid gap-3 sm:grid-cols-3 lg:max-w-3xl">
+          <CampoFiltro rotulo="Vencimento de"><Input type="date" aria-label="De" value={de} onChange={(event) => setDe(event.target.value)} /></CampoFiltro>
+          <CampoFiltro rotulo="Até"><Input type="date" aria-label="Até" value={ate} onChange={(event) => setAte(event.target.value)} /></CampoFiltro>
+          <CampoFiltro rotulo="Situação">
+            <Select aria-label="Status" value={situacao} onChange={(event) => setSituacao(event.target.value)}>
+              <option value="">Todas</option>
+              <option value="aberta">A pagar</option>
+              <option value="paga">Paga</option>
+              <option value="cancelada">Cancelada</option>
+            </Select>
+          </CampoFiltro>
+        </div>
       </Card>
+      <ResumoResultados total={query.isLoading ? null : rows.length} singular="cobrança" plural="cobranças" filtrando={filtrando} carregando={query.isLoading} onLimpar={limparFiltros} />
+
       <div className="flex flex-wrap items-center gap-3">
-        <Button type="button" disabled={Boolean(progresso) || pendentes.length === 0} onClick={() => setMarcadas(pendentes.map((row) => row.id))}>
-          Selecionar todas a pagar sem envio ({pendentes.length})
+        <Button type="button" variant="secondary" disabled={Boolean(progresso) || pendentes.length === 0} onClick={() => setMarcadas(pendentes.map((row) => row.id))}>
+          <ListChecks size={16} /> Selecionar todas a pagar sem envio ({pendentes.length})
         </Button>
         {marcadas.length > 0 ? (
-          <Button type="button" disabled={Boolean(progresso)} onClick={() => enviarPendentes(marcadas)}>Enviar relatório e boleto</Button>
+          <>
+            <span className="text-sm text-slate-500"><span className="font-bold tabular-nums text-navy-900">{marcadas.length}</span> {marcadas.length === 1 ? "selecionada" : "selecionadas"}</span>
+            <Button type="button" disabled={Boolean(progresso)} onClick={() => enviarPendentes(marcadas)}><Send size={16} /> Enviar relatório e boleto</Button>
+          </>
         ) : null}
       </div>
       {progresso ? (
-        <div className="grid gap-1">
+        <div className="grid gap-1" role="status">
           <div className="h-2 overflow-hidden rounded-full bg-slate-200">
             <div className="h-full bg-cyan-700 transition-[width]" style={{ width: `${Math.round((progresso.feito / progresso.total) * 100)}%` }} />
           </div>
-          <p className="text-sm text-slate-500">{progresso.feito} de {progresso.total}</p>
+          <p className="text-sm text-slate-500">Enviando {progresso.feito} de {progresso.total}…</p>
         </div>
       ) : null}
-      {aviso ? <p className="text-sm text-rose-500">{aviso}</p> : null}
-      <Card className="overflow-x-auto p-0">
-        <table className="w-full min-w-[960px] text-left text-sm">
-          <thead className="text-xs uppercase text-slate-400">
-            <tr>
-              <th className="px-4 py-3" />
-              <th className="px-4 py-3">Empresa</th>
-              <th className="px-4 py-3">Descrição</th>
-              <th className="px-4 py-3">Vencimento</th>
-              <th className="px-4 py-3">Valor</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">E-mail</th>
-              <th className="px-4 py-3">Ações</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => {
-              const podeEnviar = row.situacao === "aberta" && !row.envio;
-              return (
-              <tr key={row.id} className="border-t border-slate-100 transition duration-150 hover:bg-slate-50">
-                <td className="px-4 py-3">
-                  {podeEnviar ? (
-                    <input
-                      type="checkbox"
-                      checked={marcadas.includes(row.id)}
-                      onChange={(event) => setMarcadas((atual) => event.target.checked ? [...atual, row.id] : atual.filter((id) => id !== row.id))}
-                    />
-                  ) : null}
-                </td>
-                <td className="px-4 py-3 font-semibold">{row.empresa_fantasia || row.empresa_razao}</td>
-                <td className="px-4 py-3">{row.descricao}</td>
-                <td className="px-4 py-3">{row.vencimento.split("-").reverse().join("/")}</td>
-                <td className="px-4 py-3">{money(row.valor)}</td>
-                <td className="px-4 py-3"><Badge value={row.situacao === "paga" ? "ativa" : row.situacao === "aberta" ? "aberta" : "encerrada"}>{situacaoLabel[row.situacao] ?? row.situacao}</Badge></td>
-                <td className="px-4 py-3">{row.envio ? `Enviado em ${dataEnvio(row.envio)}` : "Não enviado"}</td>
-                <td className="px-4 py-3">
-                  <div className="flex flex-wrap gap-2">
-                    <button type="button" className="acao acao-cyan" onClick={() => { const ref = competencia(row.descricao); setRelatorio({ empresaId: row.id_empresa, mes: ref?.mes ?? "", ano: ref?.ano ?? "" }); }}>Relatório</button>
-                    {row.url_pagamento ? <a className="acao acao-cyan" href={row.url_pagamento} target="_blank" rel="noreferrer">Link</a> : null}
-                    {podeEnviar ? <button type="button" className="acao acao-cyan" disabled={Boolean(progresso)} onClick={() => enviarPendentes([row.id])}>Enviar relatório</button> : null}
-                    <button type="button" className="acao acao-cyan" onClick={() => sincronizar.mutate(row.id)}>Verificar</button>
-                    {row.situacao === "aberta" ? <button type="button" className="acao acao-cyan" onClick={() => setPagamento({ id: row.id, data: new Date().toISOString().slice(0, 10) })}>Baixar</button> : null}
-                    {row.situacao !== "cancelada" ? <button type="button" className="acao acao-cyan" onClick={() => void abrirNota(row)}>Nota</button> : null}
-                    {row.situacao === "aberta" ? <button type="button" className="acao acao-rose" onClick={() => excluir.mutate(row.id)}>Excluir</button> : null}
-                    {row.notas.map((item) => item.pdf_url ? <a key={item.id} className="acao acao-cyan" href={item.pdf_url} target="_blank" rel="noreferrer">PDF da nota</a> : (
-                      <button key={item.id} type="button" className="acao acao-cyan" disabled={baixarNota.isPending} onClick={() => {
-                        const aba = window.open("about:blank", "_blank");
-                        baixarNota.mutate(item.id, {
-                          onSuccess: (resultado) => {
-                            const url = resultado.data.pdf_url;
-                            if (aba) aba.location.href = url;
-                            else window.location.assign(url);
-                          },
-                          onError: () => aba?.close(),
-                        });
-                      }}>PDF da nota</button>
-                    ))}
-                  </div>
-                </td>
+      {aviso ? <Alerta tom={aviso.startsWith("Nenhum") ? "aviso" : "info"}>{aviso}</Alerta> : null}
+
+      {query.isLoading ? <Skeleton className="h-64" /> : query.isError ? (
+        <Alerta>{query.error instanceof ApiError ? query.error.message : "Não foi possível carregar as cobranças."}</Alerta>
+      ) : rows.length ? (
+        <Card className="overflow-x-auto p-0">
+          <table className="data-table min-w-[1120px]">
+            <thead>
+              <tr>
+                <th className="w-px"><span className="sr-only">Selecionar</span></th>
+                <th>Empresa</th>
+                <th>Descrição</th>
+                <th>Vencimento</th>
+                <th className="text-right">Valor</th>
+                <th>Situação</th>
+                <th>Relatório por e-mail</th>
+                <th className="text-right">Ações</th>
               </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </Card>
-      <p className="text-sm text-slate-500">{rows.length === 0 ? "Nenhuma cobrança neste período." : `${rows.length} cobranças`} · em aberto {money(total)}</p>
+            </thead>
+            <tbody>
+              {rows.map((row) => {
+                const podeEnviar = row.situacao === "aberta" && !row.envio;
+                const marcada = marcadas.includes(row.id);
+                const nome = textoPlano(row.empresa_fantasia) || textoPlano(row.empresa_razao) || "Empresa sem nome";
+                return (
+                  <tr key={row.id} className={marcada ? "bg-cyan-50" : undefined}>
+                    <td>
+                      {podeEnviar ? (
+                        <input
+                          type="checkbox"
+                          aria-label={`Selecionar ${nome}`}
+                          className="h-4 w-4 accent-cyan-700"
+                          checked={marcada}
+                          onChange={(event) => setMarcadas((atual) => event.target.checked ? [...atual, row.id] : atual.filter((id) => id !== row.id))}
+                        />
+                      ) : null}
+                    </td>
+                    <td className="max-w-72">
+                      <p className="truncate font-semibold text-navy-900" title={nome}>{nome}</p>
+                      {row.empresa_cnpj ? <p className="text-xs tabular-nums text-slate-500">{formatCnpj(row.empresa_cnpj)}</p> : null}
+                    </td>
+                    <td className="text-slate-600">{row.descricao}</td>
+                    <td className="whitespace-nowrap tabular-nums text-slate-600">{dateBr(row.vencimento)}</td>
+                    <td className="whitespace-nowrap text-right font-semibold tabular-nums text-navy-900">{money(row.valor)}</td>
+                    <td><Badge value={row.situacao === "paga" ? "ativa" : row.situacao === "aberta" ? "aberta" : "encerrada"}>{situacaoLabel[row.situacao] ?? row.situacao}</Badge></td>
+                    <td className="whitespace-nowrap text-slate-600">{row.envio ? <span className="tabular-nums">Enviado em {dataEnvio(row.envio)}</span> : <span className="text-slate-400">Não enviado</span>}</td>
+                    <td>
+                      <div className="flex min-w-56 flex-wrap justify-end gap-1.5">
+                        <button type="button" className="acao acao-cyan" onClick={() => { const ref = competencia(row.descricao); setRelatorio({ empresaId: row.id_empresa, mes: ref?.mes ?? "", ano: ref?.ano ?? "" }); }}>Relatório</button>
+                        {row.url_pagamento ? <a className="acao acao-cyan inline-flex items-center gap-1" href={row.url_pagamento} target="_blank" rel="noreferrer">Link <ExternalLink size={12} /></a> : null}
+                        {podeEnviar ? <button type="button" className="acao acao-cyan" disabled={Boolean(progresso)} onClick={() => enviarPendentes([row.id])}>Enviar relatório</button> : null}
+                        <button type="button" className="acao acao-cyan" onClick={() => sincronizar.mutate(row.id)}>Verificar</button>
+                        {row.situacao === "aberta" ? <button type="button" className="acao acao-cyan" onClick={() => setPagamento({ id: row.id, data: new Date().toISOString().slice(0, 10) })}>Baixar</button> : null}
+                        {row.situacao !== "cancelada" ? <button type="button" className="acao acao-cyan" onClick={() => void abrirNota(row)}>Nota</button> : null}
+                        {row.notas.map((item) => item.pdf_url ? <a key={item.id} className="acao acao-cyan inline-flex items-center gap-1" href={item.pdf_url} target="_blank" rel="noreferrer">PDF da nota <ExternalLink size={12} /></a> : (
+                          <button key={item.id} type="button" className="acao acao-cyan" disabled={baixarNota.isPending} onClick={() => {
+                            const aba = window.open("about:blank", "_blank");
+                            baixarNota.mutate(item.id, {
+                              onSuccess: (resultado) => {
+                                const url = resultado.data.pdf_url;
+                                if (aba) aba.location.href = url;
+                                else window.location.assign(url);
+                              },
+                              onError: () => aba?.close(),
+                            });
+                          }}>PDF da nota</button>
+                        ))}
+                        {row.situacao === "aberta" ? <button type="button" className="acao acao-rose" onClick={() => excluir.mutate(row.id)}>Excluir</button> : null}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <div className="border-t border-slate-100 px-4 py-3 text-sm text-slate-500">
+            Em aberto nesta lista <span className="font-bold tabular-nums text-navy-900">{money(total)}</span>
+          </div>
+        </Card>
+      ) : busca.trim() || empresaId ? (
+        <Empty title="Nenhuma cobrança dessa empresa no período" text="Mude as datas ou use “Limpar e ver todas” para ver as outras empresas." />
+      ) : filtrando ? (
+        <Empty title="Nenhuma cobrança com esses filtros" text="Amplie o período de vencimento, troque a situação ou limpe os filtros." />
+      ) : (
+        <Empty title="Nenhuma cobrança com vencimento neste mês" text="Gere uma cobrança acima ou mude o período de vencimento." />
+      )}
+
       {relatorio ? <RelatorioEmpresaPainel empresaId={relatorio.empresaId} mes={relatorio.mes} ano={relatorio.ano} onClose={() => setRelatorio(null)} /> : null}
       {pagamento ? (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-navy-950/40 p-4">
-          <Card className="motion-pop w-full max-w-md">
-            <h2 className="text-lg font-bold">Data do recebimento</h2>
-            <div className="mt-4"><Field label="Data"><Input type="date" value={pagamento.data} onChange={(event) => setPagamento({ ...pagamento, data: event.target.value })} /></Field></div>
-            <div className="mt-4 flex justify-end gap-2">
+        <div className="fixed inset-0 z-50 grid place-items-center bg-navy-950/40 p-4" role="dialog" aria-modal="true" aria-labelledby="recebimento-titulo">
+          <Card className="motion-pop grid w-full max-w-md gap-4">
+            <div>
+              <h2 id="recebimento-titulo" className="text-[15px] font-bold text-navy-900">Data do recebimento</h2>
+              <p className="text-sm text-slate-500">Dá baixa no Asaas como recebido em dinheiro, com o valor cheio.</p>
+            </div>
+            <Field label="Data"><Input type="date" value={pagamento.data} onChange={(event) => setPagamento({ ...pagamento, data: event.target.value })} /></Field>
+            <div className="flex justify-end gap-2">
               <Button type="button" variant="secondary" onClick={() => setPagamento(null)}>Cancelar</Button>
-              <Button type="button" disabled={receber.isPending} onClick={() => receber.mutate()}>Confirmar</Button>
+              <Button type="button" disabled={receber.isPending} onClick={() => receber.mutate()}><Check size={16} /> {receber.isPending ? "Confirmando…" : "Confirmar recebimento"}</Button>
             </div>
           </Card>
         </div>
       ) : null}
       {nota ? (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-navy-950/40 p-4">
-          <Card className="motion-pop grid w-full max-w-lg gap-3">
-            <h2 className="text-lg font-bold">Emitir nota fiscal</h2>
-            {nota.origem === "carregando" ? <p className="text-sm text-slate-500">Preparando a nota…</p> : null}
-            {nota.origem === "misto" ? <p className="text-sm text-slate-600">Esta cobrança tem estágio e CLT, então saem duas notas.</p> : null}
-            {nota.origem === "padrao" ? <p className="text-sm text-slate-600">Não encontrei os contratos deste mês. Confira o serviço antes de emitir.</p> : null}
+        <div className="fixed inset-0 z-50 grid place-items-center bg-navy-950/40 p-4" role="dialog" aria-modal="true" aria-labelledby="nota-titulo">
+          <Card className="motion-pop grid max-h-[90vh] w-full max-w-lg gap-4 overflow-auto">
+            <div>
+              <h2 id="nota-titulo" className="text-[15px] font-bold text-navy-900">Emitir nota fiscal</h2>
+              <p className="text-sm text-slate-500">Confira o serviço, o ISS, o valor e a descrição antes de emitir.</p>
+            </div>
+            {nota.origem === "carregando" ? <Skeleton className="h-32" /> : null}
+            {nota.origem === "misto" ? <Alerta tom="info">Esta cobrança tem estágio e CLT, então saem duas notas.</Alerta> : null}
+            {nota.origem === "padrao" ? <Alerta tom="aviso">Não encontrei os contratos deste mês. Confira o serviço antes de emitir.</Alerta> : null}
             {nota.itens.map((item, index) => (
-              <div key={`${item.tipo}-${index}`} className="grid gap-3">
-                {nota.itens.length > 1 ? <p className="text-sm font-semibold text-slate-700">{item.descricao}</p> : null}
-                <Field label="Código do serviço municipal"><Input value={item.codigo} onChange={(event) => setNota({ ...nota, itens: nota.itens.map((atual, i) => i === index ? { ...atual, codigo: event.target.value } : atual) })} /></Field>
-                <Field label="ISS (%)"><Input value={item.iss} onChange={(event) => setNota({ ...nota, itens: nota.itens.map((atual, i) => i === index ? { ...atual, iss: event.target.value } : atual) })} /></Field>
-                <Field label="Valor"><Input value={item.valor} onChange={(event) => setNota({ ...nota, itens: nota.itens.map((atual, i) => i === index ? { ...atual, valor: event.target.value } : atual) })} /></Field>
-                <Field label="Descrição"><Input value={item.descricao} onChange={(event) => setNota({ ...nota, itens: nota.itens.map((atual, i) => i === index ? { ...atual, descricao: event.target.value } : atual) })} /></Field>
+              <div key={`${item.tipo}-${index}`} className="grid gap-3 rounded-lg border border-slate-200 p-3">
+                {nota.itens.length > 1 ? <p className="text-sm font-semibold text-navy-900">{item.descricao}</p> : null}
+                <div className="grid gap-3 sm:grid-cols-6">
+                  <div className="sm:col-span-3"><Field label="Código do serviço municipal"><Input value={item.codigo} onChange={(event) => setNota({ ...nota, itens: nota.itens.map((atual, i) => i === index ? { ...atual, codigo: event.target.value } : atual) })} /></Field></div>
+                  <div className="sm:col-span-1"><Field label="ISS (%)"><Input value={item.iss} onChange={(event) => setNota({ ...nota, itens: nota.itens.map((atual, i) => i === index ? { ...atual, iss: event.target.value } : atual) })} /></Field></div>
+                  <div className="sm:col-span-2"><Field label="Valor"><Input value={item.valor} onChange={(event) => setNota({ ...nota, itens: nota.itens.map((atual, i) => i === index ? { ...atual, valor: event.target.value } : atual) })} /></Field></div>
+                  <div className="sm:col-span-6"><Field label="Descrição"><Input value={item.descricao} onChange={(event) => setNota({ ...nota, itens: nota.itens.map((atual, i) => i === index ? { ...atual, descricao: event.target.value } : atual) })} /></Field></div>
+                </div>
               </div>
             ))}
             <div className="flex justify-end gap-2">
               <Button type="button" variant="secondary" onClick={() => setNota(null)}>Cancelar</Button>
-              <Button type="button" disabled={emitir.isPending || nota.itens.length === 0 || nota.itens.some((item) => !item.codigo)} onClick={() => emitir.mutate()}>{nota.itens.length > 1 ? "Emitir as duas" : "Emitir"}</Button>
+              <Button type="button" disabled={emitir.isPending || nota.itens.length === 0 || nota.itens.some((item) => !item.codigo)} onClick={() => emitir.mutate()}><FileText size={16} /> {emitir.isPending ? "Emitindo…" : nota.itens.length > 1 ? "Emitir as duas" : "Emitir nota"}</Button>
             </div>
           </Card>
         </div>

@@ -1,6 +1,7 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Check, ClipboardCopy, FileText, Loader2, Phone, Save, Search, Sparkles, Upload, X } from "lucide-react";
 import { useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import { Alerta, CabecalhoPagina } from "@/components/pagina";
 import { Button, Card, Field, Input, Select, Textarea, cn } from "@/components/ui";
 import { api } from "@/lib/api";
 
@@ -238,13 +239,13 @@ export function DossiePage() {
 
   return (
     <div className="grid gap-5">
-      <div>
-        <h1 className="text-2xl font-extrabold">Gerador de dossiês</h1>
-        <p className="text-sm text-slate-500">Busque o candidato no CRM pelo telefone, escolha a vaga, envie o currículo e gere o dossiê para a empresa.</p>
-      </div>
+      <CabecalhoPagina
+        titulo="Gerador de dossiês"
+        descricao="Busque o candidato no CRM pelo telefone, escolha a vaga, envie o currículo e gere o dossiê para a empresa."
+      />
 
       {status.data && !status.data.data.configurada ? (
-        <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">A geração de dossiê está indisponível: falta configurar a OPENAI_API_KEY no servidor.</p>
+        <Alerta tom="aviso">A geração de dossiê está indisponível: falta configurar a OPENAI_API_KEY no servidor.</Alerta>
       ) : null}
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] xl:items-start">
@@ -296,7 +297,7 @@ export function DossiePage() {
                   </option>
                 ))}
               </Select>
-              {vagas.isError ? <p className="text-sm text-rose-600">{vagas.error.message}</p> : null}
+              {vagas.isError ? <Alerta>{vagas.error.message}</Alerta> : null}
               {busca?.idVagaCrm && !busca.vagaEscolhidaId ? (
                 <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">A vaga escolhida no CRM ({busca.idVagaCrm}) não está entre as vagas abertas. Escolha a vaga na lista.</p>
               ) : null}
@@ -347,7 +348,7 @@ export function DossiePage() {
                 {gerar.isPending ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />} {gerar.isPending ? "Gerando dossiê…" : "Gerar dossiê"}
               </Button>
               {faltando && !gerar.isPending ? <p className="text-xs text-slate-500">Falta {faltando}.</p> : null}
-              {erro ? <p className="text-sm text-rose-600">{erro}</p> : null}
+              {erro ? <Alerta>{erro}</Alerta> : null}
             </div>
           </div>
         </Card>

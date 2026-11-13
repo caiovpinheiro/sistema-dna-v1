@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { CabecalhoPagina } from "@/components/pagina";
+import { Alerta, CabecalhoPagina } from "@/components/pagina";
 import { Skeleton, cn } from "@/components/ui";
 import { api } from "@/lib/api";
 
@@ -190,7 +190,7 @@ export function MetricasPage() {
         {invertido ? <p className="w-full text-xs text-rose-300">A data inicial é depois da final.</p> : null}
       </section>
       {query.isLoading ? <Skeleton className="h-64" /> : null}
-      {query.isError ? <p className="text-sm text-rose-300">Não foi possível calcular as métricas.</p> : null}
+      {query.isError ? <Alerta>Não foi possível calcular as métricas. Atualize a página; se continuar, avise o suporte.</Alerta> : null}
       {data ? (
         <>
           <section className="overflow-hidden rounded-xl bg-[#12141a] ring-1 ring-white/10">

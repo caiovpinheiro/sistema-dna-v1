@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Alerta, CabecalhoPagina } from "@/components/pagina";
 import { Badge, Skeleton, cn } from "@/components/ui";
 import { PreviewFlutuante } from "@/components/preview";
 import { OrigemDashboard } from "@/origem/OrigemDashboard";
@@ -65,34 +66,34 @@ export function DashboardPage() {
 
   return (
     <div className="grid gap-3">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight text-white">Painel</h1>
-          <p className="text-sm text-slate-400">{data ? `${dateBr(data.periodo.inicio)} a ${dateBr(somar(data.periodo.fim, -1))}` : "Movimento do período"}</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {[7, 30, 90].map((valor) => (
-            <button
-              key={valor}
-              type="button"
-              aria-pressed={dias === valor}
-              className={`rounded-lg px-3 py-1.5 text-sm ${dias === valor ? "bg-cyan-700 font-semibold text-white" : "text-slate-600 hover:bg-slate-100"}`}
-              onClick={() => { setDias(valor); setDe(""); setAte(""); }}
-            >
-              {valor} dias
-            </button>
-          ))}
-          <input aria-label="Data inicial" type="date" value={de} onChange={(event) => { setDe(event.target.value); setDias(null); }} className="h-8 rounded-lg border border-white/10 bg-white/5 px-2 text-sm text-white [color-scheme:dark]" />
-          <input aria-label="Data final" type="date" value={ate} onChange={(event) => { setAte(event.target.value); setDias(null); }} className="h-8 rounded-lg border border-white/10 bg-white/5 px-2 text-sm text-white [color-scheme:dark]" />
-        </div>
-      </div>
+      <CabecalhoPagina
+        titulo="Painel"
+        descricao={data ? `Movimento de ${dateBr(data.periodo.inicio)} a ${dateBr(somar(data.periodo.fim, -1))}.` : "Movimento do período."}
+        acoes={(
+          <>
+            {[7, 30, 90].map((valor) => (
+              <button
+                key={valor}
+                type="button"
+                aria-pressed={dias === valor}
+                className={`rounded-lg px-3 py-1.5 text-sm ${dias === valor ? "bg-cyan-700 font-semibold text-white" : "text-slate-600 hover:bg-slate-100"}`}
+                onClick={() => { setDias(valor); setDe(""); setAte(""); }}
+              >
+                {valor} dias
+              </button>
+            ))}
+            <input aria-label="Data inicial" type="date" value={de} onChange={(event) => { setDe(event.target.value); setDias(null); }} className="h-8 rounded-lg border border-white/10 bg-white/5 px-2 text-sm text-white [color-scheme:dark]" />
+            <input aria-label="Data final" type="date" value={ate} onChange={(event) => { setAte(event.target.value); setDias(null); }} className="h-8 rounded-lg border border-white/10 bg-white/5 px-2 text-sm text-white [color-scheme:dark]" />
+          </>
+        )}
+      />
       {query.isLoading ? (
         <div className="grid gap-3">
           <Skeleton className="h-28 bg-[#12141a]" />
           <Skeleton className="h-40 bg-[#12141a]" />
         </div>
       ) : null}
-      {query.isError ? <p className="text-sm text-rose-300">Não foi possível carregar os indicadores.</p> : null}
+      {query.isError ? <Alerta>Não foi possível carregar os indicadores. Atualize a página; se continuar, avise o suporte.</Alerta> : null}
       {data ? (
         <>
           <section className="overflow-hidden rounded-xl bg-[#12141a] ring-1 ring-white/10">

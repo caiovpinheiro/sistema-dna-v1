@@ -1,12 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { FileSpreadsheet, FileText, ListChecks, Receipt, Search, Send, Wallet, X } from "lucide-react";
 import { useState, type FormEvent, type MouseEvent, type ReactNode } from "react";
 import { Paginacao } from "@/components/paginacao";
-import { Button, Card, Field, Input, Select } from "@/components/ui";
+import { Alerta, CabecalhoPagina, CampoFiltro, ResumoResultados } from "@/components/pagina";
+import { Badge, Button, Card, Empty, Field, Input, Select, Skeleton, cn } from "@/components/ui";
 import { RelatorioEmpresaPainel } from "@/components/relatorio-empresa";
 import { api } from "@/lib/api";
-import { dateBr, formatCnpj, money } from "@/lib/format";
+import { dateBr, formatCnpj, money, textoPlano } from "@/lib/format";
 
 const months = ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12"];
+const nomesMes = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 
 function nowMonth() {
   return String(new Date().getMonth() + 1).padStart(2, "0");
@@ -16,35 +19,42 @@ function nowYear() {
   return String(new Date().getFullYear());
 }
 
-function Screen({ title, subtitle, children }: { title: string; subtitle?: string; children: ReactNode }) {
-  return (
-    <div className="grid gap-5">
-      <div>
-        <h1 className="text-2xl font-extrabold">{title}</h1>
-        {subtitle ? <p className="text-sm text-slate-500">{subtitle}</p> : null}
-      </div>
-      {children}
-    </div>
-  );
+/** Filtros guardados na tela (não na URL): a versão muda ao limpar, para os campos com defaultValue voltarem ao padrão. */
+function useLimpeza<T extends Record<string, string>>(inicial: T, busca: Record<string, string>, aplicar: (valor: T) => void) {
+  const [versao, setVersao] = useState(0);
+  const chaves = new Set([...Object.keys(inicial), ...Object.keys(busca)]);
+  const filtrando = [...chaves].some((chave) => (busca[chave] ?? "") !== ((inicial as Record<string, string>)[chave] ?? ""));
+  function limpar() {
+    aplicar(inicial);
+    setVersao((atual) => atual + 1);
+  }
+  return { versao, filtrando, limpar };
 }
 
 function EmpresaField() {
-  return <Field label="Empresa"><Input name="empresa" aria-label="Empresa" placeholder="Empresa" /></Field>;
+  return (
+    <CampoFiltro rotulo="Empresa">
+      <div className="relative">
+        <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+        <Input name="empresa" aria-label="Empresa" placeholder="Nome ou razão social" className="pl-9" />
+      </div>
+    </CampoFiltro>
+  );
 }
 
 function MonthField({ todos = false }: { todos?: boolean }) {
   return (
-    <Field label="Mês">
+    <CampoFiltro rotulo="Mês">
       <Select name="mes" aria-label="Mês" defaultValue={todos ? "" : nowMonth()}>
         {todos ? <option value="">Todos</option> : null}
-        {months.map((month) => <option key={month}>{month}</option>)}
+        {months.map((month, index) => <option key={month} value={month}>{nomesMes[index]}</option>)}
       </Select>
-    </Field>
+    </CampoFiltro>
   );
 }
 
 function YearField() {
-  return <Field label="Ano"><Input name="ano" aria-label="Ano" defaultValue={nowYear()} inputMode="numeric" /></Field>;
+  return <CampoFiltro rotulo="Ano"><Input name="ano" aria-label="Ano" defaultValue={nowYear()} inputMode="numeric" /></CampoFiltro>;
 }
 
 function MonthRange() {
@@ -52,14 +62,14 @@ function MonthRange() {
   const de = `${nowYear()}-01`;
   return (
     <>
-      <Field label="De Início"><Input name="de" aria-label="De Início" type="month" defaultValue={de} /></Field>
-      <Field label="Até"><Input name="ate" aria-label="Até" type="month" defaultValue={ate} /></Field>
+      <CampoFiltro rotulo="De"><Input name="de" aria-label="De Início" type="month" defaultValue={de} /></CampoFiltro>
+      <CampoFiltro rotulo="Até"><Input name="ate" aria-label="Até" type="month" defaultValue={ate} /></CampoFiltro>
     </>
   );
 }
 
 function SearchButton() {
-  return <Button type="submit" variant="secondary" className="self-end">Pesquisar</Button>;
+  return <Button type="submit" className="h-10"><Search size={16} /> Pesquisar</Button>;
 }
 
 function reais(valor: number | string | boolean | null | undefined) {
@@ -78,49 +88,65 @@ function lerFiltros(event: FormEvent<HTMLFormElement>, chaves: string[]) {
 }
 
 function ExcelButton({ onClick, disabled }: { onClick?: (event: MouseEvent<HTMLButtonElement>) => void; disabled?: boolean }) {
-  return <Button type="button" variant="secondary" className="self-end" disabled={disabled} onClick={onClick}>Gerar excel</Button>;
+  return <Button type="button" variant="secondary" className="h-10" disabled={disabled} onClick={onClick}><FileSpreadsheet size={16} /> Gerar Excel</Button>;
 }
 
-function DataTable({ columns, rows }: { columns: ReactNode[]; rows: ReactNode[][] }) {
+/** Nome fantasia em destaque e razão social embaixo, com as entidades HTML do sistema antigo limpas. */
+function NomeEmpresa({ fantasia, razao, extra }: { fantasia: string | null; razao: string | null; extra?: ReactNode }) {
+  const principal = textoPlano(fantasia) || textoPlano(razao) || "Empresa sem nome";
+  const segunda = fantasia && razao ? textoPlano(razao) : "";
   return (
-    <Card className="overflow-x-auto p-0">
-      <table className="w-full min-w-[960px] text-left text-sm">
-        <thead className="text-slate-500">
-          <tr className="border-b">
-            {columns.map((column, index) => <th key={index} className="px-4 py-3 font-semibold whitespace-nowrap">{column}</th>)}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, index) => (
-            <tr key={index} className="border-b border-slate-100">
-              {row.map((cell, cellIndex) => <td key={cellIndex} className="px-4 py-3 whitespace-nowrap">{cell}</td>)}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </Card>
-  );
-}
-
-function ListingFooter({ count, total }: { count: number; total: string }) {
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
-      <p className="font-semibold text-slate-500">{count === 0 ? "Nenhum registro encontrado" : `Mostrando 1 até ${count} de ${count} encontrados`}</p>
-      <p className="ml-auto text-base font-semibold text-slate-800">Total a receber {total}</p>
+    <div className="min-w-0 max-w-80">
+      <p className="truncate font-semibold text-navy-900" title={principal}>{principal}</p>
+      {segunda && segunda !== principal ? <p className="truncate text-xs text-slate-500" title={segunda}>{segunda}</p> : null}
+      {extra}
     </div>
   );
+}
+
+function Resumo({ rotulo, valor, detalhe, destaque }: { rotulo: string; valor: string; detalhe?: string; destaque?: boolean }) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+      <dt className="text-xs font-semibold text-slate-500">{rotulo}</dt>
+      <dd className={cn("mt-0.5 font-extrabold tabular-nums text-navy-900", destaque ? "text-2xl" : "text-xl")}>{valor}</dd>
+      {detalhe ? <dd className="mt-0.5 text-xs text-slate-500">{detalhe}</dd> : null}
+    </div>
+  );
+}
+
+/** Rodapé da tabela: total à esquerda (quando houver) e a paginação à direita. */
+function RodapeTabela({ total, pagina, registros, onPagina }: { total?: ReactNode; pagina: number; registros: number; onPagina: (pagina: number) => void }) {
+  const paginas = Math.ceil(registros / TAMANHO);
+  if (!total && paginas <= 1) return null;
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100">
+      {total ? <p className="px-4 py-3 text-sm text-slate-500">{total}</p> : <span />}
+      <Paginacao pagina={pagina} tamanho={TAMANHO} total={registros} onPagina={onPagina} />
+    </div>
+  );
+}
+
+function erroDe(erro: unknown, padrao: string) {
+  return erro instanceof Error && erro.message ? erro.message : padrao;
 }
 
 function PayDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-navy-950/40 p-4" role="dialog" aria-modal="true" aria-labelledby="pay-title">
-      <Card className="w-full max-w-md">
-        <h2 id="pay-title" className="text-lg font-bold">Qual a data de pagamento?</h2>
-        <div className="mt-4"><Field label="Data"><Input aria-label="Data" type="date" /></Field></div>
-        <div className="mt-4 flex justify-end gap-2">
+      <Card className="motion-pop grid w-full max-w-md gap-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 id="pay-title" className="text-[15px] font-bold text-navy-900">Pagar comissão</h2>
+            <p className="text-sm text-slate-500">Qual a data de pagamento?</p>
+          </div>
+          <button type="button" aria-label="Fechar" className="rounded-lg p-1 text-slate-500 hover:bg-slate-100" onClick={onClose}><X size={18} /></button>
+        </div>
+        <Field label="Data do pagamento"><Input aria-label="Data" type="date" /></Field>
+        <Alerta tom="aviso">O pagamento de comissão ainda não é gravado pelo sistema.</Alerta>
+        <div className="flex justify-end gap-2">
           <Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
-          <Button type="button" onClick={onClose}>Enviar</Button>
+          <Button type="button" onClick={onClose}>Confirmar</Button>
         </div>
       </Card>
     </div>
@@ -129,10 +155,17 @@ function PayDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
 
 const TAMANHO = 50;
 
-function Consulta({ carregando, erro }: { carregando: boolean; erro: unknown }) {
-  if (carregando) return <p className="text-sm text-slate-500">Carregando...</p>;
-  if (erro instanceof Error) return <p className="text-sm text-red-600">{erro.message}</p>;
-  return null;
+const tomFatura: Record<string, string> = { Aberta: "aberta", Parcial: "pausada", Faturado: "ativa", Faturada: "ativa", Paga: "ativa", Pago: "ativa", Cancelada: "encerrada", Vencido: "recusado", Aberto: "aberta" };
+
+function SeloStatus({ status }: { status: string | null | undefined }) {
+  if (!status || status === "—") return <span className="text-slate-400">—</span>;
+  return <Badge value={tomFatura[status]}>{status}</Badge>;
+}
+
+/** "10" vira "Dia 10"; outros formatos aparecem como vieram. */
+function fechamento(valor: string | null) {
+  if (!valor) return "—";
+  return /^\d{1,2}$/.test(valor.trim()) ? `Dia ${valor.trim()}` : dateBr(valor);
 }
 
 export function GerarFaturamentoPage() {
@@ -144,6 +177,7 @@ export function GerarFaturamentoPage() {
   const [marcadas, setMarcadas] = useState<string[]>([]);
   const [aberta, setAberta] = useState<string | null>(null);
   const [progresso, setProgresso] = useState<{ feito: number; total: number } | null>(null);
+  const limpeza = useLimpeza(inicial, busca, (valor) => { setBusca(valor); setPagina(1); });
   const result = useQuery({
     queryKey: ["faturamento", busca, pagina],
     queryFn: () => api<{ matriz: Array<{ razao_social: string | null; nome_fantasia: string | null; cnpj: string | null; datafechamento: string | null; status: string }>; itens: Array<{ id_empresa: string; razao_social: string | null; nome_fantasia: string | null; cnpj: string | null; tipo: string | null; datafechamento: string | null; itens: number; valor: number | null; status: string; envio: string | null }> }>(`/api/v1/faturamento?${new URLSearchParams({ ...busca, page: String(pagina), pageSize: String(TAMANHO) })}`),
@@ -200,121 +234,167 @@ export function GerarFaturamentoPage() {
           : `Nenhuma cobrança foi gerada. ${porque || "O envio falhou antes de criar o boleto."}`);
     await client.invalidateQueries({ queryKey: ["faturamento"] });
   }
+  async function selecionarTodas() {
+    try {
+      const params = new URLSearchParams({ ...busca, page: "1", pageSize: "100" });
+      const primeira = await api<{ itens: Array<{ id_empresa: string }> }>(`/api/v1/faturamento?${params}`);
+      let ids = primeira.data.itens.map((item) => item.id_empresa);
+      const totalBusca = Number(primeira.meta?.total ?? ids.length);
+      if (totalBusca > 100) {
+        params.set("page", "2");
+        const segunda = await api<{ itens: Array<{ id_empresa: string }> }>(`/api/v1/faturamento?${params}`);
+        ids = [...ids, ...segunda.data.itens.map((item) => item.id_empresa)];
+      }
+      setMarcadas(ids);
+      setAviso(ids.length ? `${ids.length} empresas selecionadas.` : "Nenhuma empresa para selecionar.");
+    } catch (error) {
+      setAviso(error instanceof Error ? error.message : "Não foi possível selecionar as empresas.");
+    }
+  }
   const dados = result.data?.data;
   const total = Number(result.data?.meta?.total ?? 0);
   const meta = result.data?.meta as { asaas?: { valor: number; quantidade: number } | null; conferencia?: { valor: number; quantidade: number }; totalReceber?: number } | undefined;
+  const itens = dados?.itens ?? [];
+  const matriz = dados?.matriz ?? [];
+  const paginaMarcada = itens.length > 0 && itens.every((item) => marcadas.includes(item.id_empresa));
   return (
-    <Screen title="Faturamento" subtitle="Gerar Faturamento">
-      <div className="grid gap-3 md:grid-cols-2">
-        <Card>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Valor a receber</p>
-          <p className="mt-2 text-3xl font-extrabold">{reais(meta?.totalReceber)}</p>
-          <p className="mt-1 text-sm text-slate-500">Calculado neste mês, como no sistema antigo: recorrente mais recrutamento.</p>
-        </Card>
-        <Card>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Asaas</p>
-          <p className="mt-2 text-3xl font-extrabold">{meta?.asaas ? reais(meta.asaas.valor) : "—"}</p>
-          <p className="mt-1 text-sm text-slate-500">{meta?.asaas ? `${meta.asaas.quantidade} cobranças em aberto no Asaas` : "Asaas indisponível neste momento"}</p>
-        </Card>
-      </div>
-      <form onSubmit={(event) => { event.preventDefault(); setBusca({ ...inicial, ...lerFiltros(event, ["empresa", "mes", "ano", "status"]) }); setPagina(1); }}>
-      <Card className="grid items-end gap-3 md:grid-cols-2 xl:grid-cols-5">
-        <EmpresaField />
-        <MonthField />
-        <YearField />
-        <Field label="Status">
-          <Select name="status" aria-label="Status" defaultValue="3">
-            <option value="">Todos</option>
-            <option value="0">Aberta</option>
-            <option value="3">Aberta e Parcial</option>
-            <option value="2">Parcial</option>
-            <option value="1">Faturado</option>
-          </Select>
-        </Field>
-        <SearchButton />
+    <div className="grid gap-5">
+      <CabecalhoPagina
+        titulo="Gerar faturamento"
+        descricao="Calcula quanto cada empresa deve no mês e envia o relatório com o boleto do Asaas."
+        acoes={(
+          <Button type="button" variant="secondary" disabled={boletos.isPending} onClick={() => {
+            if (window.confirm(`Gerar os boletos de ${busca.mes}/${busca.ano} no Asaas para as faturas em aberto que ainda não têm cobrança?`)) boletos.mutate();
+          }}><Receipt size={16} /> {boletos.isPending ? "Gerando…" : "Gerar boletos do mês"}</Button>
+        )}
+      />
+      <dl className="grid gap-3 sm:grid-cols-2">
+        <Resumo rotulo="Valor a receber no mês" valor={reais(meta?.totalReceber)} detalhe="Calculado como no sistema antigo: recorrente mais recrutamento." destaque />
+        <Resumo rotulo="Em aberto no Asaas" valor={meta?.asaas ? reais(meta.asaas.valor) : "—"} detalhe={meta?.asaas ? `${meta.asaas.quantidade} cobranças em aberto no Asaas` : "Asaas indisponível neste momento"} destaque />
+      </dl>
+      <Card>
+        <form key={limpeza.versao} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_7rem_minmax(0,1.2fr)_auto] lg:items-end" onSubmit={(event) => { event.preventDefault(); setBusca({ ...inicial, ...lerFiltros(event, ["empresa", "mes", "ano", "status"]) }); setPagina(1); }}>
+          <EmpresaField />
+          <MonthField />
+          <YearField />
+          <CampoFiltro rotulo="Situação da fatura">
+            <Select name="status" aria-label="Status" defaultValue="3">
+              <option value="">Todas</option>
+              <option value="0">Aberta</option>
+              <option value="3">Aberta e parcial</option>
+              <option value="2">Parcial</option>
+              <option value="1">Faturada</option>
+            </Select>
+          </CampoFiltro>
+          <SearchButton />
+        </form>
       </Card>
-      </form>
-      <div className="grid gap-3">
-        <h2 className="text-sm font-semibold text-slate-700">Matriz (Sem candidatos) com faturamento de filiais agrupado</h2>
-        <DataTable
-          columns={["Razão Social", "Nome Fantasia", "CNPJ", "DT Fechamento", "Status"]}
-          rows={(dados?.matriz ?? []).map((item) => [item.razao_social, item.nome_fantasia, formatCnpj(item.cnpj), item.datafechamento, item.status])}
-        />
-      </div>
-      <Consulta carregando={result.isLoading} erro={result.error} />
-      <div className="grid gap-3">
-        <div className="flex flex-wrap items-center gap-3">
-          <Button type="button" disabled={Boolean(progresso) || !total} onClick={async () => {
-            try {
-              const params = new URLSearchParams({ ...busca, page: "1", pageSize: "100" });
-              const primeira = await api<{ itens: Array<{ id_empresa: string }> }>(`/api/v1/faturamento?${params}`);
-              let ids = primeira.data.itens.map((item) => item.id_empresa);
-              const totalBusca = Number(primeira.meta?.total ?? ids.length);
-              if (totalBusca > 100) {
-                params.set("page", "2");
-                const segunda = await api<{ itens: Array<{ id_empresa: string }> }>(`/api/v1/faturamento?${params}`);
-                ids = [...ids, ...segunda.data.itens.map((item) => item.id_empresa)];
-              }
-              setMarcadas(ids);
-              setAviso(ids.length ? `${ids.length} empresas selecionadas.` : "Nenhuma empresa para selecionar.");
-            } catch (error) {
-              setAviso(error instanceof Error ? error.message : "Não foi possível selecionar as empresas.");
-            }
-          }}>Selecionar todas ({total})</Button>
-          {marcadas.length > 0 ? (
-            <Button type="button" disabled={Boolean(progresso)} onClick={() => enviarLote(marcadas)}>Enviar relatório e boleto</Button>
-          ) : null}
-        </div>
-        {progresso ? (
-          <div className="grid gap-1">
-            <div className="h-2 overflow-hidden rounded-full bg-slate-200">
-              <div className="h-full bg-cyan-700 transition-[width]" style={{ width: `${Math.round((progresso.feito / progresso.total) * 100)}%` }} />
-            </div>
-            <p className="text-sm text-slate-500">{progresso.feito} de {progresso.total}</p>
+      <ResumoResultados total={result.isLoading ? null : total} singular="empresa a faturar" plural="empresas a faturar" filtrando={limpeza.filtrando} carregando={result.isLoading} onLimpar={limpeza.limpar} />
+
+      {matriz.length ? (
+        <section className="grid gap-2">
+          <div>
+            <h2 className="text-[15px] font-bold text-navy-900">Matrizes sem candidatos</h2>
+            <p className="text-sm text-slate-500">Matrizes que não entram na lista: o faturamento das filiais fica agrupado nelas.</p>
           </div>
+          <Card className="overflow-x-auto p-0">
+            <table className="data-table compact">
+              <thead><tr><th>Empresa</th><th>CNPJ</th><th>Fechamento</th><th>Situação</th></tr></thead>
+              <tbody>
+                {matriz.map((item, index) => (
+                  <tr key={`${item.cnpj}-${index}`}>
+                    <td><NomeEmpresa fantasia={item.nome_fantasia} razao={item.razao_social} /></td>
+                    <td className="whitespace-nowrap tabular-nums text-slate-600">{formatCnpj(item.cnpj)}</td>
+                    <td className="whitespace-nowrap text-slate-600">{fechamento(item.datafechamento)}</td>
+                    <td><SeloStatus status={item.status} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Card>
+        </section>
+      ) : null}
+
+      <div className="flex flex-wrap items-center gap-3">
+        <Button type="button" variant="secondary" disabled={Boolean(progresso) || !total} onClick={() => void selecionarTodas()}>
+          <ListChecks size={16} /> Selecionar todas ({total})
+        </Button>
+        {marcadas.length > 0 ? (
+          <>
+            <span className="text-sm text-slate-500"><span className="font-bold tabular-nums text-navy-900">{marcadas.length}</span> {marcadas.length === 1 ? "selecionada" : "selecionadas"}</span>
+            <Button type="button" disabled={Boolean(progresso)} onClick={() => enviarLote(marcadas)}><Send size={16} /> Enviar relatório e boleto</Button>
+          </>
         ) : null}
-        {aviso ? <p className={`text-sm font-semibold ${aviso.startsWith("Nenhuma") ? "text-rose-600" : "text-slate-200"}`}>{aviso}</p> : null}
       </div>
-      <Card className="overflow-x-auto p-0">
-        <table className="w-full min-w-[960px] text-left text-sm">
-          <thead className="text-slate-500">
-            <tr className="border-b">
-              <th className="px-4 py-3"><input aria-label="Selecionar página" type="checkbox" checked={Boolean(dados?.itens.length) && (dados?.itens.every((item) => marcadas.includes(item.id_empresa)) ?? false)} onChange={(event) => {
-                const ids = dados?.itens.map((item) => item.id_empresa) ?? [];
-                setMarcadas((atual) => event.target.checked ? [...new Set([...atual, ...ids])] : atual.filter((id) => !ids.includes(id)));
-              }} /></th>
-              {["Razão Social", "Nome Fantasia", "CNPJ", "Tipo", "DT Fechamento", "Itens", "Faturar", "Status", "Envio do Relatório", "Relatório"].map((coluna) => <th key={coluna} className="px-4 py-3 font-semibold whitespace-nowrap">{coluna}</th>)}
-            </tr>
-          </thead>
-          <tbody>
-            {(dados?.itens ?? []).map((item) => (
-              <tr key={item.id_empresa} className="border-b border-slate-100">
-                <td className="px-4 py-3"><input aria-label={`Selecionar ${item.nome_fantasia || item.razao_social}`} type="checkbox" checked={marcadas.includes(item.id_empresa)} onChange={() => setMarcadas((atual) => atual.includes(item.id_empresa) ? atual.filter((id) => id !== item.id_empresa) : [...atual, item.id_empresa])} /></td>
-                <td className="px-4 py-3 font-semibold">{item.razao_social}</td>
-                <td className="px-4 py-3">{item.nome_fantasia}</td>
-                <td className="px-4 py-3">{formatCnpj(item.cnpj)}</td>
-                <td className="px-4 py-3">{item.tipo}</td>
-                <td className="px-4 py-3">{item.datafechamento}</td>
-                <td className="px-4 py-3">{item.itens}</td>
-                <td className="px-4 py-3">{item.valor == null ? "—" : money(item.valor)}</td>
-                <td className="px-4 py-3">{item.status}</td>
-                <td className="px-4 py-3">{dateBr(item.envio)}</td>
-                <td className="px-4 py-3"><button type="button" className="acao acao-cyan" onClick={() => setAberta(item.id_empresa)}>Relatório</button></td>
+      {progresso ? <Progresso feito={progresso.feito} total={progresso.total} /> : null}
+      {aviso ? <Alerta tom={aviso.startsWith("Nenhuma") ? "erro" : "info"}>{aviso}</Alerta> : null}
+
+      {result.isLoading ? <Skeleton className="h-64" /> : result.isError ? (
+        <Alerta>{erroDe(result.error, "Não foi possível carregar o faturamento.")}</Alerta>
+      ) : itens.length ? (
+        <Card className="overflow-x-auto p-0">
+          <table className="data-table min-w-[1040px]">
+            <thead>
+              <tr>
+                <th className="w-px">
+                  <input aria-label="Selecionar página" type="checkbox" className="h-4 w-4 accent-cyan-700" checked={paginaMarcada} onChange={(event) => {
+                    const ids = itens.map((item) => item.id_empresa);
+                    setMarcadas((atual) => event.target.checked ? [...new Set([...atual, ...ids])] : atual.filter((id) => !ids.includes(id)));
+                  }} />
+                </th>
+                <th>Empresa</th>
+                <th>CNPJ</th>
+                <th>Tipo</th>
+                <th>Fechamento</th>
+                <th className="text-right">Itens</th>
+                <th className="text-right">A faturar</th>
+                <th>Situação</th>
+                <th>Relatório enviado</th>
+                <th><span className="sr-only">Ações</span></th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </Card>
+            </thead>
+            <tbody>
+              {itens.map((item) => {
+                const marcada = marcadas.includes(item.id_empresa);
+                return (
+                  <tr key={item.id_empresa} className={marcada ? "bg-cyan-50" : undefined}>
+                    <td><input aria-label={`Selecionar ${item.nome_fantasia || item.razao_social}`} type="checkbox" className="h-4 w-4 accent-cyan-700" checked={marcada} onChange={() => setMarcadas((atual) => atual.includes(item.id_empresa) ? atual.filter((id) => id !== item.id_empresa) : [...atual, item.id_empresa])} /></td>
+                    <td><NomeEmpresa fantasia={item.nome_fantasia} razao={item.razao_social} /></td>
+                    <td className="whitespace-nowrap tabular-nums text-slate-600">{formatCnpj(item.cnpj)}</td>
+                    <td className="text-slate-600">{item.tipo || "—"}</td>
+                    <td className="whitespace-nowrap text-slate-600">{fechamento(item.datafechamento)}</td>
+                    <td className="text-right tabular-nums">{item.itens}</td>
+                    <td className="whitespace-nowrap text-right font-semibold tabular-nums text-navy-900">{item.valor == null ? "—" : money(item.valor)}</td>
+                    <td><SeloStatus status={item.status} /></td>
+                    <td className="whitespace-nowrap tabular-nums text-slate-600">{item.envio ? dateBr(item.envio) : <span className="text-slate-400">Não enviado</span>}</td>
+                    <td className="w-px whitespace-nowrap text-right">
+                      <button type="button" className="acao acao-cyan inline-flex items-center gap-1" onClick={() => setAberta(item.id_empresa)}><FileText size={13} /> Relatório</button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <RodapeTabela pagina={pagina} registros={total} onPagina={setPagina} total={<>Total a receber <span className="font-bold tabular-nums text-navy-900">{reais(meta?.totalReceber)}</span></>} />
+        </Card>
+      ) : limpeza.filtrando ? (
+        <Empty title="Nenhuma empresa com esses filtros" text="Troque o mês, a situação ou a empresa, ou limpe os filtros para voltar ao mês atual." />
+      ) : (
+        <Empty title="Nenhuma empresa a faturar neste mês" text="As empresas com contratação ativa e valor de contrato aparecem aqui quando houver o que faturar." />
+      )}
       {aberta ? <RelatorioEmpresaPainel empresaId={aberta} mes={busca.mes} ano={busca.ano} onClose={() => setAberta(null)} /> : null}
-      <Paginacao pagina={pagina} tamanho={TAMANHO} total={total} onPagina={setPagina} />
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <ListingFooter count={total} total={reais(meta?.totalReceber)} />
-        <Button type="button" disabled={boletos.isPending} onClick={() => {
-          if (window.confirm(`Gerar os boletos de ${busca.mes}/${busca.ano} no Asaas para as faturas em aberto que ainda não têm cobrança?`)) boletos.mutate();
-        }}>{boletos.isPending ? "Gerando..." : "Gerar boletos do mês"}</Button>
+    </div>
+  );
+}
+
+function Progresso({ feito, total }: { feito: number; total: number }) {
+  return (
+    <div className="grid gap-1" role="status">
+      <div className="h-2 overflow-hidden rounded-full bg-slate-200">
+        <div className="h-full bg-cyan-700 transition-[width]" style={{ width: `${Math.round((feito / total) * 100)}%` }} />
       </div>
-      {aviso ? <p className="text-sm text-slate-600">{aviso}</p> : null}
-    </Screen>
+      <p className="text-sm text-slate-500">Enviando {feito} de {total}…</p>
+    </div>
   );
 }
 
@@ -359,6 +439,7 @@ export function RelatorioProcfyPage() {
   const [pagina, setPagina] = useState(1);
   const [porPagamento, setPorPagamento] = useState(false);
   const [detalheId, setDetalheId] = useState<string | null>(null);
+  const limpeza = useLimpeza(inicial, busca, (valor) => { setBusca(valor); setPagina(1); setPorPagamento(false); });
   const result = useQuery({
     queryKey: ["procfy", busca, pagina],
     queryFn: () => api<Procfy[]>(`/api/v1/procfy?${new URLSearchParams({ ...busca, page: String(pagina), pageSize: String(TAMANHO) })}`),
@@ -390,148 +471,195 @@ export function RelatorioProcfyPage() {
     link.click();
     link.remove();
   }
+  const fatura = detalhe.data?.data;
   return (
-    <Screen title="Contas" subtitle="Contas a Receber DNA + DISC">
-      <form onSubmit={(event) => {
-        event.preventDefault();
-        const filtros = lerFiltros(event, ["tipoData", "de", "ate", "status", "sistema"]);
-        const status = String(new FormData(event.currentTarget).get("status") ?? "");
-        filtros.status = filtros.tipoData === "data_pg" ? "1" : status;
-        setBusca({ ...inicial, ...filtros });
-        setPagina(1);
-      }}>
-      <Card className="grid items-end gap-3 md:grid-cols-2 xl:grid-cols-6">
-        <Field label="Tipo data">
-          <Select name="tipoData" aria-label="Tipo data" defaultValue="vencimento_fatura" onChange={(event) => setPorPagamento(event.target.value === "data_pg")}>
-            <option value="vencimento_fatura">Vencimento</option>
-            <option value="data_pg">Pagamento</option>
-            <option value="data_cadastro">Cadastro da cobrança</option>
-          </Select>
-        </Field>
-        <MonthRange />
-        {porPagamento ? null : (
-          <Field label="Status">
-            <Select name="status" aria-label="Status" defaultValue="">
-              <option value="">Selecione</option>
-              <option value="0">Aberta</option>
-              <option value="1">Paga</option>
-              <option value="2">Cancelada</option>
+    <div className="grid gap-5">
+      <CabecalhoPagina
+        titulo="Relatório Procfy"
+        descricao="Faturas do sistema antigo (contas a receber DNA + DISC), com os candidatos de cada fatura e exportação para Excel."
+      />
+      <Card>
+        <form key={limpeza.versao} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-end" onSubmit={(event) => {
+          event.preventDefault();
+          const filtros = lerFiltros(event, ["tipoData", "de", "ate", "status", "sistema"]);
+          const status = String(new FormData(event.currentTarget).get("status") ?? "");
+          filtros.status = filtros.tipoData === "data_pg" ? "1" : status;
+          setBusca({ ...inicial, ...filtros });
+          setPagina(1);
+        }}>
+          <CampoFiltro rotulo="Filtrar pela data de">
+            <Select name="tipoData" aria-label="Tipo data" defaultValue="vencimento_fatura" onChange={(event) => setPorPagamento(event.target.value === "data_pg")}>
+              <option value="vencimento_fatura">Vencimento</option>
+              <option value="data_pg">Pagamento</option>
+              <option value="data_cadastro">Cadastro da cobrança</option>
             </Select>
-          </Field>
-        )}
-        <Field label="Sistema">
-          <Select name="sistema" aria-label="Sistema" defaultValue="ambos">
-            <option value="ambos">Ambos</option>
-            <option value="dna">DNA</option>
-            <option value="disc">DISC</option>
-          </Select>
-        </Field>
-        <div className="flex flex-wrap gap-2">
-          <SearchButton />
-          <ExcelButton onClick={excel} />
-        </div>
+          </CampoFiltro>
+          <MonthRange />
+          {porPagamento ? (
+            <CampoFiltro rotulo="Situação">
+              <p className="flex h-10 items-center text-sm text-slate-500">Só as pagas</p>
+            </CampoFiltro>
+          ) : (
+            <CampoFiltro rotulo="Situação">
+              <Select name="status" aria-label="Status" defaultValue="">
+                <option value="">Todas</option>
+                <option value="0">Aberta</option>
+                <option value="1">Paga</option>
+                <option value="2">Cancelada</option>
+              </Select>
+            </CampoFiltro>
+          )}
+          <CampoFiltro rotulo="Sistema">
+            <Select name="sistema" aria-label="Sistema" defaultValue="ambos">
+              <option value="ambos">DNA e DISC</option>
+              <option value="dna">DNA</option>
+              <option value="disc">DISC</option>
+            </Select>
+          </CampoFiltro>
+          <div className="flex flex-wrap gap-2 sm:col-span-2 lg:col-span-1">
+            <SearchButton />
+            <ExcelButton onClick={excel} />
+          </div>
+        </form>
       </Card>
-      </form>
-      <Consulta carregando={result.isLoading} erro={result.error} />
-      <Card className="overflow-x-auto p-0">
-        <table className="w-full min-w-[960px] text-left text-sm">
-          <thead className="text-slate-500">
-            <tr className="border-b">
-              {["Razão Social", "Nome Fantasia", "Tipo", "Vencimento", "Valor da Fatura", "Forma de Pagamento", "Data de Pagamento", "Status", ""].map((coluna) => <th key={coluna || "detalhe"} className="px-4 py-3 font-semibold whitespace-nowrap">{coluna}</th>)}
-            </tr>
-          </thead>
-          <tbody>
-            {linhas.map((item) => (
-              <tr key={item.id} className="border-b border-slate-100">
-                <td className="px-4 py-3">{item.razao_social}</td>
-                <td className="px-4 py-3">{item.nome_fantasia}</td>
-                <td className="px-4 py-3">{item.tipo}</td>
-                <td className={`px-4 py-3 ${vencida(item) ? "font-semibold text-rose-600" : ""}`}>{dateBr(item.vencimento)}</td>
-                <td className="px-4 py-3">{money(item.valor)}</td>
-                <td className="px-4 py-3">{item.forma_pg}</td>
-                <td className="px-4 py-3">{dateBr(item.data_pg)}</td>
-                <td className="px-4 py-3">{vencida(item) ? "Vencido" : item.status}</td>
-                <td className="px-4 py-3"><button type="button" className="acao acao-cyan" onClick={() => setDetalheId(item.id)}>Detalhes</button></td>
+      <ResumoResultados total={result.isLoading ? null : total} singular="fatura" plural="faturas" filtrando={limpeza.filtrando} carregando={result.isLoading} onLimpar={limpeza.limpar} />
+      {result.isLoading ? <Skeleton className="h-64" /> : result.isError ? (
+        <Alerta>{erroDe(result.error, "Não foi possível carregar as faturas.")}</Alerta>
+      ) : linhas.length ? (
+        <Card className="overflow-x-auto p-0">
+          <table className="data-table min-w-[960px]">
+            <thead>
+              <tr>
+                <th>Empresa</th>
+                <th>Tipo</th>
+                <th>Vencimento</th>
+                <th className="text-right">Valor</th>
+                <th>Forma de pagamento</th>
+                <th>Pago em</th>
+                <th>Situação</th>
+                <th><span className="sr-only">Ações</span></th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </Card>
-      <Paginacao pagina={pagina} tamanho={TAMANHO} total={total} onPagina={setPagina} />
-      <ListingFooter count={total} total={reais(result.data?.meta?.totalReceber)} />
+            </thead>
+            <tbody>
+              {linhas.map((item) => {
+                const atrasada = vencida(item);
+                return (
+                  <tr key={item.id}>
+                    <td><NomeEmpresa fantasia={item.nome_fantasia} razao={item.razao_social} /></td>
+                    <td className="text-slate-600">{item.tipo || "—"}</td>
+                    <td className={cn("whitespace-nowrap tabular-nums", atrasada ? "font-semibold text-rose-700" : "text-slate-600")}>{dateBr(item.vencimento)}</td>
+                    <td className="whitespace-nowrap text-right font-semibold tabular-nums text-navy-900">{money(item.valor)}</td>
+                    <td className="text-slate-600">{item.forma_pg || "—"}</td>
+                    <td className="whitespace-nowrap tabular-nums text-slate-600">{dateBr(item.data_pg)}</td>
+                    <td><SeloStatus status={atrasada ? "Vencido" : item.status} /></td>
+                    <td className="w-px whitespace-nowrap text-right">
+                      <button type="button" className="acao acao-cyan" onClick={() => setDetalheId(item.id)}>Ver detalhes</button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <RodapeTabela pagina={pagina} registros={total} onPagina={setPagina} total={<>Total a receber <span className="font-bold tabular-nums text-navy-900">{reais(result.data?.meta?.totalReceber)}</span></>} />
+        </Card>
+      ) : limpeza.filtrando ? (
+        <Empty title="Nenhuma fatura com esses filtros" text="Amplie o período, troque a situação ou limpe os filtros." />
+      ) : (
+        <Empty title="Nenhuma fatura neste ano" text="Escolha outro período em De e Até e clique em Pesquisar." />
+      )}
       {detalheId ? (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-navy-950/40 p-4" role="dialog" aria-modal="true">
-          <Card className="grid max-h-[90vh] w-full max-w-3xl gap-4 overflow-auto">
+        <div className="fixed inset-0 z-50 grid place-items-center bg-navy-950/40 p-4" role="dialog" aria-modal="true" aria-labelledby="procfy-titulo">
+          <Card className="motion-pop grid max-h-[90vh] w-full max-w-3xl gap-4 overflow-auto">
             <div className="flex items-start justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-bold">{detalhe.data?.data.empresa || "Fatura"}</h2>
-                <p className="text-sm text-slate-500">{detalhe.data?.data.razao}{detalhe.data?.data.cnpj ? ` · ${formatCnpj(detalhe.data.data.cnpj)}` : ""}</p>
+              <div className="min-w-0">
+                <h2 id="procfy-titulo" className="text-lg font-bold text-navy-900">{textoPlano(fatura?.empresa) || "Fatura"}</h2>
+                <p className="text-sm text-slate-500">{textoPlano(fatura?.razao)}{fatura?.cnpj ? ` · ${formatCnpj(fatura.cnpj)}` : ""}</p>
               </div>
-              <Button type="button" variant="secondary" onClick={() => setDetalheId(null)}>Fechar</Button>
+              <Button type="button" variant="secondary" onClick={() => setDetalheId(null)}><X size={16} /> Fechar</Button>
             </div>
-            {detalhe.isLoading ? <p className="text-sm text-slate-500">Carregando relatório...</p> : null}
-            {detalhe.error instanceof Error ? <p className="text-sm text-rose-600">{detalhe.error.message}</p> : null}
-            {detalhe.data ? (
+            {detalhe.isLoading ? <Skeleton className="h-40" /> : null}
+            {detalhe.error instanceof Error ? <Alerta>{detalhe.error.message}</Alerta> : null}
+            {fatura ? (
               <>
-                <p className="text-sm">Valor {money(detalhe.data.data.valor)}{detalhe.data.data.desconto > 0 ? ` · desconto ${money(detalhe.data.data.desconto)}` : ""}{detalhe.data.data.parcela && detalhe.data.data.parcela !== "1/1" ? ` · parcela ${detalhe.data.data.parcela}` : ""} · vencimento {dateBr(detalhe.data.data.vencimento)}</p>
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[640px] text-left text-sm">
-                    <thead className="text-xs uppercase text-slate-400">
-                      <tr><th className="py-2">Tipo</th><th>Candidato</th><th>Cargo</th><th>Valor</th></tr>
-                    </thead>
-                    <tbody>
-                      {detalhe.data.data.itens.map((linha, index) => (
-                        <tr key={`${linha.nome}-${index}`} className="border-t border-slate-100">
-                          <td className="py-2">{linha.tipo}</td>
-                          <td>{linha.nome || "Sem nome"}</td>
-                          <td>{linha.cargo}</td>
-                          <td>{money(linha.valor)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                {detalhe.data.data.itens.length === 0 ? <p className="text-sm text-slate-500">Esta fatura não tem candidatos vinculados.</p> : null}
+                <dl className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
+                  <Dado rotulo="Valor"><span className="font-bold tabular-nums text-navy-900">{money(fatura.valor)}</span></Dado>
+                  {fatura.desconto > 0 ? <Dado rotulo="Desconto"><span className="tabular-nums">{money(fatura.desconto)}</span></Dado> : null}
+                  {fatura.parcela && fatura.parcela !== "1/1" ? <Dado rotulo="Parcela"><span className="tabular-nums">{fatura.parcela}</span></Dado> : null}
+                  <Dado rotulo="Vencimento"><span className="tabular-nums">{dateBr(fatura.vencimento)}</span></Dado>
+                </dl>
+                {fatura.itens.length ? (
+                  <div className="overflow-x-auto rounded-lg border border-slate-200">
+                    <table className="data-table compact min-w-[560px]">
+                      <thead><tr><th>Tipo</th><th>Candidato</th><th>Cargo</th><th className="text-right">Valor</th></tr></thead>
+                      <tbody>
+                        {fatura.itens.map((linha, index) => (
+                          <tr key={`${linha.nome}-${index}`}>
+                            <td className="text-slate-600">{linha.tipo}</td>
+                            <td className="font-medium text-navy-900">{linha.nome || "Sem nome"}</td>
+                            <td className="text-slate-600">{linha.cargo || "—"}</td>
+                            <td className="whitespace-nowrap text-right tabular-nums">{money(linha.valor)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : <p className="text-sm text-slate-500">Esta fatura não tem candidatos vinculados.</p>}
               </>
             ) : null}
           </Card>
         </div>
       ) : null}
-    </Screen>
+    </div>
   );
 }
 
-function ComissaoFilters() {
+function Dado({ rotulo, children }: { rotulo: string; children: ReactNode }) {
   return (
-    <Card className="grid items-end gap-3 md:grid-cols-2 xl:grid-cols-6">
-      <EmpresaField />
-      <Field label="Consultor">
-        <Select name="consultor" aria-label="Consultor" defaultValue="todos">
-          <option value="todos">Todos</option>
-          <option>Fabio Base Dose</option>
-          <option>Messias</option>
-          <option>Scheilla Marran</option>
-        </Select>
-      </Field>
-      <MonthField todos />
-      <YearField />
-      <Field label="Status">
-        <Select name="status" aria-label="Status" defaultValue="">
-          <option value="">Todos</option>
-          <option value="0">Aberta</option>
-          <option value="1">Pago</option>
-        </Select>
-      </Field>
-      <SearchButton />
+    <div className="grid gap-0.5">
+      <dt className="text-xs text-slate-500">{rotulo}</dt>
+      <dd className="text-slate-700">{children}</dd>
+    </div>
+  );
+}
+
+function ComissaoFilters({ versao, onSubmit }: { versao: number; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
+  return (
+    <Card>
+      <form key={versao} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_minmax(0,1.3fr)_minmax(0,1fr)_6rem_minmax(0,1fr)_auto] lg:items-end" onSubmit={onSubmit}>
+        <EmpresaField />
+        <CampoFiltro rotulo="Consultor">
+          <Select name="consultor" aria-label="Consultor" defaultValue="todos">
+            <option value="todos">Todos</option>
+            <option>Fabio Base Dose</option>
+            <option>Messias</option>
+            <option>Scheilla Marran</option>
+          </Select>
+        </CampoFiltro>
+        <MonthField todos />
+        <YearField />
+        <CampoFiltro rotulo="Situação">
+          <Select name="status" aria-label="Status" defaultValue="">
+            <option value="">Todas</option>
+            <option value="0">Aberta</option>
+            <option value="1">Paga</option>
+          </Select>
+        </CampoFiltro>
+        <SearchButton />
+      </form>
     </Card>
   );
+}
+
+function BotaoPagarComissao({ onClick }: { onClick: () => void }) {
+  return <Button type="button" variant="secondary" onClick={onClick}><Wallet size={16} /> Pagar comissão</Button>;
 }
 
 export function ComissaoConsultarPage() {
   const inicial = { ano: nowYear() };
   const [paying, setPaying] = useState(false);
-  const [busca, setBusca] = useState(inicial);
+  const [busca, setBusca] = useState<Record<string, string>>(inicial);
   const [pagina, setPagina] = useState(1);
+  const limpeza = useLimpeza(inicial, busca, (valor) => { setBusca(valor); setPagina(1); });
   const result = useQuery({
     queryKey: ["comissao", busca, pagina],
     queryFn: () => api<Comissao[]>(`/api/v1/comissao?${new URLSearchParams({ ...busca, page: String(pagina), pageSize: String(TAMANHO) })}`),
@@ -539,28 +667,66 @@ export function ComissaoConsultarPage() {
   const linhas = result.data?.data ?? [];
   const total = Number(result.data?.meta?.total ?? 0);
   return (
-    <Screen title="Comissão" subtitle="Consultar Comissão">
-      <form onSubmit={(event) => { event.preventDefault(); setBusca({ ...inicial, ...lerFiltros(event, ["empresa", "consultor", "mes", "ano", "status"]) }); setPagina(1); }}>
-        <ComissaoFilters />
-      </form>
-      <Consulta carregando={result.isLoading} erro={result.error} />
-      <DataTable
-        columns={[<input key="all" aria-label="Selecionar todos" type="checkbox" />, "Nome Fantasia", "CNPJ", "Data Vencimento", "Data Pg", "Status Boleto", "Itens", "Vendedor", "Treinamento", "Faturar", "Status"]}
-        rows={linhas.map((item) => ["", item.nome_fantasia, formatCnpj(item.cnpj), dateBr(item.vencimento), dateBr(item.data_pg), item.status_boleto, item.itens, item.vendedor, item.treinamento, item.valor == null ? "—" : money(item.valor), item.status])}
+    <div className="grid gap-5">
+      <CabecalhoPagina
+        titulo="Comissão"
+        descricao="Comissões de vendas por fatura: vendedor, treinamento, valor e se o boleto e a comissão já foram pagos."
+        acoes={<BotaoPagarComissao onClick={() => setPaying(true)} />}
       />
-      <Paginacao pagina={pagina} tamanho={TAMANHO} total={total} onPagina={setPagina} />
-      <ListingFooter count={total} total={reais(result.data?.meta?.totalReceber)} />
-      <div><Button type="button" variant="secondary" onClick={() => setPaying(true)}>Pagar Comissão</Button></div>
+      <ComissaoFilters versao={limpeza.versao} onSubmit={(event) => { event.preventDefault(); setBusca({ ...inicial, ...lerFiltros(event, ["empresa", "consultor", "mes", "ano", "status"]) }); setPagina(1); }} />
+      <ResumoResultados total={result.isLoading ? null : total} singular="comissão" plural="comissões" filtrando={limpeza.filtrando} carregando={result.isLoading} onLimpar={limpeza.limpar} />
+      {result.isLoading ? <Skeleton className="h-64" /> : result.isError ? (
+        <Alerta>{erroDe(result.error, "Não foi possível carregar as comissões.")}</Alerta>
+      ) : linhas.length ? (
+        <Card className="overflow-x-auto p-0">
+          <table className="data-table min-w-[1040px]">
+            <thead>
+              <tr>
+                <th>Empresa</th>
+                <th>Vencimento</th>
+                <th>Boleto</th>
+                <th className="text-right">Itens</th>
+                <th>Vendedor</th>
+                <th>Treinamento</th>
+                <th className="text-right">Comissão</th>
+                <th>Pago em</th>
+                <th>Situação</th>
+              </tr>
+            </thead>
+            <tbody>
+              {linhas.map((item, index) => (
+                <tr key={`${item.cnpj}-${item.vencimento}-${index}`}>
+                  <td><NomeEmpresa fantasia={item.nome_fantasia} razao={null} extra={item.cnpj ? <p className="text-xs tabular-nums text-slate-500">{formatCnpj(item.cnpj)}</p> : null} /></td>
+                  <td className="whitespace-nowrap tabular-nums text-slate-600">{dateBr(item.vencimento)}</td>
+                  <td><SeloStatus status={item.status_boleto} /></td>
+                  <td className="text-right tabular-nums">{item.itens}</td>
+                  <td className="text-slate-600">{item.vendedor || "—"}</td>
+                  <td className="text-slate-600">{item.treinamento || "—"}</td>
+                  <td className="whitespace-nowrap text-right font-semibold tabular-nums text-navy-900">{item.valor == null ? "—" : money(item.valor)}</td>
+                  <td className="whitespace-nowrap tabular-nums text-slate-600">{dateBr(item.data_pg)}</td>
+                  <td><SeloStatus status={item.status} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <RodapeTabela pagina={pagina} registros={total} onPagina={setPagina} total={<>Total das comissões no filtro <span className="font-bold tabular-nums text-navy-900">{reais(result.data?.meta?.totalReceber)}</span></>} />
+        </Card>
+      ) : limpeza.filtrando ? (
+        <Empty title="Nenhuma comissão com esses filtros" text="Troque o consultor, o mês ou a situação, ou limpe os filtros." />
+      ) : (
+        <Empty title="Nenhuma comissão neste ano" text="Escolha outro ano e clique em Pesquisar." />
+      )}
       <PayDialog open={paying} onClose={() => setPaying(false)} />
-    </Screen>
+    </div>
   );
 }
 
 export function ComissaoEmpresasPage() {
   const inicial = { ano: nowYear() };
   const [paying, setPaying] = useState(false);
-  const [busca, setBusca] = useState(inicial);
+  const [busca, setBusca] = useState<Record<string, string>>(inicial);
   const [pagina, setPagina] = useState(1);
+  const limpeza = useLimpeza(inicial, busca, (valor) => { setBusca(valor); setPagina(1); });
   const result = useQuery({
     queryKey: ["comissao-empresas", busca, pagina],
     queryFn: () => api<ComissaoEmpresa[]>(`/api/v1/comissao/empresas?${new URLSearchParams({ ...busca, page: String(pagina), pageSize: String(TAMANHO) })}`),
@@ -568,20 +734,55 @@ export function ComissaoEmpresasPage() {
   const linhas = result.data?.data ?? [];
   const total = Number(result.data?.meta?.total ?? 0);
   return (
-    <Screen title="Comissão" subtitle="Consultar Comissão Empresa">
-      <form onSubmit={(event) => { event.preventDefault(); setBusca({ ...inicial, ...lerFiltros(event, ["empresa", "consultor", "mes", "ano", "status"]) }); setPagina(1); }}>
-        <ComissaoFilters />
-      </form>
-      <Consulta carregando={result.isLoading} erro={result.error} />
-      <DataTable
-        columns={[<input key="all" aria-label="Selecionar todos" type="checkbox" />, "Nome Fantasia", "Vendedor", "Data Cadastro", "1ª Contratação", "1ª Abertura de Vaga", "Tipo", "Valor", "Status"]}
-        rows={linhas.map((item) => ["", item.nome_fantasia, item.vendedor, dateBr(item.data_cadastro), dateBr(item.primeira_contratacao), dateBr(item.primeira_vaga), item.tipo, item.valor == null ? "—" : money(item.valor), item.status])}
+    <div className="grid gap-5">
+      <CabecalhoPagina
+        titulo="Comissão de empresas"
+        descricao="Comissão de cadastro de cada empresa: vendedor, primeira contratação, primeira vaga e valor."
+        acoes={<BotaoPagarComissao onClick={() => setPaying(true)} />}
       />
-      <Paginacao pagina={pagina} tamanho={TAMANHO} total={total} onPagina={setPagina} />
-      <ListingFooter count={total} total={reais(result.data?.meta?.totalReceber)} />
-      <div><Button type="button" variant="secondary" onClick={() => setPaying(true)}>Pagar Comissão</Button></div>
+      <ComissaoFilters versao={limpeza.versao} onSubmit={(event) => { event.preventDefault(); setBusca({ ...inicial, ...lerFiltros(event, ["empresa", "consultor", "mes", "ano", "status"]) }); setPagina(1); }} />
+      <ResumoResultados total={result.isLoading ? null : total} singular="empresa" plural="empresas" filtrando={limpeza.filtrando} carregando={result.isLoading} onLimpar={limpeza.limpar} />
+      {result.isLoading ? <Skeleton className="h-64" /> : result.isError ? (
+        <Alerta>{erroDe(result.error, "Não foi possível carregar as comissões de empresas.")}</Alerta>
+      ) : linhas.length ? (
+        <Card className="overflow-x-auto p-0">
+          <table className="data-table min-w-[960px]">
+            <thead>
+              <tr>
+                <th>Empresa</th>
+                <th>Vendedor</th>
+                <th>Cadastro</th>
+                <th>1ª contratação</th>
+                <th>1ª vaga aberta</th>
+                <th>Tipo</th>
+                <th className="text-right">Valor</th>
+                <th>Situação</th>
+              </tr>
+            </thead>
+            <tbody>
+              {linhas.map((item, index) => (
+                <tr key={`${item.nome_fantasia}-${index}`}>
+                  <td><NomeEmpresa fantasia={item.nome_fantasia} razao={null} /></td>
+                  <td className="text-slate-600">{item.vendedor || "—"}</td>
+                  <td className="whitespace-nowrap tabular-nums text-slate-600">{dateBr(item.data_cadastro)}</td>
+                  <td className="whitespace-nowrap tabular-nums text-slate-600">{dateBr(item.primeira_contratacao)}</td>
+                  <td className="whitespace-nowrap tabular-nums text-slate-600">{dateBr(item.primeira_vaga)}</td>
+                  <td className="text-slate-600">{item.tipo || "—"}</td>
+                  <td className="whitespace-nowrap text-right font-semibold tabular-nums text-navy-900">{item.valor == null ? "—" : money(item.valor)}</td>
+                  <td><SeloStatus status={item.status} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <RodapeTabela pagina={pagina} registros={total} onPagina={setPagina} total={<>Total das comissões no filtro <span className="font-bold tabular-nums text-navy-900">{reais(result.data?.meta?.totalReceber)}</span></>} />
+        </Card>
+      ) : limpeza.filtrando ? (
+        <Empty title="Nenhuma empresa com esses filtros" text="Troque o consultor, o mês ou a situação, ou limpe os filtros." />
+      ) : (
+        <Empty title="Nenhuma comissão de empresa neste ano" text="Escolha outro ano e clique em Pesquisar." />
+      )}
       <PayDialog open={paying} onClose={() => setPaying(false)} />
-    </Screen>
+    </div>
   );
 }
 
@@ -589,6 +790,7 @@ export function GerarHoleritePage() {
   const inicial = { mes: nowMonth(), ano: nowYear() };
   const [busca, setBusca] = useState(inicial);
   const [pagina, setPagina] = useState(1);
+  const limpeza = useLimpeza(inicial, busca, (valor) => { setBusca(valor); setPagina(1); });
   const result = useQuery({
     queryKey: ["holerite", busca, pagina],
     queryFn: () => api<Holerite[]>(`/api/v1/holerite?${new URLSearchParams({ ...busca, page: String(pagina), pageSize: String(TAMANHO) })}`),
@@ -596,22 +798,49 @@ export function GerarHoleritePage() {
   const linhas = result.data?.data ?? [];
   const total = Number(result.data?.meta?.total ?? 0);
   return (
-    <Screen title="Holerite">
-      <form onSubmit={(event) => { event.preventDefault(); setBusca({ ...inicial, ...lerFiltros(event, ["empresa", "mes", "ano"]) }); setPagina(1); }}>
-      <Card className="grid items-end gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <EmpresaField />
-        <MonthField />
-        <YearField />
-        <SearchButton />
-      </Card>
-      </form>
-      <Consulta carregando={result.isLoading} erro={result.error} />
-      <DataTable
-        columns={["Lançar Folha", "CNPJ", "Razão Social", "Nome Fantasia", "Quant. de Candidatos"]}
-        rows={linhas.map((item) => ["", formatCnpj(item.cnpj), item.razao_social, item.nome_fantasia, item.candidatos])}
+    <div className="grid gap-5">
+      <CabecalhoPagina
+        titulo="Holerite"
+        descricao="Quantos candidatos ativos cada empresa tem no mês, para lançar a folha."
       />
-      <Paginacao pagina={pagina} tamanho={TAMANHO} total={total} onPagina={setPagina} />
-      <p className="text-sm font-semibold text-slate-500">{total === 0 ? "Nenhum registro encontrado" : `Mostrando 1 até ${linhas.length} de ${total} encontrados`}</p>
-    </Screen>
+      <Card>
+        <form key={limpeza.versao} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_7rem_auto] lg:items-end" onSubmit={(event) => { event.preventDefault(); setBusca({ ...inicial, ...lerFiltros(event, ["empresa", "mes", "ano"]) }); setPagina(1); }}>
+          <EmpresaField />
+          <MonthField />
+          <YearField />
+          <SearchButton />
+        </form>
+      </Card>
+      <ResumoResultados total={result.isLoading ? null : total} singular="empresa" plural="empresas" filtrando={limpeza.filtrando} carregando={result.isLoading} onLimpar={limpeza.limpar} />
+      {result.isLoading ? <Skeleton className="h-64" /> : result.isError ? (
+        <Alerta>{erroDe(result.error, "Não foi possível carregar o holerite.")}</Alerta>
+      ) : linhas.length ? (
+        <Card className="overflow-x-auto p-0">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Empresa</th>
+                <th>CNPJ</th>
+                <th className="text-right">Candidatos ativos</th>
+              </tr>
+            </thead>
+            <tbody>
+              {linhas.map((item, index) => (
+                <tr key={`${item.cnpj}-${index}`}>
+                  <td><NomeEmpresa fantasia={item.nome_fantasia} razao={item.razao_social} /></td>
+                  <td className="whitespace-nowrap tabular-nums text-slate-600">{formatCnpj(item.cnpj)}</td>
+                  <td className="text-right font-semibold tabular-nums text-navy-900">{item.candidatos}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <RodapeTabela pagina={pagina} registros={total} onPagina={setPagina} />
+        </Card>
+      ) : limpeza.filtrando ? (
+        <Empty title="Nenhuma empresa com esses filtros" text="Troque o mês, o ano ou a empresa, ou limpe os filtros para voltar ao mês atual." />
+      ) : (
+        <Empty title="Nenhuma empresa com candidatos ativos neste mês" text="Escolha outro mês e clique em Pesquisar." />
+      )}
+    </div>
   );
 }

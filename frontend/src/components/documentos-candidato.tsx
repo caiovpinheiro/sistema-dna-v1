@@ -1,5 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
-import { Card, Skeleton } from "@/components/ui";
+import { FileText } from "lucide-react";
+import { Alerta } from "@/components/pagina";
+import { Badge, Card, Skeleton } from "@/components/ui";
 import { api } from "@/lib/api";
 import { dateBr, formatCpf, formatPhone } from "@/lib/format";
 
@@ -52,35 +54,37 @@ export function DocumentosCandidato({ idCandidato }: { idCandidato: string }) {
   });
   const porTipo = new Map((docs.data?.data ?? []).map((doc) => [doc.tipo, doc]));
   return (
-    <Card>
-      <h2 className="mb-1 font-bold">Documentos do candidato</h2>
-      <p className="mb-3 text-sm text-slate-500">Gravados quando o TCE é gerado ou editado, e os arquivos que o sistema antigo já tinha.</p>
-      {docs.isLoading ? <Skeleton className="h-24" /> : docs.isError ? <p className="text-sm text-rose-600">Não foi possível carregar os documentos.</p> : (
-        <div className="grid gap-2">
+    <Card className="grid gap-3">
+      <div>
+        <h2 className="text-[15px] font-bold text-navy-900">Documentos do candidato</h2>
+        <p className="text-sm text-slate-500">Gravados quando o TCE é gerado ou editado, e os arquivos que o sistema antigo já tinha.</p>
+      </div>
+      {docs.isLoading ? <Skeleton className="h-24" /> : docs.isError ? <Alerta>Não foi possível carregar os documentos. Atualize a página para tentar de novo.</Alerta> : (
+        <ul className="grid">
           {TIPOS.map(({ tipo, nome }) => {
             const doc = porTipo.get(tipo);
             const detalhes = doc?.dados && tipo === "responsavel"
               ? ORDEM_RESPONSAVEL.filter((chave) => doc.dados?.[chave]).map((chave) => `${ROTULO_RESPONSAVEL[chave] ?? chave}: ${legivel(chave, doc.dados![chave])}`)
               : [];
             return (
-              <div key={tipo} className="grid gap-1 rounded-xl border border-slate-100 px-3 py-3 sm:grid-cols-[12rem_minmax(0,1fr)_auto] sm:items-center sm:gap-4">
-                <span className="text-sm font-semibold">{nome}</span>
-                <span className="min-w-0 text-sm">
+              <li key={tipo} className="grid gap-1 border-t border-slate-100 py-3 first:border-0 sm:grid-cols-[12rem_minmax(0,1fr)_auto] sm:items-center sm:gap-4">
+                <span className="text-sm font-semibold text-slate-700">{nome}</span>
+                <span className="min-w-0 text-sm text-slate-700">
                   {doc?.valor ? <span className="block break-words">{valorDoDocumento(tipo, doc.valor)}</span> : null}
                   {detalhes.length ? <span className="block text-xs text-slate-500">{detalhes.join(" · ")}</span> : null}
-                  {!doc ? <span className="text-slate-500">Não enviado</span> : null}
+                  {!doc ? <Badge value="encerrada">Não enviado</Badge> : null}
                   {doc && !doc.valor && doc.tem_arquivo ? <span className="text-slate-500">Arquivo enviado</span> : null}
                   {doc ? <span className="block text-xs text-slate-500">{doc.origem === "tce" ? "Do TCE" : "Do sistema antigo"} · atualizado em {dateBr(doc.atualizado_em)}</span> : null}
                 </span>
                 {doc?.tem_arquivo ? (
-                  <a className="text-sm font-semibold text-cyan-700 hover:underline" href={`/api/v1/candidatos/${idCandidato}/documentos/${doc.id}/arquivo`} target="_blank" rel="noreferrer">
-                    Abrir arquivo
+                  <a className="acao acao-cyan inline-flex w-fit items-center gap-1" href={`/api/v1/candidatos/${idCandidato}/documentos/${doc.id}/arquivo`} target="_blank" rel="noreferrer">
+                    <FileText size={13} /> Abrir arquivo
                   </a>
                 ) : <span className="text-xs text-slate-400">Sem arquivo</span>}
-              </div>
+              </li>
             );
           })}
-        </div>
+        </ul>
       )}
     </Card>
   );

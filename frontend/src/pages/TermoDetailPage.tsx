@@ -1,8 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Check, Copy, Download, ExternalLink, GraduationCap, Mail, Pencil, RefreshCw, Send } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { Alerta, CabecalhoPagina } from "@/components/pagina";
 import { Badge, Button, Card, Skeleton } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
+import { textoPlano } from "@/lib/format";
 
 type Signatario = { nome: string; email: string; status: string; url: string | null };
 type Termo = {
@@ -46,7 +49,7 @@ function PdfPreview({ id }: { id: string }) {
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [id]);
-  if (erro) return <p className="text-sm text-rose-600">{erro}</p>;
+  if (erro) return <Alerta>{erro}</Alerta>;
   if (!url) return <Skeleton className="h-[720px]" />;
   return <iframe title="Prévia do TCE" src={url} className="h-[720px] w-full rounded-xl border border-slate-200" />;
 }
@@ -90,7 +93,14 @@ export function TermoDetailPage() {
     },
   });
   if (query.isLoading) return <Skeleton className="h-64" />;
-  if (!query.data) return <p className="text-rose-600">Termo não encontrado.</p>;
+  if (!query.data) {
+    return (
+      <div className="grid gap-3">
+        <Alerta>Termo não encontrado. Ele pode ter sido excluído.</Alerta>
+        <Link className="text-sm font-semibold text-cyan-700" to="/termos">Voltar para os termos</Link>
+      </div>
+    );
+  }
   const data = query.data.data;
   const signers = Array.isArray(data.signatarios) ? data.signatarios : [];
 
@@ -105,73 +115,117 @@ export function TermoDetailPage() {
     }
   }
   const gerado = data.status === "gerado";
+  const assinaram = signers.filter((signer) => (signer.status ?? "").toLowerCase() === "signed").length;
+  const mensagens = (
+    <>
+      {erro ? <Alerta>{erro}</Alerta> : null}
+      {aviso ? <p role="status" className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{aviso}</p> : null}
+    </>
+  );
   return (
     <div className="grid gap-5">
-      {gerado ? (
-        <ol className="flex flex-wrap gap-3 text-sm font-semibold">
-          <li className="rounded-full bg-emerald-50 px-3 py-1.5 text-emerald-800">1. TCE gerado</li>
-          <li className="rounded-full bg-navy-900 px-3 py-1.5 text-white">2. Enviar para assinatura</li>
-        </ol>
-      ) : null}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Termo de estágio</p>
-          <h1 className="text-2xl font-extrabold">{data.candidato_nome || data.nome}</h1>
-          <p className="text-sm text-slate-500">{data.empresa_nome || "Empresa não informada"}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          {data.status !== "assinado" ? <Link to={`/termos/${data.id}/editar`}><Button type="button" variant="secondary">Editar dados</Button></Link> : null}
+      <CabecalhoPagina
+        titulo={data.candidato_nome || data.nome}
+        descricao={data.empresa_nome ? textoPlano(data.empresa_nome) : "Empresa não informada"}
+        acoes={(
+          <>
+            {data.id_contratacao ? <Link to={`/contratacoes/${data.id_contratacao}`}><Button type="button" variant="secondary"><ExternalLink size={16} /> Abrir contratação</Button></Link> : null}
+            {data.status !== "assinado" ? <Link to={`/termos/${data.id}/editar`}><Button type="button" variant="secondary"><Pencil size={16} /> Editar dados</Button></Link> : null}
+          </>
+        )}
+      >
+        <div className="mt-1 flex flex-wrap items-center gap-2">
+          <span className="text-xs font-semibold text-slate-500">Termo de compromisso de estágio</span>
           <Badge value={data.status}>{labels[data.status] ?? data.status}</Badge>
         </div>
-      </div>
+        {gerado ? (
+          <ol className="mt-2 flex flex-wrap items-center gap-2 text-xs font-semibold">
+            <li className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 text-emerald-800"><Check size={12} /> TCE gerado</li>
+            <li className="rounded-full bg-cyan-700 px-3 py-1 text-white">Agora: enviar para assinatura</li>
+          </ol>
+        ) : null}
+      </CabecalhoPagina>
       {gerado ? (
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_22rem] xl:items-start">
+          <Card className="grid gap-3">
+            <div>
+              <h2 className="text-[15px] font-bold text-navy-900">Conferir o PDF</h2>
+              <p className="text-sm text-slate-500">Se algo estiver errado, use “Editar dados” e gere de novo antes de enviar.</p>
+            </div>
+            <PdfPreview id={data.id} />
+          </Card>
+          <Card className="grid gap-4 xl:sticky xl:top-4">
+            <div>
+              <h2 className="text-[15px] font-bold text-navy-900">Enviar para assinatura</h2>
+              <p className="text-sm text-slate-500">A ZapSign recebe o documento e cada pessoa abaixo recebe o e-mail de assinatura da DNA Work.</p>
+            </div>
+            <ul className="grid gap-2">
+              {signers.map((signer) => (
+                <li key={`${signer.nome}-${signer.email}`} className="rounded-lg bg-slate-50 px-3 py-2">
+                  <p className="text-sm font-semibold text-slate-700">{signer.nome || "Signatário"}</p>
+                  <p className="truncate text-xs text-slate-500">{signer.email || "Sem e-mail"}</p>
+                </li>
+              ))}
+            </ul>
+            {mensagens}
+            <div className="grid gap-2">
+              <Button type="button" disabled={enviar.isPending} onClick={() => enviar.mutate()}><Send size={16} /> {enviar.isPending ? "Enviando…" : "Enviar para assinatura"}</Button>
+              <Button type="button" variant="secondary" disabled={email.isPending} onClick={() => email.mutate()}><Mail size={16} /> {email.isPending ? "Enviando e-mail…" : "Enviar PDF por e-mail"}</Button>
+              <Button type="button" variant="secondary" disabled={escola.isPending} onClick={() => escola.mutate()}><GraduationCap size={16} /> {escola.isPending ? "Enviando…" : "Pedir assinatura da escola"}</Button>
+            </div>
+          </Card>
+        </div>
+      ) : (
         <Card className="grid gap-4">
-          <div>
-            <h2 className="font-bold">Conferir o TCE</h2>
-            <p className="text-sm text-slate-500">Se estiver certo, envie para os signatários. A ZapSign recebe o documento e cada pessoa recebe o e-mail de assinatura da DNA Work.</p>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-[15px] font-bold text-navy-900">Assinaturas</h2>
+              <p className="text-sm text-slate-500">
+                <span className="font-semibold tabular-nums text-slate-700">{assinaram} de {signers.length}</span> {assinaram === 1 ? "assinou" : "assinaram"}. Copie o link de quem ainda não assinou para mandar por outro canal.
+              </p>
+            </div>
+            {data.arquivo_assinado ? (
+              <a href={data.arquivo_assinado} target="_blank" rel="noreferrer"><Button type="button"><Download size={16} /> Baixar PDF assinado</Button></a>
+            ) : null}
           </div>
-          <PdfPreview id={data.id} />
-          {signers.map((signer) => (
-            <p key={`${signer.nome}-${signer.email}`} className="text-sm"><span className="font-semibold">{signer.nome || "Signatário"}</span> · {signer.email || "sem e-mail"}</p>
-          ))}
-          {erro ? <p className="text-sm text-rose-600">{erro}</p> : null}
-          {aviso ? <p className="text-sm text-emerald-700">{aviso}</p> : null}
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="secondary" disabled={escola.isPending} onClick={() => escola.mutate()}>{escola.isPending ? "Enviando…" : "Pedir assinatura da escola"}</Button>
-            <Button type="button" variant="secondary" disabled={email.isPending} onClick={() => email.mutate()}>{email.isPending ? "Enviando e-mail…" : "Enviar PDF por e-mail"}</Button>
-            <Button type="button" disabled={enviar.isPending} onClick={() => enviar.mutate()}>{enviar.isPending ? "Enviando…" : "Enviar para assinatura"}</Button>
+          <ul className="grid">
+            {signers.map((signer) => (
+              <li key={signer.email} className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 py-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-slate-700">{signer.nome}</p>
+                  <p className="truncate text-xs text-slate-500">{signer.email}</p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <SituacaoSignatario status={signer.status} />
+                  {signer.url && data.status !== "assinado" ? (
+                    <>
+                      <button type="button" className="acao acao-cyan inline-flex items-center gap-1" onClick={() => void copiar(signer.url!)}>
+                        {copiado === signer.url ? <><Check size={13} /> Link copiado</> : <><Copy size={13} /> Copiar link</>}
+                      </button>
+                      <a className="acao acao-cyan inline-flex items-center gap-1" href={signer.url} target="_blank" rel="noreferrer"><ExternalLink size={13} /> Abrir assinatura</a>
+                    </>
+                  ) : null}
+                </div>
+              </li>
+            ))}
+          </ul>
+          {mensagens}
+          <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-4">
+            <Button type="button" variant="secondary" disabled={assinatura.isPending} onClick={() => assinatura.mutate()}><RefreshCw size={16} /> {assinatura.isPending ? "Enviando…" : "Reenviar e-mails de assinatura"}</Button>
+            <Button type="button" variant="secondary" disabled={escola.isPending} onClick={() => escola.mutate()}><GraduationCap size={16} /> {escola.isPending ? "Enviando…" : "Pedir assinatura da escola"}</Button>
+            <Button type="button" variant="secondary" disabled={email.isPending} onClick={() => email.mutate()}><Mail size={16} /> {email.isPending ? "Enviando e-mail…" : "Enviar PDF por e-mail"}</Button>
           </div>
         </Card>
-      ) : null}
-      {!gerado ? <Card className="grid gap-3">
-        {signers.map((signer) => (
-          <div key={signer.email} className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3 last:border-0">
-            <div>
-              <p className="font-semibold">{signer.nome}</p>
-              <p className="text-sm text-slate-500">{signer.email}</p>
-            </div>
-            {signer.url && data.status !== "assinado" ? (
-              <span className="flex gap-3">
-                <button type="button" className="text-sm font-semibold text-cyan-800" onClick={() => void copiar(signer.url!)}>
-                  {copiado === signer.url ? "Link copiado" : "Copiar link"}
-                </button>
-                <a className="text-sm font-semibold text-cyan-800" href={signer.url} target="_blank" rel="noreferrer">Abrir assinatura</a>
-              </span>
-            ) : <span className="text-sm text-slate-500">{signer.status}</span>}
-          </div>
-        ))}
-        {data.arquivo_assinado ? (
-          <a className="font-semibold text-cyan-800" href={data.arquivo_assinado} target="_blank" rel="noreferrer">Baixar PDF assinado</a>
-        ) : null}
-        {data.id_contratacao ? <Link className="text-sm font-semibold text-cyan-800" to={`/contratacoes/${data.id_contratacao}`}>Abrir contratação</Link> : null}
-        {erro ? <p className="text-sm text-rose-600">{erro}</p> : null}
-        {aviso ? <p className="text-sm text-emerald-700">{aviso}</p> : null}
-        <div className="flex flex-wrap gap-2">
-          <Button type="button" variant="secondary" disabled={assinatura.isPending} onClick={() => assinatura.mutate()}>{assinatura.isPending ? "Enviando…" : "Reenviar e-mails de assinatura"}</Button>
-          <Button type="button" variant="secondary" disabled={escola.isPending} onClick={() => escola.mutate()}>{escola.isPending ? "Enviando…" : "Pedir assinatura da escola"}</Button>
-          <Button type="button" variant="secondary" disabled={email.isPending} onClick={() => email.mutate()}>{email.isPending ? "Enviando e-mail…" : "Enviar PDF por e-mail"}</Button>
-        </div>
-      </Card> : null}
+      )}
     </div>
   );
+}
+
+/** Situação de cada signatário na ZapSign (signed, new, link-opened, refused…) em português. */
+function SituacaoSignatario({ status }: { status: string | null | undefined }) {
+  const valor = (status ?? "").toLowerCase();
+  if (valor === "signed") return <Badge value="assinado">Assinou</Badge>;
+  if (valor.includes("refus")) return <Badge value="recusado">Recusou</Badge>;
+  if (valor === "link-opened") return <Badge value="enviado">Abriu o link</Badge>;
+  return <Badge value="enviado">Aguardando</Badge>;
 }
