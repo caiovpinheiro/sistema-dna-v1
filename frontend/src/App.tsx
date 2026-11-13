@@ -11,6 +11,7 @@ import { MetricasPage } from "@/pages/MetricasPage";
 import { ContratacaoDetailPage } from "@/pages/ContratacaoDetailPage";
 import { ContratacoesPage } from "@/pages/ContratacoesPage";
 import { DashboardPage } from "@/pages/DashboardPage";
+import { DisparadorCrmPage } from "@/pages/DisparadorCrmPage";
 import { DossiePage } from "@/pages/DossiePage";
 import { EmailsPage } from "@/pages/EmailsPage";
 import { EmpresaDetailPage } from "@/pages/EmpresaDetailPage";
@@ -106,6 +107,7 @@ export function App() {
             <Route path="/financeiro/holerite/:id" element={<HoleriteFolhaPage />} />
             <Route path="/documentos-pendentes" element={<DocumentosPendentesPage />} />
             <Route path="/emails" element={<EmailsPage />} />
+            <Route path="/disparador/crm" element={<DisparadorCrmPage />} />
             <Route path="/configuracoes" element={<ConfiguracoesPage />} />
             <Route path="/metricas" element={<MetricasPage />} />
             <Route path="/instituicoes" element={<ConsultarInstituicoesPage />} />

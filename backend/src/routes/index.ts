@@ -45,6 +45,9 @@ import type { TriagemMatchingService } from "../services/triagem-matching.servic
 import type { DossieService } from "../services/dossie.service.js";
 import type { InstituicaoService } from "../services/instituicao.service.js";
 import type { HoleriteService } from "../services/holerite.service.js";
+import { LIMITE_LISTA, separarTelefones, type DisparadorService } from "../services/disparador.service.js";
+import { decodificarBase64 } from "../lib/curriculo/arquivo.js";
+import { lerPlanilha } from "../lib/planilha.js";
 import { prepararCurriculo } from "../lib/curriculo/arquivo.js";
 import type { CargoService } from "../services/cargo.service.js";
 import type { SyncCicloService } from "../services/sync-ciclo.service.js";
@@ -73,6 +76,7 @@ type Services = {
   dossie: DossieService;
   instituicoes: InstituicaoService;
   holerites: HoleriteService;
+  disparador: DisparadorService;
   cargos: CargoService;
   sync: SyncCicloService;
 };
@@ -756,6 +760,48 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
     const result = await legado.holerite(request.query);
     return ok(result.data, result.meta);
   });
+  // Disparador pelo CRM (Bwipo): confere telefones, cria/move deals e dispara template. Página "disparador-crm".
+  api.get("/api/v1/disparo-crm/config", { schema: { tags: ["disparador"] } }, async () => ok(await services.disparador.configuracao()));
+  api.post("/api/v1/disparo-crm/verificar", {
+    config: { rateLimit: { max: 20, timeWindow: "1 minute" } },
+    schema: { tags: ["disparador"], body: z.object({ telefones: z.string().max(200_000) }) },
+  }, async (request) => {
+    const telefones = separarTelefones(request.body.telefones);
+    if (!telefones.length) throw new AppError(422, "SEM_TELEFONES", "Cole ao menos um telefone com DDD.");
+    return ok(await services.disparador.verificar(telefones));
+  });
+  api.post("/api/v1/disparo-crm/planilha", {
+    bodyLimit: 12 * 1024 * 1024,
+    schema: { tags: ["disparador"], body: z.object({ arquivo: z.object({ nome: z.string().trim().min(1).max(200), base64: z.string().min(1).max(11_500_000) }) }) },
+  }, async (request) => ok(await lerPlanilha(request.body.arquivo.nome, decodificarBase64(request.body.arquivo.base64))));
+  api.post("/api/v1/disparo-crm/criar", {
+    config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
+    schema: {
+      tags: ["disparador"],
+      body: z.object({
+        stageId: z.string().trim().min(1, "Escolha a fase."),
+        moverExistentes: z.boolean().default(false),
+        itens: z.array(z.object({
+          telefone: z.string().trim().min(1).max(40),
+          nome: z.string().trim().max(160).optional(),
+          campos: z.array(z.object({ fieldId: z.string().min(1).max(64), value: z.string().max(2000) })).max(60).optional(),
+        })).min(1, "Escolha ao menos um telefone.").max(LIMITE_LISTA),
+      }),
+    },
+  }, async (request) => ok(await services.disparador.criar({ ...request.body, origem: `DNA Work - disparador (${request.user.email})` })));
+  api.post("/api/v1/disparo-crm/disparar", {
+    config: { rateLimit: { max: 5, timeWindow: "1 minute" } },
+    schema: {
+      tags: ["disparador"],
+      body: z.object({
+        contatoIds: z.array(z.string().min(1).max(64)).min(1, "Escolha ao menos um contato.").max(LIMITE_LISTA),
+        template: z.string().trim().min(1, "Informe o nome do template aprovado.").max(512).regex(/^[a-z0-9_]+$/, "O nome do template usa só letras minúsculas, números e _ (como está na Meta)."),
+        idioma: z.string().trim().max(10).default("pt_BR"),
+        nome: z.string().trim().max(120).default(""),
+      }),
+    },
+  }, async (request) => ok(await services.disparador.disparar(request.body)));
+
   // Folha de holerite de estágio por empresa e mês (grava em dna_work.holerite_estagio).
   const competenciaSchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "Informe o mês no formato AAAA-MM.");
   const dinheiro = z.coerce.number().min(0, "Valor não pode ser negativo.").max(1_000_000);

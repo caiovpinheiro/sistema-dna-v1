@@ -4,7 +4,8 @@ import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { api } from "@/lib/api";
 import { cn } from "./ui";
 
-type LinkItem = { id: string; to: string; label: string; end?: boolean };
+/** `externo`: abre `to` (URL completa) numa aba nova, em vez de navegar dentro do sistema. */
+type LinkItem = { id: string; to: string; label: string; end?: boolean; externo?: boolean };
 
 const items = [
   { id: "painel", to: "/", label: "Painel", icon: LayoutDashboard, end: true },
@@ -19,6 +20,11 @@ const triagemLinks: LinkItem[] = [
 ];
 
 const DISPARADOR_URL = "https://dnaworkia-disparador-infojobs.vkfaze.easypanel.host/";
+
+const disparadorLinks: LinkItem[] = [
+  { id: "disparador-crm", to: "/disparador/crm", label: "Pelo CRM" },
+  { id: "disparador", to: DISPARADOR_URL, label: "Infojobs", externo: true },
+];
 
 const afterVagas = [
   { id: "processos", to: "/processos", label: "Processos", icon: ListChecks },
@@ -81,6 +87,7 @@ const CAMINHOS: Array<[string, string]> = [
   ["/contratacoes/rescisao", "contratacoes"],
   ["/contratacoes", "contratacoes"],
   ["/emails", "emails"],
+  ["/disparador/crm", "disparador-crm"],
   ["/documentos-pendentes", "documentos"],
 ];
 
@@ -94,7 +101,7 @@ function SideGroup({ label, icon: Icon, active, expanded, links, onNavigate }: {
   icon: ComponentType<{ size?: number; className?: string }>;
   active: boolean;
   expanded: boolean;
-  links: Array<{ to: string; label: string; end?: boolean }>;
+  links: Array<{ to: string; label: string; end?: boolean; externo?: boolean }>;
   onNavigate: () => void;
 }) {
   if (!links.length) return null;
@@ -118,7 +125,11 @@ function SideGroup({ label, icon: Icon, active, expanded, links, onNavigate }: {
       </button>
       {visivel ? (
         <div className="nav-sub grid gap-1 pl-8">
-          {links.map((item) => (
+          {links.map((item) => item.externo ? (
+            <a key={item.to} href={item.to} target="_blank" rel="noreferrer" onClick={onNavigate} title={`${item.label} (abre em nova aba)`} className={cn(subClass({ isActive: false }), "flex items-center gap-1.5")}>
+              {item.label} <ExternalLink size={12} className="shrink-0 opacity-70" />
+            </a>
+          ) : (
             <NavLink key={item.to} to={item.to} end={item.end} onClick={onNavigate} className={subClass}>{item.label}</NavLink>
           ))}
         </div>
@@ -133,6 +144,7 @@ function tituloDaRota(pathname: string) {
     ["/configuracoes", "Configurações"],
     ["/metricas", "Métricas"],
     ["/emails", "E-mails"],
+    ["/disparador", "Disparador"],
     ["/documentos-pendentes", "Documentos pendentes"],
     ["/financeiro/comissao", "Comissão"],
     ["/financeiro/holerite", "Holerite"],
@@ -218,13 +230,8 @@ export function Shell({ email, admin, paginas, notify }: { email: string; admin:
           <Mail size={18} className="shrink-0" /> {label("E-mails")}
         </NavLink>
       ) : null}
-      {/* Ferramenta externa: abre o disparador de mensagens (Infojobs) numa aba nova. Liberada por usuário em Configurações. */}
-      {permitido("disparador") ? (
-        <a href={DISPARADOR_URL} target="_blank" rel="noreferrer" onClick={() => setOpen(false)} title="Disparador (abre em nova aba)" className={linkClass({ isActive: false })}>
-          <Send size={18} className="shrink-0" /> {label("Disparador")}
-          {expanded ? <ExternalLink size={13} className="ml-auto shrink-0 text-slate-400" /> : null}
-        </a>
-      ) : null}
+      {/* Disparador: "Pelo CRM" (página do sistema, permissão disparador-crm) e "Infojobs" (link externo, permissão disparador). */}
+      <SideGroup label="Disparador" icon={Send} active={pathname.startsWith("/disparador")} expanded={expanded} links={disparadorLinks.filter((item) => permitido(item.id))} onNavigate={() => setOpen(false)} />
       {permitido("documentos") ? (
         <NavLink to="/documentos-pendentes" onClick={() => setOpen(false)} title="Documentos Pendentes" className={linkClass}>
           <FileWarning size={18} className="shrink-0" /> {label("Documentos Pendentes")}

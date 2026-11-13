@@ -50,6 +50,7 @@ O script `scripts/conferir-agentes.mjs` lê esta tabela. Mantenha o formato: uma
 | HoleriteFolhaPage.tsx | [financeiro](financeiro/agente.md) |
 | ContasReceberPage.tsx | [financeiro](financeiro/agente.md) |
 | ReguaCobrancaPage.tsx | [financeiro](financeiro/agente.md) |
+| DisparadorCrmPage.tsx | [disparador](disparador/agente.md) |
 | NovasAbasPage.tsx | [vagas](vagas/agente.md), [documentos-pendentes](documentos-pendentes/agente.md), [instituicoes](instituicoes/agente.md) |
 
 `NovasAbasPage.tsx` guarda várias telas: Consultar Modelos (vagas), Documentos pendentes e Instituições. `FinanceiroPage.tsx` guarda Faturamento, Relatório Procfy e Holerite (financeiro) e as duas telas de Comissão.

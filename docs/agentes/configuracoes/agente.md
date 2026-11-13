@@ -1,6 +1,6 @@
 # Agente — Configurações
 
-> Última revisão: 2026-11-13 (commit "Configurações: libera o Disparador Infojobs por usuário")
+> Última revisão: 2026-11-13 (commit "Disparador pelo CRM: conferir telefones, criar deals e disparar template.")
 
 ## Para que serve
 
@@ -61,7 +61,8 @@ Variável usada: `ADMIN_EMAIL` (o administrador do ambiente). Nenhum serviço ex
 - Desmarcar "Pode entrar no sistema" bloqueia o login (`findStaff` exige `ativo`) e as requisições já abertas (403 `SEM_ACESSO`); as páginas ficam guardadas.
 - Apagar (`acesso.service.ts:87-115`): 404 se não existe; admin → 409 `ADMIN_PROTEGIDO`; o próprio usuário logado → 409 `PROPRIO_USUARIO`. Apaga páginas e usuário numa transação. É definitivo. O frontend esconde o botão para admin e pede confirmação ("isso não pode ser desfeito").
 - A mudança de páginas vale na próxima requisição da pessoa, porque a permissão é lida do banco a cada chamada (`daSessao`); o menu dela só muda quando o frontend recarregar `/auth/me`.
-- **Disparador Infojobs** (`disparador`, grupo Geral): é o link externo "Disparador" do menu (`DISPARADOR_URL` em `shell.tsx`, abre em nova aba). A caixa só mostra ou esconde o item do menu; não protege nenhuma rota da API nem o endereço externo, que tem acesso próprio. Quando a página entrou no catálogo (2026-11-13), a migration `20261113170000_pagina_disparador` liberou para todos os usuários que já tinham login, porque até ali o item aparecia para todos. Usuário novo só vê se a caixa for marcada.
+- **Disparador pelo CRM** (`disparador-crm`, grupo Geral): item "Pelo CRM" do grupo "Disparador" do menu e as rotas `/api/v1/disparo-crm/*`. Não é liberada para ninguém automaticamente (não há migration); o administrador marca a caixa. Detalhes em [disparador](../disparador/agente.md).
+- **Disparador Infojobs** (`disparador`, grupo Geral): é o item externo "Infojobs" do grupo "Disparador" do menu (`DISPARADOR_URL` em `shell.tsx`, abre em nova aba). A caixa só mostra ou esconde o item do menu; não protege nenhuma rota da API nem o endereço externo, que tem acesso próprio. Quando a página entrou no catálogo (2026-11-13), a migration `20261113170000_pagina_disparador` liberou para todos os usuários que já tinham login, porque até ali o item aparecia para todos. Usuário novo só vê se a caixa for marcada.
 - Mensagens de sucesso: "Usuário criado.", "Acesso salvo.", "Usuário apagado."; após criar, o novo usuário fica selecionado.
 
 ## Cuidados ao mudar
