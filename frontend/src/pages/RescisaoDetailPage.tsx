@@ -169,7 +169,7 @@ export function RescisaoDetailPage() {
   const erroForm = message && !pedido;
 
   return (
-    <div className="grid gap-5">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-5">
       <Voltar />
       <header className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
         <div className="grid min-w-0 gap-1">

@@ -749,7 +749,7 @@ export function CadastrarInstituicaoPage() {
           <Celula span={2}><Field label="E-mail"><Input aria-label="E-mail" type="email" /></Field></Celula>
         </Grade>
       </Secao>
-      <Secao titulo="Endereço" texto="Endereço da unidade. Latitude e longitude ajudam a calcular a distância até os candidatos.">
+      <Secao titulo="Endereço" texto="Endereço da unidade, com latitude e longitude se souber.">
         <Grade>
           <Celula span={2}><Field label="CEP"><Input aria-label="Cep" placeholder="00000-000" /></Field></Celula>
           <Celula span={4}><Field label="Rua"><Input aria-label="Rua" /></Field></Celula>

@@ -104,7 +104,7 @@ export function NovaContratacaoPage() {
   const candidatoResumo = personName || (personId ? "Escolhido pelo link de origem" : "");
 
   return (
-    <div className="grid gap-5">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-5">
       <Link to="/contratacoes" className="inline-flex w-fit items-center gap-1 text-sm font-semibold text-slate-500 hover:text-navy-900">
         <ArrowLeft size={16} /> Contratações
       </Link>
@@ -113,7 +113,7 @@ export function NovaContratacaoPage() {
         descricao="Escolha a empresa, uma vaga aberta com posição livre e o candidato. A contratação ocupa uma posição da vaga."
       />
       <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_20rem]">
-        <div className="grid gap-5">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-5">
           <Bloco numero={1} titulo="Empresa" texto="Digite pelo menos 2 letras do nome, da razão social ou do CNPJ." feito={Boolean(companyId)}>
             <BuscaCampo aria-label="Buscar empresa" placeholder="CNPJ, razão social ou nome fantasia" value={companyQuery} onChange={setCompanyQuery} />
             {companies.isFetching && !companies.data ? <p className="text-sm text-slate-500">Buscando…</p> : null}

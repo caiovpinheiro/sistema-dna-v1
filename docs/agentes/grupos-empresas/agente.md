@@ -1,6 +1,6 @@
 # Agente — Grupos (Grupos, Empresas e Vagas)
 
-> Última revisão: 2026-11-12 (empresa sem CNPJ)
+> Última revisão: 2026-11-13 (commit "Repagina as telas restantes no padrão novo")
 
 ## Para que serve
 
@@ -10,24 +10,25 @@ Tela de cadastro em cascata: primeiro o grupo, depois a empresa do grupo, depois
 
 | Rota | Componente | Arquivo | O que mostra |
 |---|---|---|---|
-| `/grupos-empresas` ou `?aba=grupo` | `GruposEmpresasPage` → `AbaGrupo` | `frontend/src/pages/GruposEmpresasPage.tsx` | Formulário "Novo grupo" + lista pesquisável de grupos (filtro no navegador). |
-| `/grupos-empresas?aba=grupo&grupo=<uuid>` | `AbaGrupo` (selecionado) | idem | Detalhe do grupo: empresas associadas (clique abre `/empresas/:id`) e "Cobrança das empresas" (`CobrancaEmpresa` por empresa). |
-| `/grupos-empresas?aba=empresa[&grupo=<uuid>]` | `AbaEmpresa` | idem | Formulário de empresa nova (grupo, CNPJ opcional, razão social, fantasia, CEP com ViaCEP, endereço, contato). |
-| `/grupos-empresas?aba=vaga[&empresa=<uuid>][&modelo=<vaga_id>]` | `AbaVaga` (modo `vaga`) | idem | Formulário de abertura de vaga: empresa, modelo (opcional), tipo, carga, cargo (lista ou "+ Novo cargo"), salário, horários, dias (fixo/escala/folga), sexo, idade, quantidade, atividades, benefícios. |
-| `/vagas/modelos/novo` | `ModeloFormPage` → `AbaVaga` (modo `modelo`) | idem | Criar modelo global (sem empresa e quantidade). Salvar volta para `/vagas/modelos`. |
-| `/vagas/modelos/:id/editar` | `ModeloFormPage` → `AbaVaga` (modo `modelo`) | idem | Editar modelo global. |
+| `/grupos-empresas` ou `?aba=grupo` | `GruposEmpresasPage` → `AbaGrupo` | `frontend/src/pages/GruposEmpresasPage.tsx` | `CabecalhoPagina` "Grupos, empresas e vagas" e as abas em `FiltroChips` (Grupo, Empresa, Vaga). Formulário "Novo grupo" à esquerda + lista pesquisável de grupos à direita (filtro no navegador, contador, cada grupo com seta para abrir). |
+| `/grupos-empresas?aba=grupo&grupo=<uuid>` | `AbaGrupo` (selecionado) | idem | "Voltar para os grupos"; cartão do grupo com contato, link "Cadastrar empresa neste grupo" (`?aba=empresa&grupo=<uuid>`) e a tabela `data-table` "Empresas do grupo" (clique ou "Abrir" leva a `/empresas/:id`); "Cobrança das empresas" (`CobrancaEmpresa` por empresa). |
+| `/grupos-empresas?aba=empresa[&grupo=<uuid>]` | `AbaEmpresa` | idem | Formulário de empresa nova em 3 blocos numerados (`Bloco` + grade de 6 colunas): 1 Grupo e identificação (grupo, CNPJ opcional, razão social, fantasia), 2 Endereço (CEP com ViaCEP, endereço, número, complemento, bairro, cidade, UF), 3 Contato. "Salvar empresa" no fim. |
+| `/grupos-empresas?aba=vaga[&empresa=<uuid>][&modelo=<vaga_id>]` | `AbaVaga` (modo `vaga`) | idem | Formulário de abertura de vaga em 5 blocos numerados: 1 Empresa e modelo (empresa, modelo opcional, quantidade), 2 Cargo e remuneração (tipo, carga, cargo da lista ou "+ Novo cargo", salário), 3 Horário (entrada, saída, dias fixo/escala/folga, texto previsto), 4 Perfil do candidato (sexo, idade de/até), 5 Atividades e benefícios. Botão "Abrir vaga" no fim. |
+| `/vagas/modelos/novo` | `ModeloFormPage` → `AbaVaga` (modo `modelo`) | idem | "Novo modelo de vaga": os mesmos blocos sem o bloco da empresa (a numeração começa em Cargo e remuneração). "Voltar aos modelos" no cabeçalho; Cancelar/Salvar modelo no fim. Salvar volta para `/vagas/modelos`. |
+| `/vagas/modelos/:id/editar` | `ModeloFormPage` → `AbaVaga` (modo `modelo`) | idem | "Editar modelo de vaga": mesmo formulário, já preenchido com o modelo. |
 | `/empresas/nova`, `/vagas/nova` | `Navigate` | `frontend/src/App.tsx:74`, `:81` | Redirecionam para `?aba=empresa` e `?aba=vaga`. |
 
 As abas no código são só **grupo, empresa e vaga** (`abas` em `GruposEmpresasPage.tsx`). Não existe aba "modelo" nesta tela: o modelo é o `ModeloFormPage`, servido pelas rotas `/vagas/modelos/*`. A consulta/lista de modelos (`/vagas/modelos`, `ConsultarModelosPage`) é do agente de Vagas.
 
-Outras telas que abrem esta: `EmpresasPage` ("Nova empresa"), `EmpresaDetailPage` e `VagasPage` ("Nova vaga"), `NovasAbasPage.tsx:241` ("Abrir vaga" com `?aba=vaga&modelo=<vaga_id>`).
+Outras telas que abrem esta: `EmpresasPage` ("Nova empresa"), `EmpresaDetailPage` e `VagasPage` ("Nova vaga"), `NovasAbasPage.tsx` (`AcoesModelo`, "Abrir vaga" com `?aba=vaga&modelo=<vaga_id>`).
 
 ## Arquivos
 
 Frontend
-- `frontend/src/pages/GruposEmpresasPage.tsx` — `GruposEmpresasPage`, `AbaGrupo`, `AbaEmpresa`, `AbaVaga`, `ModeloFormPage` e as funções de horário (`diasPelaCarga`, `preencherDias`, `semFolga`, `soDiasFixos`, `textoPrevisto`, `cargaDoHorario`, `modosDoModelo`).
+- `frontend/src/pages/GruposEmpresasPage.tsx` — `GruposEmpresasPage`, `AbaGrupo`, `AbaEmpresa`, `AbaVaga`, `ModeloFormPage`, os componentes visuais locais (`Bloco`, `Grade`, `Celula`, `Sucesso`, `Aviso`, `Erro`, estes dois com `Alerta`) e as funções de horário (`diasPelaCarga`, `preencherDias`, `semFolga`, `soDiasFixos`, `textoPrevisto`, `cargaDoHorario`, `modosDoModelo`).
 - `frontend/src/components/busca-opcao.tsx` — `BuscaOpcao`, `normalizarBusca`.
 - `frontend/src/components/cobranca-empresa.tsx` — `CobrancaEmpresa` (compartilhado com `EmpresaDetailPage`).
+- `frontend/src/components/pagina.tsx` — `CabecalhoPagina`, `FiltroChips` (abas), `Alerta`.
 - `frontend/src/lib/cargo.ts` — `cargoDoModelo`, `chaveCargo`, `nomePadronizado`, `CargoOpcao`.
 - `frontend/src/lib/horario-escala.ts` — `DIAS_ESCALA`, `textoDoHorario`, tipos `DiaEscala`/`ModoDia`.
 - Menu: `frontend/src/components/shell.tsx` (item "Grupos", página `empresas`; `/vagas/modelos/novo` → página `vagas-modelo`, `/vagas/modelos/...` → `vagas-modelos`).
@@ -117,7 +118,7 @@ Serviços externos:
 - As colunas e valores fixos do legado (`sede=10`, `tipo_empresa=1`, `usa_agente=1`, `etapa_vaga` padrão, `vaga_valores` zerado, `km=30`) imitam o sistema antigo; outras telas e o portal leem esses valores.
 - `public.vaga.vaga_id` é recalculado por `reagruparVagaIds` (assinatura em `lib/vaga-id.ts`); triagem e sync de vagas abertas dependem desse agrupamento.
 - `formularioDaLinha` entende dois formatos de `horario` (texto por dia e grade do sync `;turno;...;1=HH:MM-HH:MM`); mantenha os dois.
-- `AbaVaga` é usado nos dois modos; mudanças no formulário de vaga afetam também `ModeloFormPage` e a consulta de modelos (invalida `modelos-consulta` e navega para `/vagas/modelos`).
+- `AbaVaga` é usado nos dois modos; mudanças no formulário de vaga afetam também `ModeloFormPage` e a consulta de modelos (invalida `modelos-consulta` e navega para `/vagas/modelos`). A numeração dos blocos vem de `ordemBlocos`/`numero` (o modo modelo não tem o bloco da empresa).
 - `GET /api/v1/grupos-empresas/vagas` devolve `{ success, modelos, data }` (sem `meta`), diferente do padrão `ok()`.
 - Listas de grupos e empresas têm `LIMIT 500` e o filtro é feito no navegador: acima disso, itens somem do seletor.
 - `valoresDoGrupo` usa `public.empresa.id` para buscar `public.valor_empresas.id_empresa`; funciona porque o id é o mesmo do Lightsail.

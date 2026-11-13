@@ -82,11 +82,11 @@ export function ConfiguracoesPage() {
           <div className="grid items-start gap-4 lg:grid-cols-[300px_minmax(0,1fr)]">
             <Card className="overflow-hidden p-0 lg:sticky lg:top-0">
               <p className="border-b border-slate-100 px-4 py-2.5 text-xs font-semibold text-slate-500">Pessoas com login</p>
-              <ul className="max-h-[70vh] divide-y divide-slate-100 overflow-auto">
+              <ul className="max-h-[70vh] overflow-auto">
                 {dados.usuarios.map((item) => {
                   const ativo = escolhido === item.id;
                   return (
-                    <li key={item.id}>
+                    <li key={item.id} className="border-b border-slate-100 last:border-b-0">
                       <button type="button" aria-pressed={ativo} className={cn("grid w-full gap-0.5 px-4 py-3 text-left transition", ativo ? "bg-cyan-50" : "hover:bg-slate-50")} onClick={() => escolher(item.id)}>
                         <span className={cn("text-sm font-semibold", ativo ? "text-cyan-800" : "text-navy-900")}>{item.nome}</span>
                         <span className="truncate text-xs text-slate-500">{item.email}</span>

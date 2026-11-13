@@ -358,7 +358,7 @@ export function GerarFaturamentoPage() {
                 const marcada = marcadas.includes(item.id_empresa);
                 return (
                   <tr key={item.id_empresa} className={marcada ? "bg-cyan-50" : undefined}>
-                    <td><input aria-label={`Selecionar ${item.nome_fantasia || item.razao_social}`} type="checkbox" className="h-4 w-4 accent-cyan-700" checked={marcada} onChange={() => setMarcadas((atual) => atual.includes(item.id_empresa) ? atual.filter((id) => id !== item.id_empresa) : [...atual, item.id_empresa])} /></td>
+                    <td><input aria-label={`Selecionar ${textoPlano(item.nome_fantasia || item.razao_social)}`} type="checkbox" className="h-4 w-4 accent-cyan-700" checked={marcada} onChange={() => setMarcadas((atual) => atual.includes(item.id_empresa) ? atual.filter((id) => id !== item.id_empresa) : [...atual, item.id_empresa])} /></td>
                     <td><NomeEmpresa fantasia={item.nome_fantasia} razao={item.razao_social} /></td>
                     <td className="whitespace-nowrap tabular-nums text-slate-600">{formatCnpj(item.cnpj)}</td>
                     <td className="text-slate-600">{item.tipo || "—"}</td>

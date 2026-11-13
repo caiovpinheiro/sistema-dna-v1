@@ -64,7 +64,7 @@ export function ProcessoDetailPage() {
   const contato = data.candidato ? [data.candidato.email, formatPhone(data.candidato.celular || data.candidato.telefonefixo)].filter((item) => item && item !== "—").join(" · ") : "";
   const nome = textoPlano(data.candidato_nome) || "Sem nome";
   return (
-    <div className="grid gap-5">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-5">
       <Voltar />
       <header className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
         <div className="grid min-w-0 gap-1">

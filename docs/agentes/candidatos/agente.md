@@ -1,6 +1,6 @@
 # Agente — Candidatos
 
-> Última revisão: 2026-11-12 (commit 5f1e2d0)
+> Última revisão: 2026-11-13 (commit "Repagina as telas restantes no padrão novo")
 
 ## Para que serve
 
@@ -11,8 +11,8 @@ Consultar, cadastrar e editar as pessoas (candidatos) da base. A lista mostra co
 | Rota | Componente | Arquivo | O que mostra |
 |---|---|---|---|
 | `/candidatos` | `CandidatosPage` | `frontend/src/pages/CandidatosPage.tsx` | Lista paginada (20 por página) com filtros nome, CPF, telefone e "Mais filtros" (e-mail, cidade, UF, contratação, regime, cadastrado por). Tabela em tela larga, cartões em tela estreita. Passar o mouse numa linha abre um preview flutuante (busca a ficha). |
-| `/candidatos/novo` | `CandidatoFormPage` | `frontend/src/pages/CandidatoFormPage.tsx` | Formulário de cadastro (identificação, endereço, estágio/CLT, dados bancários, observações). |
-| `/candidatos/:id` | `CandidatoDetailPage` | `frontend/src/pages/CandidatoDetailPage.tsx` | Ficha: cabeçalho, card "Acesso aos cursos" (LMS), `FichaCandidato`, vagas sugeridas, histórico de contratações, processos seletivos, documentos. Botões "Novo processo" (`/processos/novo?candidato=:id`) e "Editar". |
+| `/candidatos/novo` | `CandidatoFormPage` | `frontend/src/pages/CandidatoFormPage.tsx` | Formulário de cadastro em blocos (`Card` com título e frase, grade de 6 colunas): Identificação (cadastrado por, empresa, nome, CPF, e-mail, nascimento, telefones), Endereço, Estudos e trabalho, Dados bancários, Observações. Rodapé fixo (`sticky`) com o erro, "Cancelar" e "Cadastrar candidato" / "Salvar alterações". |
+| `/candidatos/:id` | `CandidatoDetailPage` | `frontend/src/pages/CandidatoDetailPage.tsx` | Ficha: `CabecalhoPagina` (nome, idade · CPF, selos "Candidato DNA"/"Cadastrado por <empresa>" e "Captado pela DNAWORK"; botões "Novo processo" (`/processos/novo?candidato=:id`) e "Editar"); card "Contato e cadastro" (`dl` com e-mail, telefone, endereço, nascimento, origem do currículo, última atualização) ao lado do card "Acesso aos cursos" (LMS); `FichaCandidato` (destaques objetivo/último cargo/entrevistas, currículo do atendimento, formação, perfil comportamental, conhecimentos em selos, dados do atendimento, experiência); vagas sugeridas e histórico de contratações lado a lado; processos seletivos; documentos. |
 | `/candidatos/:id/editar` | `CandidatoFormPage` | `frontend/src/pages/CandidatoFormPage.tsx` | Mesmo formulário, preenchido; envia só os campos alterados. |
 
 Não há abas: cada rota é uma tela.
@@ -94,7 +94,8 @@ Variáveis de config que mudam a lista: `CONTRATACAO_STATUS_ATIVO` (padrão 1) e
 ## Cuidados ao mudar
 
 - `fichaDoCandidato` é usada também por `backend/src/services/processo.service.ts:68` (ficha do processo; `ProcessoDetailPage` usa `FichaCandidato`); mudar o formato quebra as duas telas.
-- `ProcessosRelacionados` e `FichaCandidato` são compartilhados com Vagas e Processos.
+- `ProcessosRelacionados` e `FichaCandidato` são compartilhados com Vagas e Processos. `FichaCandidato` devolve um fragmento (vários `Card`/`dl` irmãos): o pai precisa ser um `grid gap-5`.
+- Nomes de empresa que vêm com entidade HTML (`&amp;`) passam por `textoPlano` na ficha; no formulário de edição os campos mostram o valor como está gravado (decodificar mudaria o que é salvo).
 - `CandidatoRepository` recebe os códigos de status de contratação por config; não fixe `1`/`2` no SQL.
 - As consultas de currículo dependem de colunas que podem não existir na cópia (`colunas()` em `information_schema`); mantenha a checagem ao adicionar campos.
 - Nomes de tabela/coluna legados com erro de digitação são reais: `conratacaovaga`, `exp_proficional`, `id_canditado`, `id_instiduicao`, `id_intituicao`, `emcaminhamento`. Não "corrija".

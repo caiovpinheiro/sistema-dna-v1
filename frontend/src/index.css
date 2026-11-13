@@ -165,6 +165,8 @@ button, a {
 .acao:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .data-table {
+  /* Referência para o rótulo oculto (sr-only) do cabeçalho: sem isso ele alarga a página no celular. */
+  position: relative;
   width: 100%;
   border-collapse: collapse;
   font-size: 13px;
@@ -233,6 +235,13 @@ button, a {
 .app-canvas.escuro .border-slate-200,
 .app-canvas.escuro .border-slate-200\/80 { border-color: rgb(255 255 255 / 0.08); }
 .app-canvas.escuro .ring-slate-200 { --tw-ring-color: rgb(255 255 255 / 0.1); }
+/* Linhas entre itens de lista (divide-*) e bordas claras de selos no fundo escuro. */
+.app-canvas.escuro .divide-slate-100 > :not(:last-child),
+.app-canvas.escuro .divide-slate-200 > :not(:last-child) { border-color: rgb(255 255 255 / 0.08); }
+.app-canvas.escuro .border-slate-300 { border-color: rgb(255 255 255 / 0.16); }
+.app-canvas.escuro .border-rose-200 { border-color: rgb(244 63 94 / 0.35); }
+.app-canvas.escuro .border-amber-200 { border-color: rgb(245 158 11 / 0.35); }
+.app-canvas.escuro .border-cyan-300 { border-color: rgb(34 211 238 / 0.35); }
 .app-canvas.escuro .hover\:bg-slate-50:hover,
 .app-canvas.escuro .hover\:bg-slate-100:hover { background-color: #222733; }
 .app-canvas.escuro .bg-cyan-50 { background-color: rgb(34 211 238 / 0.12); }

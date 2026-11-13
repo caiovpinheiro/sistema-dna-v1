@@ -1,6 +1,6 @@
 # Agente — Processos
 
-> Última revisão: 2026-11-12 (commit 5f1e2d0)
+> Última revisão: 2026-11-13 (commit "Repagina as telas restantes no padrão novo")
 
 ## Para que serve
 
@@ -10,9 +10,9 @@ Cada processo seletivo liga um candidato a uma vaga de uma empresa e diz **quem 
 
 | Rota | Componente | Arquivo | O que mostra |
 |---|---|---|---|
-| `/processos` | `ProcessosPage` | `frontend/src/pages/ProcessosPage.tsx` | Filtros (nome do candidato ao sair do campo, origem, etapa) na URL. Tabela com Candidato, Empresa, Vaga, Origem, Etapa, Recebido e Encaminhado, 30 por página. Botão "Novo processo". |
-| `/processos/novo` | `ProcessoFormPage` | `frontend/src/pages/ProcessoFormPage.tsx` | Busca a empresa (a partir de 2 letras), escolhe a vaga da empresa, busca o candidato pelo nome, origem (rádio), data de recebimento, data de encaminhamento (obrigatória para DNAWORK) e observação. Aceita `?empresa=&vaga=&candidato=` já preenchidos. |
-| `/processos/:id` | `ProcessoDetailPage` | `frontend/src/pages/ProcessoDetailPage.tsx` | Cabeçalho (candidato, contato, empresa, vaga, origem, botão "Contratar" enquanto aberto). Mostra a trilha de 5 etapas, os botões das próximas etapas mais Reprovado e Desistente, o link da contratação, a `FichaCandidato` e os textos do atendimento (resumo da entrevista, condução, dados da vaga). Também as datas e o histórico de movimentos. |
+| `/processos` | `ProcessosPage` | `frontend/src/pages/ProcessosPage.tsx` | `CabecalhoPagina` com "Novo processo". Filtros com rótulo (Candidato, ao sair do campo ou com Enter; Origem; Etapa) na URL (`nome`, `origem`, `etapa`), contador + "Limpar filtros". Tabela `data-table` com Candidato, Empresa, Vaga, Origem e Etapa em selo, Recebido, Encaminhado e "Abrir", 30 por página. Vazio diferencia "nenhum processo" de "nenhum com esses filtros". |
+| `/processos/novo` | `ProcessoFormPage` | `frontend/src/pages/ProcessoFormPage.tsx` | Três blocos numerados: 1 Empresa e vaga (busca a partir de 2 letras, vagas da empresa em cartões), 2 Candidato (busca pelo nome), 3 Origem e datas (origem em cartões de rádio, recebimento, encaminhamento obrigatório para DNAWORK, observação). Botão "Abrir processo" no fim. Aceita `?empresa=&vaga=&candidato=` já preenchidos. |
+| `/processos/:id` | `ProcessoDetailPage` | `frontend/src/pages/ProcessoDetailPage.tsx` | Cabeçalho (candidato, selos de etapa e origem, contato, empresa, vaga, botão "Contratar" enquanto aberto). Card "Andamento" com a trilha de 5 etapas, os botões das próximas etapas mais Reprovado e Desistente (`acao-rose`) e o link da contratação. Cards "Datas" e "Histórico" (hora já vem de São Paulo do servidor; a tela só reformata), a `FichaCandidato` e os textos do atendimento (resumo da entrevista, condução, dados da vaga). |
 
 Também usam esta seção:
 - `ProcessosRelacionados` (exportado de `ProcessosPage.tsx`) aparece em `VagaDetailPage.tsx:191` (`id_vaga=`) e em `CandidatoDetailPage.tsx:67` (`id_candidato=`).
@@ -23,11 +23,11 @@ Menu: item único "Processos" em `frontend/src/components/shell.tsx:22`, página
 ## Arquivos
 
 **Frontend**
-- `frontend/src/pages/ProcessosPage.tsx`: `ProcessosPage`, `ProcessosRelacionados`, `Lista`.
+- `frontend/src/pages/ProcessosPage.tsx`: `ProcessosPage`, `ProcessosRelacionados`, `Lista`, `EtapaBadge` (selo da etapa, também usado no detalhe).
 - `frontend/src/pages/ProcessoFormPage.tsx`
 - `frontend/src/pages/ProcessoDetailPage.tsx`: `ProcessoDetailPage`, `Texto`. A trilha e as etapas finais estão repetidas no front (`trilha`, `finais`).
 - `frontend/src/components/ficha-candidato.tsx`: `FichaCandidato` (a mesma da página do candidato).
-- `frontend/src/components/paginacao.tsx` e `frontend/src/lib/format.ts` (`etapaLabel`, `origemLabel`, `dateBr`, `formatCpf`, `formatPhone`).
+- `frontend/src/components/paginacao.tsx`, `frontend/src/components/pagina.tsx` (`CabecalhoPagina`, `CampoFiltro`, `ResumoResultados`, `Alerta`) e `frontend/src/lib/format.ts` (`etapaLabel`, `origemLabel`, `dateBr`, `formatCpf`, `formatPhone`, `textoPlano`).
 
 **Backend**
 - `backend/src/routes/index.ts:309-321`: rotas `/api/v1/processos`.
@@ -92,14 +92,16 @@ Tudo no **Postgres, schema `dna_work`**. As duas tabelas de processo existem só
 
 ## Cuidados ao mudar
 
-- As etapas existem em quatro lugares: `lib/processo.ts` (`ETAPAS`, `TRILHA`, `FINAIS`), o CHECK da migration, `ProcessoDetailPage.tsx` (`trilha`, `finais`) e `etapaLabel` em `format.ts`. Etapa nova precisa de migration e dos quatro.
+- As etapas existem em cinco lugares: `lib/processo.ts` (`ETAPAS`, `TRILHA`, `FINAIS`), o CHECK da migration, `ProcessoDetailPage.tsx` (`trilha`, `finais`), `etapaLabel` em `format.ts` e `ETAPA_BADGE` em `ProcessosPage.tsx`. Etapa nova precisa de migration e dos cinco.
 - O índice único parcial é o que impede processo duplicado. `create` e `receberAtendimento` dependem do erro 23505.
 - `vincularContratacao` roda dentro da transação da contratação (`client`). Lançar erro ali desfaz a contratação inteira.
 - `ProcessosRelacionados` usa a mesma `queryKey` base (`["processos", filtro]`) que a lista. É usado nas fichas de vaga e de candidato.
 - O Painel (`dashboard.service.ts`) conta por `origem`, `data_encaminhamento`, `data_recebimento` e `id_contratacao`. Mudar o significado dessas colunas muda os números do Painel.
 - `processo_seletivo.atendimento` também é lido por `fichaDoCandidato` para completar o atendimento do candidato. Não renomeie as chaves do jsonb.
 - As rotas `/api/v1/servico/*` ficam fora do login (lista de exceções em app.ts:154) e dependem só do `SERVICE_TOKEN`.
-- As três páginas usam classes de cor fixas de tema escuro (`bg-[#12141a]`, `text-white`, `text-slate-400`), diferente das telas de Vagas e Triagem, que usam `Card`/`CabecalhoPagina`.
+- As três páginas seguem o padrão de Vagas/Empresas (`Card`, `CabecalhoPagina`, `data-table`, `Badge`) e só usam classes com remapeamento de tema em `index.css`; não volte a usar cores fixas como `bg-[#12141a]`.
+- Cores dos selos de etapa ficam em `ETAPA_BADGE` (`ProcessosPage.tsx`). Etapa nova precisa de uma entrada ali também (sem ela o selo fica cinza).
+- `ProcessosRelacionados` (fichas de vaga e de candidato) mostra "Nenhum processo seletivo registrado." quando vem vazio.
 
 ## Como testar
 

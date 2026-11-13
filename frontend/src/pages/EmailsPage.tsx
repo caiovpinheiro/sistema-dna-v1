@@ -273,13 +273,13 @@ export function EmailsPage() {
                     <div className="grid gap-2">
                       <p className="text-xs font-semibold text-slate-500">Campos usados neste modelo e o exemplo mostrado na prévia</p>
                       {variaveis.map((nomeCampo) => (
-                        <div key={nomeCampo} className="grid gap-2 rounded-lg border border-slate-200 p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-center">
+                        <div key={nomeCampo} className="grid gap-2 rounded-lg border border-slate-200 p-3 sm:grid-cols-2">
                           <Select aria-label={`Campo ${nomeCampo}`} value={CAMPOS.some((campo) => campo.nome === nomeCampo) ? nomeCampo : ""} onChange={(event) => trocarCampo(nomeCampo, event.target.value)}>
                             {CAMPOS.some((campo) => campo.nome === nomeCampo) ? null : <option value="">{nomeCampo}</option>}
                             {CAMPOS.map((campo) => <option key={campo.token} value={campo.nome}>{campo.nome}</option>)}
                           </Select>
                           <Input aria-label={`Exemplo de ${nomeCampo}`} placeholder="Exemplo na prévia" value={exemplos[nomeCampo] ?? CAMPOS.find((campo) => campo.nome === nomeCampo)?.exemplo ?? ""} onChange={(event) => setExemplos((atualExemplos) => ({ ...atualExemplos, [nomeCampo]: event.target.value }))} />
-                          <button type="button" className="acao acao-cyan justify-self-start" onClick={() => inserirCampo(nomeCampo)}>Colocar de novo</button>
+                          <button type="button" className="acao acao-cyan justify-self-start sm:col-span-2" onClick={() => inserirCampo(nomeCampo)}>Colocar de novo na mensagem</button>
                         </div>
                       ))}
                     </div>

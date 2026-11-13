@@ -1,5 +1,7 @@
+import { ChevronDown } from "lucide-react";
 import { useState } from "react";
-import { formatCnpj } from "@/lib/format";
+import { Badge, cn } from "@/components/ui";
+import { formatCnpj, textoPlano } from "@/lib/format";
 
 export type ValorEmpresa = {
   id_empresa: string;
@@ -51,8 +53,8 @@ function resumoEstagio(v: ValorEmpresa) {
 function Resumo({ titulo, valor, detalhe, ativo }: { titulo: string; valor: string; detalhe: string; ativo: boolean }) {
   return (
     <div className="min-w-0">
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{titulo}</p>
-      <p className={ativo ? "text-xl font-extrabold text-orange-500" : "font-semibold text-slate-700"}>{valor}</p>
+      <p className="text-xs font-semibold text-slate-500">{titulo}</p>
+      <p className={ativo ? "text-xl font-extrabold tabular-nums text-cyan-700" : "font-semibold text-slate-700"}>{valor}</p>
       <p className="text-sm text-slate-500">{detalhe}</p>
     </div>
   );
@@ -65,40 +67,42 @@ export function CobrancaEmpresa({ valor, aberto: abertoInicial = false, titulo =
   const estagio = resumoEstagio(valor);
   const observacoes = valor.notas.length + valor.alertas.length;
   return (
-    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
       <button type="button" onClick={() => setAberto(!aberto)} aria-expanded={aberto}
         className="grid w-full gap-4 p-4 text-left hover:bg-slate-50 md:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)_auto] md:items-center">
         <div className="min-w-0">
-          {titulo ? <p className="font-bold text-navy-900">{valor.nome}</p> : <p className="font-bold text-navy-900">Cobrança do contrato</p>}
-          <p className="truncate text-sm text-slate-500">{[valor.razao_social, formatCnpj(valor.cnpj)].filter(Boolean).join(" · ")}</p>
+          {titulo ? <p className="font-bold text-navy-900">{textoPlano(valor.nome)}</p> : <p className="text-[15px] font-bold text-navy-900">Cobrança do contrato</p>}
+          <p className="truncate text-sm text-slate-500">{[valor.razao_social ? textoPlano(valor.razao_social) : null, formatCnpj(valor.cnpj)].filter(Boolean).join(" · ")}</p>
           <div className="mt-1 flex flex-wrap gap-1.5">
-            {valor.tipo ? <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">{valor.tipo}</span> : null}
-            {valor.vencimento_dia ? <span className="rounded-full bg-cyan-50 px-2 py-0.5 text-xs font-semibold text-cyan-800">Vence dia {valor.vencimento_dia}</span> : null}
-            {observacoes ? <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-700">{observacoes} obs.</span> : null}
-            {valor.alertas.length ? <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700">Conferir</span> : null}
+            {valor.tipo ? <Badge>{valor.tipo}</Badge> : null}
+            {valor.vencimento_dia ? <Badge value="aberta">Vence dia {valor.vencimento_dia}</Badge> : null}
+            {observacoes ? <Badge>{observacoes} {observacoes === 1 ? "observação" : "observações"}</Badge> : null}
+            {valor.alertas.length ? <Badge value="pausada">Conferir</Badge> : null}
           </div>
         </div>
         <Resumo titulo="CLT" {...clt} />
         <Resumo titulo="Estágio" {...estagio} />
-        <span className="text-lg text-orange-500" aria-hidden>{aberto ? "▴" : "▾"}</span>
+        <span className="inline-flex items-center gap-1 text-xs font-semibold text-cyan-700">
+          {aberto ? "Recolher" : "Ver detalhes"} <ChevronDown size={16} aria-hidden className={cn("transition", aberto ? "rotate-180" : "")} />
+        </span>
       </button>
       {aberto ? (
         <div className="grid gap-5 border-t border-slate-100 p-4 md:grid-cols-3">
           <div className="grid content-start gap-2">
-            <h3 className="font-bold text-navy-900">CLT</h3>
+            <h3 className="text-sm font-bold text-navy-900">CLT</h3>
             <p className="text-sm text-slate-700">{valor.clt_calculo || "—"}</p>
             {clt.ativo ? <p className="text-xs text-slate-500">Cobrada só no mês em que o contratado começa; garantia de reposição de 45 dias.</p> : null}
           </div>
           <div className="grid content-start gap-2">
-            <h3 className="font-bold text-navy-900">Estágio</h3>
+            <h3 className="text-sm font-bold text-navy-900">Estágio</h3>
             <p className="text-sm text-slate-700">{valor.est_calculo || "—"}</p>
             {valor.ciclo ? <p className="text-xs text-slate-500">{valor.ciclo}.</p> : null}
           </div>
           <div className="grid content-start gap-2">
-            <h3 className="font-bold text-navy-900">Observações</h3>
+            <h3 className="text-sm font-bold text-navy-900">Observações</h3>
             {observacoes ? (
               <ul className="grid list-disc gap-1.5 pl-5 text-sm text-slate-700">
-                {valor.alertas.map((alerta) => <li key={alerta} className="text-amber-700">{alerta}</li>)}
+                {valor.alertas.map((alerta) => <li key={alerta} className="text-amber-800">{alerta}</li>)}
                 {valor.notas.map((nota) => <li key={nota}>{nota}</li>)}
               </ul>
             ) : <p className="text-sm text-slate-500">Sem observações.</p>}

@@ -1,6 +1,6 @@
 # Agente — Empresas
 
-> Última revisão: 2026-11-12 (endereço editado vai para a triagem)
+> Última revisão: 2026-11-13 (commit "Repagina as telas restantes no padrão novo")
 
 ## Para que serve
 
@@ -12,8 +12,8 @@ Consultar as empresas clientes (cópia do Lightsail em `dna_work.empresa`), ver 
 |---|---|---|---|
 | `/empresas` | `EmpresasPage` | `frontend/src/pages/EmpresasPage.tsx` | Lista paginada (20, 25, 50 ou 100 por página via `?pageSize=`) com filtros busca (CNPJ, razão social, nome fantasia ou id), cidade, UF, status (ativo/inativo) e portal (já acessou / nunca acessou / sem login). Colunas: empresa, CNPJ, cidade, portal, status. Preview ao passar o mouse. |
 | `/empresas/nova` | `Navigate` | `frontend/src/App.tsx:74` | Redireciona para `/grupos-empresas?aba=empresa`. |
-| `/empresas/:id` | `EmpresaDetailPage` | `frontend/src/pages/EmpresaDetailPage.tsx` | Cabeçalho, cards de cidade/contato/cadastro, cobrança (`CobrancaEmpresa`), "Portal de empresas" (`AcessoPortal`), observações, vagas (ordenadas por situação) e contratações. Botões "Nova vaga" (`/grupos-empresas?aba=vaga`) e "Editar". |
-| `/empresas/:id/editar` | `EmpresaFormPage` | `frontend/src/pages/EmpresaFormPage.tsx` | Formulário de edição (razão social, fantasia, CNPJ opcional, e-mail, telefones, responsável, matriz, endereço, observações). Envia só o que mudou. |
+| `/empresas/:id` | `EmpresaDetailPage` | `frontend/src/pages/EmpresaDetailPage.tsx` | `CabecalhoPagina` (nome fantasia/razão com `textoPlano`, razão · CNPJ, selo Ativa/Inativa; botões "Editar" e "Nova vaga" (`/grupos-empresas?aba=vaga`)); card "Dados da empresa" (`dl`: cidade, endereço, responsável, e-mail, telefone, matriz, IE/site); cobrança (`CobrancaEmpresa`, recolhível com "Ver detalhes"/"Recolher"); "Portal de empresas" (`AcessoPortal`) ao lado das observações; vagas (ordenadas por situação) e contratações em `data-table` com contagem no título e "Abrir". |
+| `/empresas/:id/editar` | `EmpresaFormPage` | `frontend/src/pages/EmpresaFormPage.tsx` | Formulário de edição em blocos (Identificação, Contato, Endereço, Observações; grade de 6 colunas) com rodapé fixo ("Cancelar" e "Salvar alterações"). Envia só o que mudou. |
 
 Não há abas.
 
@@ -91,7 +91,8 @@ Serviços externos: nenhum.
 
 - Esta tela e a aba Empresa de `/grupos-empresas` gravam em lugares **diferentes**: aqui só `dna_work.empresa`; lá Lightsail + `public.empresa` + `dna_work.empresa`. Editar aqui não atualiza o Lightsail. Em `public.empresa` só o endereço e a coordenada acompanham a ficha (nome, CNPJ e contato não). Se o Google falhar, a edição é salva mesmo assim e a triagem corrige na próxima busca ou no próximo sync.
 - `GET /api/v1/empresas?q=` também é usado pelo formulário de candidato (busca de empresa) — não mude o formato de resposta.
-- `CobrancaEmpresa` é compartilhado com a aba Grupo.
+- `CobrancaEmpresa` é compartilhado com a aba Grupo (e o visual dele muda nas duas telas). Valor ativo em `text-cyan-700`, selos com `Badge`.
+- O formulário de edição mostra razão social/fantasia como estão gravadas: se vierem com `&amp;`, o campo mostra `&amp;` (decodificar mudaria o que é salvo).
 - O hash MD5 em `senha_u` existe por compatibilidade com o portal legado; não remova sem saber como o portal autentica.
 - `senha_envio` guarda senha em texto e é exposta no GET da ficha: qualquer mudança aqui tem impacto de segurança.
 - O PATCH monta o `SET` com as chaves recebidas; é seguro só por causa do filtro `PATCHABLE`.

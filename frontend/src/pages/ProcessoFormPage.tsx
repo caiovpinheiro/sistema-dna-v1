@@ -44,7 +44,7 @@ export function ProcessoFormPage() {
   const empresaEscolhida = companies.data?.data.find((item) => item.id_empresa === companyId);
   const pronto = Boolean(personId && companyId && jobId);
   return (
-    <form className="grid max-w-4xl gap-5" onSubmit={(event) => { event.preventDefault(); save.mutate(); }}>
+    <form className="grid max-w-4xl grid-cols-[minmax(0,1fr)] gap-5" onSubmit={(event) => { event.preventDefault(); save.mutate(); }}>
       <Link to="/processos" className="inline-flex w-fit items-center gap-1 text-sm font-semibold text-slate-500 hover:text-navy-900">
         <ArrowLeft size={16} /> Processos
       </Link>

@@ -1,11 +1,14 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { Save, Search } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useForm } from "react-hook-form";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { z } from "zod";
-import { Button, Card, Field, Input, Select, Textarea } from "@/components/ui";
+import { Alerta, CabecalhoPagina } from "@/components/pagina";
+import { Button, Card, Field, Input, Select, Skeleton, Textarea } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
+import { textoPlano } from "@/lib/format";
 
 const schema = z.object({
   nome: z.string().min(3, "Informe o nome."),
@@ -100,81 +103,121 @@ export function CandidatoFormPage() {
     onSuccess: (result) => navigate(`/candidatos/${id ?? (result.data as { id_candidato: string }).id_candidato}`),
   });
   const error = mensagemErro(save.error) || (form.formState.submitCount > 0 && !form.formState.isValid ? "Revise os campos marcados antes de salvar." : "");
+  const erros = form.formState.errors;
+  const botaoSalvar = <Button type="submit" disabled={save.isPending}><Save size={16} /> {save.isPending ? "Salvando…" : id ? "Salvar alterações" : "Cadastrar candidato"}</Button>;
   return (
-    <form className="grid gap-5" onSubmit={form.handleSubmit((values) => save.mutate(values))}>
-      <div className="flex items-center justify-between"><h1 className="text-2xl font-extrabold">{id ? "Editar candidato" : "Novo candidato"}</h1><Button type="submit" disabled={save.isPending}>Salvar</Button></div>
-      {error ? <p className="text-sm text-rose-600" role="alert">{error}</p> : null}
-      <Card className="grid gap-4 md:grid-cols-2">
-        <h2 className="md:col-span-2 font-bold">Identificação</h2>
-        <Field label="Cadastro" error={form.formState.errors.id_empresa?.message}>
-          <Select aria-label="Candidato DNA ou de outra empresa" value={vinculo} onChange={(event) => {
-            const proximo = event.target.value === "empresa" ? "empresa" : "dna";
-            form.setValue("vinculo", proximo);
-            if (proximo === "dna") form.setValue("id_empresa", "");
-          }}>
-            <option value="dna">Candidato DNA</option>
-            <option value="empresa">Outra empresa</option>
-          </Select>
-        </Field>
-        {vinculo === "empresa" ? (
-          <Field label="Empresa">
-            <Input
-              aria-label="Pesquisar empresa"
-              placeholder="Pesquisar empresa"
-              value={buscaEmpresa}
-              onChange={(event) => {
-                setBuscaEmpresa(event.target.value);
-                form.setValue("id_empresa", "");
-              }}
-            />
-            {empresas.data?.data.length ? (
-              <div className="mt-1 max-h-40 overflow-auto rounded-lg border border-slate-200">
-                {empresas.data.data.map((item) => (
-                  <button
-                    key={item.id_empresa}
-                    type="button"
-                    className="block w-full px-3 py-2 text-left text-sm hover:bg-slate-50"
-                    onClick={() => {
-                      form.setValue("id_empresa", item.id_empresa, { shouldValidate: true });
-                      setBuscaEmpresa(item.nome_fantasia || item.razao_social);
-                    }}
-                  >
-                    {item.nome_fantasia || item.razao_social}
-                  </button>
-                ))}
-              </div>
-            ) : null}
+    <form className="mx-auto grid w-full max-w-5xl gap-5" onSubmit={form.handleSubmit((values) => save.mutate(values))}>
+      <CabecalhoPagina
+        titulo={id ? "Editar candidato" : "Novo candidato"}
+        descricao={id ? "Altere o que precisar; só os campos mudados são gravados." : "Nome e CPF são obrigatórios; o resto pode ser completado depois."}
+      />
+      {id && current.isLoading ? <Skeleton className="h-64" /> : null}
+      <Secao titulo="Identificação" texto="Quem é a pessoa e quem cadastrou: a DNA Work ou uma empresa cliente.">
+        <Col span={2}>
+          <Field label="Cadastrado por" error={erros.id_empresa?.message}>
+            <Select aria-label="Candidato DNA ou de outra empresa" value={vinculo} onChange={(event) => {
+              const proximo = event.target.value === "empresa" ? "empresa" : "dna";
+              form.setValue("vinculo", proximo);
+              if (proximo === "dna") form.setValue("id_empresa", "");
+            }}>
+              <option value="dna">Candidato DNA</option>
+              <option value="empresa">Outra empresa</option>
+            </Select>
           </Field>
-        ) : <div />}
-        <Field label="Nome" error={form.formState.errors.nome?.message}><Input {...form.register("nome")} /></Field>
-        <Field label="CPF" error={form.formState.errors.cpf?.message}><Input {...form.register("cpf")} /></Field>
-        <Field label="E-mail" error={form.formState.errors.email?.message}><Input type="email" {...form.register("email")} /></Field>
-        <Field label="Nascimento"><Input type="date" {...form.register("datanascimento")} /></Field>
-        <Field label="Celular"><Input {...form.register("celular")} /></Field>
-        <Field label="Telefone fixo"><Input {...form.register("telefonefixo")} /></Field>
-      </Card>
-      <Card className="grid gap-4 md:grid-cols-2">
-        <h2 className="md:col-span-2 font-bold">Endereço</h2>
-        <Field label="CEP"><Input {...form.register("cep")} /></Field>
-        <Field label="Logradouro"><Input {...form.register("logradouro")} /></Field>
-        <Field label="Número"><Input {...form.register("numero")} /></Field>
-        <Field label="Bairro"><Input {...form.register("bairro")} /></Field>
-        <Field label="Cidade"><Input {...form.register("cidade")} /></Field>
-        <Field label="UF"><Input maxLength={2} {...form.register("estado")} /></Field>
-      </Card>
-      <Card className="grid gap-4 md:grid-cols-2">
-        <h2 className="md:col-span-2 font-bold">Estágio e CLT</h2>
-        <Field label="Instituição"><Input {...form.register("nome_escola")} /></Field>
-        <Field label="Curso"><Input {...form.register("curso")} /></Field>
-        <Field label="Semestre"><Input {...form.register("semestre")} /></Field>
-        <Field label="CTPS"><Input {...form.register("ctps")} /></Field>
-        <Field label="Banco"><Input {...form.register("banco")} /></Field>
-        <Field label="Agência"><Input {...form.register("agencia")} /></Field>
-        <Field label="Conta"><Input {...form.register("numero_conta")} /></Field>
-        <Field label="Chave Pix"><Input {...form.register("chave_pix")} /></Field>
-        <div className="md:col-span-2"><Field label="Observações"><Textarea {...form.register("obs")} /></Field></div>
-      </Card>
-      <div className="flex justify-end"><Button type="submit" disabled={save.isPending}>Salvar</Button></div>
+        </Col>
+        {vinculo === "empresa" ? (
+          <Col span={4}>
+            <Field label="Empresa">
+              <div className="relative">
+                <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <Input
+                  aria-label="Pesquisar empresa"
+                  placeholder="Pesquisar pelo nome da empresa"
+                  value={buscaEmpresa}
+                  className="pl-9"
+                  onChange={(event) => {
+                    setBuscaEmpresa(event.target.value);
+                    form.setValue("id_empresa", "");
+                  }}
+                />
+              </div>
+              {empresas.data?.data.length ? (
+                <div className="mt-1 max-h-44 overflow-auto rounded-lg border border-slate-200 bg-white">
+                  {empresas.data.data.map((item) => (
+                    <button
+                      key={item.id_empresa}
+                      type="button"
+                      className="block w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                      onClick={() => {
+                        form.setValue("id_empresa", item.id_empresa, { shouldValidate: true });
+                        setBuscaEmpresa(item.nome_fantasia || item.razao_social);
+                      }}
+                    >
+                      {textoPlano(item.nome_fantasia || item.razao_social)}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </Field>
+          </Col>
+        ) : <div className="hidden sm:col-span-4 sm:block" />}
+        <Col span={4}><Field label="Nome completo" error={erros.nome?.message}><Input {...form.register("nome")} /></Field></Col>
+        <Col span={2}><Field label="CPF" error={erros.cpf?.message}><Input placeholder="000.000.000-00" {...form.register("cpf")} /></Field></Col>
+        <Col span={4}><Field label="E-mail" error={erros.email?.message}><Input type="email" {...form.register("email")} /></Field></Col>
+        <Col span={2}><Field label="Nascimento"><Input type="date" {...form.register("datanascimento")} /></Field></Col>
+        <Col span={3}><Field label="Celular"><Input placeholder="(11) 90000-0000" {...form.register("celular")} /></Field></Col>
+        <Col span={3}><Field label="Telefone fixo"><Input placeholder="(11) 0000-0000" {...form.register("telefonefixo")} /></Field></Col>
+      </Secao>
+      <Secao titulo="Endereço" texto="Usado nas vagas sugeridas (pela cidade) e nos documentos.">
+        <Col span={2}><Field label="CEP"><Input placeholder="00000-000" {...form.register("cep")} /></Field></Col>
+        <Col span={3}><Field label="Logradouro"><Input {...form.register("logradouro")} /></Field></Col>
+        <Col span={1}><Field label="Número"><Input {...form.register("numero")} /></Field></Col>
+        <Col span={2}><Field label="Bairro"><Input {...form.register("bairro")} /></Field></Col>
+        <Col span={3}><Field label="Cidade"><Input {...form.register("cidade")} /></Field></Col>
+        <Col span={1}><Field label="UF"><Input maxLength={2} placeholder="SP" className="uppercase" {...form.register("estado")} /></Field></Col>
+      </Secao>
+      <Secao titulo="Estudos e trabalho" texto="Escola e curso para o estágio; CTPS para CLT.">
+        <Col span={3}><Field label="Instituição de ensino"><Input {...form.register("nome_escola")} /></Field></Col>
+        <Col span={3}><Field label="Curso"><Input {...form.register("curso")} /></Field></Col>
+        <Col span={2}><Field label="Semestre"><Input {...form.register("semestre")} /></Field></Col>
+        <Col span={2}><Field label="CTPS"><Input {...form.register("ctps")} /></Field></Col>
+      </Secao>
+      <Secao titulo="Dados bancários" texto="Para o pagamento da bolsa ou do salário.">
+        <Col span={3}><Field label="Banco"><Input {...form.register("banco")} /></Field></Col>
+        <Col span={1}><Field label="Agência"><Input {...form.register("agencia")} /></Field></Col>
+        <Col span={2}><Field label="Conta"><Input {...form.register("numero_conta")} /></Field></Col>
+        <Col span={6}><Field label="Chave Pix"><Input {...form.register("chave_pix")} /></Field></Col>
+      </Secao>
+      <Secao titulo="Observações" texto="Anotações internas sobre o candidato.">
+        <Col span={6}><Field label="Observações"><Textarea {...form.register("obs")} /></Field></Col>
+      </Secao>
+      {/* Rodapé fixo: o botão e o erro ficam sempre à vista enquanto o formulário rola. */}
+      <div className="sticky bottom-0 z-10 grid gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-lg">
+        {error ? <Alerta>{error}</Alerta> : null}
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Link to={id ? `/candidatos/${id}` : "/candidatos"}><Button type="button" variant="ghost">Cancelar</Button></Link>
+          {botaoSalvar}
+        </div>
+      </div>
     </form>
   );
+}
+
+/** Bloco do formulário: título, uma frase e a grade de 6 colunas. */
+function Secao({ titulo, texto, children }: { titulo: string; texto: string; children: ReactNode }) {
+  return (
+    <Card className="grid gap-4 md:p-5">
+      <header>
+        <h2 className="text-[15px] font-bold text-navy-900">{titulo}</h2>
+        <p className="text-sm text-slate-500">{texto}</p>
+      </header>
+      <div className="grid gap-3 sm:grid-cols-6">{children}</div>
+    </Card>
+  );
+}
+
+const LARGURA = { 1: "sm:col-span-1", 2: "sm:col-span-2", 3: "sm:col-span-3", 4: "sm:col-span-4", 6: "sm:col-span-6" } as const;
+
+function Col({ span, children }: { span: keyof typeof LARGURA; children: ReactNode }) {
+  return <div className={LARGURA[span]}>{children}</div>;
 }

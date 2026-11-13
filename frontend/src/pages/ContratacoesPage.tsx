@@ -48,7 +48,7 @@ export function ContratacoesPage() {
   const filtrando = FILTROS.some((chave) => params.get(chave));
   const total = lista ? Number(lista.meta?.total ?? lista.data.length) : null;
   return (
-    <div className="grid gap-5">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-5">
       <CabecalhoPagina
         titulo="Contratações"
         descricao="Vínculos de candidatos com vagas. Todo vínculo nasce de uma vaga aberta com posição livre; clique no nome para abrir a ficha."
@@ -91,7 +91,7 @@ export function ContratacoesPage() {
       ) : lista && (lista.data.length || Number(lista.meta?.total ?? 0) > 0) ? (
         <Card className="p-0">
           {/* Tela larga: tabela no padrão de /empresas e /vagas. */}
-          <div className="hidden overflow-x-auto lg:block">
+          <div className="relative hidden overflow-x-auto lg:block">
             <table className="data-table">
               <thead>
                 <tr>
@@ -120,7 +120,7 @@ export function ContratacoesPage() {
                       </td>
                       <td className="max-w-56">
                         <p className="truncate text-slate-700">{textoPlano(item.cargo) || "—"}</p>
-                        {item.modalidade ? <p className="truncate text-xs text-slate-500">{textoPlano(item.modalidade)}</p> : null}
+                        {modalidadeExtra(item) ? <p className="truncate text-xs text-slate-500">{modalidadeExtra(item)}</p> : null}
                       </td>
                       <td className="whitespace-nowrap"><Regime regime={item.regime} /></td>
                       <td className="whitespace-nowrap tabular-nums text-slate-600">{dateBr(item.data_inicio)}</td>
@@ -151,14 +151,14 @@ export function ContratacoesPage() {
                     </div>
                     <Badge value={item.situacao}>{situacaoLabel[item.situacao] ?? item.situacao}</Badge>
                   </div>
-                  <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-4">
-                    <div><dt className="text-xs text-slate-500">Regime</dt><dd><Regime regime={item.regime} /></dd></div>
-                    <div><dt className="text-xs text-slate-500">Início</dt><dd className="tabular-nums text-slate-700">{dateBr(item.data_inicio)}</dd></div>
-                    <div><dt className="text-xs text-slate-500">Fim</dt><dd><Fim item={item} /></dd></div>
-                    <div className="flex items-end justify-end">
-                      <Link to={`/contratacoes/${item.id_contratacao}`} className="inline-flex items-center gap-1 text-xs font-semibold text-cyan-700">Abrir <ChevronRight size={14} /></Link>
-                    </div>
-                  </dl>
+                  <div className="flex items-end justify-between gap-3">
+                    <dl className="grid flex-1 grid-cols-3 gap-x-4 gap-y-2 text-sm">
+                      <div><dt className="text-xs text-slate-500">Regime</dt><dd><Regime regime={item.regime} /></dd></div>
+                      <div><dt className="text-xs text-slate-500">Início</dt><dd className="tabular-nums text-slate-700">{dateBr(item.data_inicio)}</dd></div>
+                      <div><dt className="text-xs text-slate-500">Fim</dt><dd><Fim item={item} /></dd></div>
+                    </dl>
+                    <Link to={`/contratacoes/${item.id_contratacao}`} className="inline-flex shrink-0 items-center gap-1 text-xs font-semibold text-cyan-700">Abrir <ChevronRight size={14} /></Link>
+                  </div>
                 </li>
               );
             })}
@@ -178,6 +178,12 @@ function nomeEmpresa(item: Pick<Row, "empresa_fantasia" | "empresa_razao">) {
   const fantasia = textoPlano(item.empresa_fantasia);
   const razao = textoPlano(item.empresa_razao);
   return { principal: fantasia || razao || "Sem empresa", secundario: fantasia && razao && razao !== fantasia ? razao : "" };
+}
+
+/** Modalidade da vaga só quando diz algo além do regime (ex.: "Estágio ensino médio"). */
+function modalidadeExtra(item: Pick<Row, "modalidade" | "regime">) {
+  const modalidade = textoPlano(item.modalidade);
+  return modalidade && modalidade.toLowerCase() !== (regimeLabel[item.regime] ?? "").toLowerCase() ? modalidade : "";
 }
 
 function Regime({ regime }: { regime: string }) {

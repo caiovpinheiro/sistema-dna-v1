@@ -1,6 +1,6 @@
 # Agente — Termos e documentos
 
-> Última revisão: 2026-11-12 (commit "TCE: cidade de emissão na tela e data do dia gerada sozinha")
+> Última revisão: 2026-11-13 (commit "Repagina as telas restantes no padrão novo")
 
 ## Para que serve
 
@@ -10,11 +10,11 @@ Gera o Termo de Compromisso de Estágio (TCE) em PDF a partir de um formulário 
 
 | Rota | Componente | Arquivo | O que mostra |
 | --- | --- | --- | --- |
-| `/termos` (menu "Consultar") | `TermosPage` | `frontend/src/pages/TermosPage.tsx` | Lista de TCEs (até 200, mais novos primeiro) com filtro por status (Todos, Gerado, Aguardando, Assinado, Recusado), botões copiar link de assinatura por signatário, editar e excluir. |
+| `/termos` (menu "Consultar") | `TermosPage` | `frontend/src/pages/TermosPage.tsx` | `CabecalhoPagina` "Termos de estágio" com "Gerar TCE" (`/termos/gerar`) à direita; filtro por situação em `FiltroChips` (Todos, Gerado, Aguardando, Assinado, Recusado; contagem só no chip ativo) que grava `?status=`; tabela `data-table` (até 200, mais novos primeiro): estagiário (link para `/termos/:id`), empresa (`textoPlano`), situação, "Gerado em" (`criado_em`), assinaturas e ações Editar / Excluir / Abrir. A coluna "Assinaturas" é compacta: "2 de 4 assinaram" (signatário com `status = signed`) num `<details>` que, aberto, lista cada signatário com "Assinou" ou "Copiar link"; termo sem links mostra "Ainda não enviado". Abaixo de `lg` vira lista em blocos. |
 | `/termos/gerar` (menu "Gerar TCE") | `GerarTcePage` → `GeradorTce` | `frontend/src/pages/TermosPage.tsx`, `frontend/src/components/gerador-tce.tsx` | Formulário do TCE em cinco blocos numerados na ordem do termo (empresa concedente, estagiário, responsável legal opcional, instituição de ensino, condições do estágio/Anexo I), cada um com a pesquisa de preenchimento automático no topo (empresa, candidato, escola e vaga de estágio). Painel lateral fixo com os campos principais preenchidos por bloco e o botão de gerar. Aceita `?contratacao=<id>` (botão "Gerar TCE" da ficha de contratação). |
-| `/termos/documentos` (menu "Gerar documento") | `GerarDocumentoPage` (+ `GerarRescisaoMedio`) | `frontend/src/pages/GerarDocumentoPage.tsx`, `frontend/src/components/gerar-rescisao-medio.tsx` | Seletor de documento: Contrato (Modelo 1), Termo de adesão (Modelo 2) ou Rescisão estágio ensino médio. Baixa o arquivo gerado. |
+| `/termos/documentos` (menu "Gerar documento") | `GerarDocumentoPage` (+ `GerarRescisaoMedio`) | `frontend/src/pages/GerarDocumentoPage.tsx`, `frontend/src/components/gerar-rescisao-medio.tsx` | Documento escolhido em `FiltroChips` no cabeçalho (Contrato de prestação de serviços = Modelo 1, Termo de adesão = Modelo 2, Rescisão de estágio do ensino médio), com uma frase do formato de cada um. Formulário em blocos (`Card` com título e frase, grade de 6 colunas) e rodapé fixo (`sticky`) com o erro de validação e o botão "Gerar contrato" / "Gerar termo de adesão" / "Gerar rescisão". Baixa o arquivo gerado. |
 | `/termos/:id/editar` | `EditarTcePage` → `GeradorTce editarId` | `frontend/src/pages/TermosPage.tsx` | Mesmo formulário carregado com os dados salvos; salvar refaz o PDF. |
-| `/termos/:id` | `TermoDetailPage` | `frontend/src/pages/TermoDetailPage.tsx` | Status "gerado": prévia do PDF (iframe) + "Pedir assinatura da escola", "Enviar PDF por e-mail", "Enviar para assinatura". Depois de enviado: signatários com copiar/abrir link, "Baixar PDF assinado", "Reenviar e-mails de assinatura". |
+| `/termos/:id` | `TermoDetailPage` | `frontend/src/pages/TermoDetailPage.tsx` | `CabecalhoPagina` com o nome do estagiário, a empresa (`textoPlano`), selo da situação e as ações "Abrir contratação" (se houver `id_contratacao`) e "Editar dados" (se não assinado). Status "gerado": etapas (TCE gerado → Agora: enviar), prévia do PDF (iframe) à esquerda e painel à direita com os signatários e "Enviar para assinatura", "Enviar PDF por e-mail", "Pedir assinatura da escola". Depois de enviado: card "Assinaturas" com "X de Y assinaram", cada signatário com selo (Assinou, Abriu o link, Recusou, Aguardando) e copiar/abrir link (só enquanto o termo não está assinado), "Baixar PDF assinado", "Reenviar e-mails de assinatura", "Pedir assinatura da escola", "Enviar PDF por e-mail". |
 
 Ids de permissão: `termos`, `termos-gerar`, `termos-documento` (`frontend/src/components/shell.tsx:30-34`, `:69-71`).
 
@@ -118,7 +118,9 @@ Gerar documento:
 - `/api/v1/tce/*` exige `termos` ou `termos-gerar`; `/api/v1/termos/*` aceita também `termos-documento`. "Gerar documento" chama `/api/v1/empresas`, que exige a página `empresas` (`backend/src/lib/paginas.ts`).
 - Os nomes dos modelos de e-mail são buscados por texto exato em `emailsvinculo.descricao`; renomear na tela de E-mails quebra o envio (404 `MODELO_NAO_ENCONTRADO`).
 - Os textos dos avisos citam remetentes fixos ("documentos@dnawork.ai", "contratos@dnawork.ai") no frontend; o remetente real vem do banco/variável.
-- O filtro da lista não tem botão para `cancelado`, e a coluna "Enviado" mostra `criado_em`.
+- O filtro da lista não tem chip para `cancelado`, e a coluna "Gerado em" mostra `criado_em` (não a data de envio).
+- A contagem "X de Y assinaram" da lista e da ficha depende de `signatarios[].status = "signed"` gravado pelo webhook; antes do envio o status é `pendente` e a lista mostra "Ainda não enviado".
+- `GerarDocumentoPage` não tem mais o `<select aria-label="Documento">`: a troca de documento é pelos chips (mesma função `trocarModelo`).
 
 ## Como testar
 

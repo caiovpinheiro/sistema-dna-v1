@@ -1,8 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { Button, Card, Input } from "@/components/ui";
+import { Download, Eye, Pencil, RotateCcw, Send, X } from "lucide-react";
+import { Alerta } from "@/components/pagina";
+import { Button, Card, Input, Skeleton } from "@/components/ui";
 import { api } from "@/lib/api";
-import { dateBr, formatCnpj, money } from "@/lib/format";
+import { dateBr, formatCnpj, money, textoPlano } from "@/lib/format";
 
 type Item = {
   nome: string | null;
@@ -167,7 +169,7 @@ export function RelatorioEmpresaPainel({
       <Card className="motion-pop grid max-h-[90vh] w-full max-w-5xl gap-4 overflow-auto">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 id="relatorio-titulo" className="text-lg font-bold">{dados?.empresa || "Relatório da empresa"}</h2>
+            <h2 id="relatorio-titulo" className="text-lg font-bold text-navy-900">{dados?.empresa ? textoPlano(dados.empresa) : "Relatório da empresa"}</h2>
             <p className="text-sm text-slate-500">
               {competencia ? `${mes.padStart(2, "0")}/${ano}` : "Sem competência"}
               {dados?.cnpj ? ` · ${formatCnpj(dados.cnpj)}` : ""}
@@ -176,42 +178,42 @@ export function RelatorioEmpresaPainel({
           </div>
           <div className="flex flex-wrap gap-2">
             {competencia && !relatorio.isLoading && linhas.length > 0 ? (
-              <Button type="button" variant="secondary" onClick={() => setEditando((atual) => !atual)}>{editando ? "Pré-visualizar" : "Editar relatório"}</Button>
+              <Button type="button" variant="secondary" onClick={() => setEditando((atual) => !atual)}>{editando ? <><Eye size={16} /> Pré-visualizar</> : <><Pencil size={16} /> Editar relatório</>}</Button>
             ) : null}
-            <Button type="button" variant="secondary" onClick={onClose}>Fechar</Button>
+            <Button type="button" variant="ghost" onClick={onClose}><X size={16} /> Fechar</Button>
           </div>
         </div>
 
         {!competencia ? <p className="text-sm text-slate-500">Esta cobrança não é um faturamento mensal. O relatório só abre quando a descrição é Faturamento M/AAAA.</p> : null}
-        {relatorio.isLoading ? <p className="text-sm text-slate-500">Carregando relatório...</p> : null}
-        {relatorio.error instanceof Error ? <p className="text-sm text-rose-600">{relatorio.error.message}</p> : null}
+        {relatorio.isLoading ? <Skeleton className="h-40" /> : null}
+        {relatorio.error instanceof Error ? <Alerta>{relatorio.error.message}</Alerta> : null}
 
         {competencia && !relatorio.isLoading && linhas.length === 0 && !relatorio.error ? <p className="text-sm text-slate-500">Nenhum candidato entra neste mês.</p> : null}
 
         {editando ? (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[860px] text-left text-sm">
-              <thead className="text-xs uppercase text-slate-400">
+            <table className="data-table compact min-w-[860px]">
+              <thead>
                 <tr>
-                  <th className="px-2 py-2">Entra</th>
-                  <th className="px-2 py-2">Candidato</th>
-                  <th className="px-2 py-2">Cargo</th>
-                  <th className="px-2 py-2">Modalidade</th>
-                  <th className="px-2 py-2">Situação</th>
-                  <th className="px-2 py-2">Valor</th>
+                  <th>Entra</th>
+                  <th>Candidato</th>
+                  <th>Cargo</th>
+                  <th>Modalidade</th>
+                  <th>Situação</th>
+                  <th className="text-right">Valor</th>
                 </tr>
               </thead>
               <tbody>
                 {linhas.map((linha) => (
-                  <tr key={linha.chave} className="border-t border-slate-100">
-                    <td className="px-2 py-2">
-                      <input aria-label={`Incluir ${linha.nome || "candidato"}`} type="checkbox" checked={linha.incluida} onChange={(event) => atualizar(linha.chave, { incluida: event.target.checked })} />
+                  <tr key={linha.chave}>
+                    <td>
+                      <input className="size-4 accent-cyan-700" aria-label={`Incluir ${linha.nome || "candidato"}`} type="checkbox" checked={linha.incluida} onChange={(event) => atualizar(linha.chave, { incluida: event.target.checked })} />
                     </td>
-                    <td className="px-2 py-2"><Input aria-label="Candidato" value={linha.nome ?? ""} onChange={(event) => atualizar(linha.chave, { nome: event.target.value })} /></td>
-                    <td className="px-2 py-2"><Input aria-label="Cargo" value={linha.cargo ?? ""} onChange={(event) => atualizar(linha.chave, { cargo: event.target.value })} /></td>
-                    <td className="px-2 py-2"><Input aria-label="Modalidade" value={linha.modalidade ?? ""} onChange={(event) => atualizar(linha.chave, { modalidade: event.target.value })} /></td>
-                    <td className="px-2 py-2"><Input aria-label="Situação" value={linha.situacao} onChange={(event) => atualizar(linha.chave, { situacao: event.target.value })} /></td>
-                    <td className="px-2 py-2"><Input aria-label="Valor" inputMode="decimal" value={linha.valorTexto} onChange={(event) => atualizar(linha.chave, { valorTexto: event.target.value })} /></td>
+                    <td><Input aria-label="Candidato" value={linha.nome ?? ""} onChange={(event) => atualizar(linha.chave, { nome: event.target.value })} /></td>
+                    <td><Input aria-label="Cargo" value={linha.cargo ?? ""} onChange={(event) => atualizar(linha.chave, { cargo: event.target.value })} /></td>
+                    <td><Input aria-label="Modalidade" value={linha.modalidade ?? ""} onChange={(event) => atualizar(linha.chave, { modalidade: event.target.value })} /></td>
+                    <td><Input aria-label="Situação" value={linha.situacao} onChange={(event) => atualizar(linha.chave, { situacao: event.target.value })} /></td>
+                    <td className="w-36"><Input className="text-right tabular-nums" aria-label="Valor" inputMode="decimal" value={linha.valorTexto} onChange={(event) => atualizar(linha.chave, { valorTexto: event.target.value })} /></td>
                   </tr>
                 ))}
               </tbody>
@@ -219,26 +221,26 @@ export function RelatorioEmpresaPainel({
           </div>
         ) : competencia && linhas.length > 0 ? (
           <div className="overflow-x-auto rounded-lg border border-slate-200">
-            <table className="w-full min-w-[720px] text-left text-sm">
-              <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+            <table className="data-table min-w-[720px]">
+              <thead>
                 <tr>
-                  <th className="px-3 py-2">Candidato</th>
-                  <th className="px-3 py-2">Cargo</th>
-                  <th className="px-3 py-2">Modalidade</th>
-                  <th className="px-3 py-2">Início</th>
-                  <th className="px-3 py-2">Situação</th>
-                  <th className="px-3 py-2">Valor</th>
+                  <th>Candidato</th>
+                  <th>Cargo</th>
+                  <th>Modalidade</th>
+                  <th>Início</th>
+                  <th>Situação</th>
+                  <th className="text-right">Valor</th>
                 </tr>
               </thead>
               <tbody>
                 {visiveis.map((linha) => (
-                  <tr key={linha.chave} className="border-t border-slate-100">
-                    <td className="px-3 py-2 font-semibold">{linha.nome || "Sem nome"}</td>
-                    <td className="px-3 py-2">{linha.cargo}</td>
-                    <td className="px-3 py-2">{linha.modalidade}</td>
-                    <td className="px-3 py-2">{dateBr(linha.inicio)}</td>
-                    <td className="px-3 py-2">{linha.situacao}</td>
-                    <td className="px-3 py-2">{money(numero(linha.valorTexto))}</td>
+                  <tr key={linha.chave}>
+                    <td className="font-semibold text-navy-900">{linha.nome || "Sem nome"}</td>
+                    <td className="text-slate-600">{linha.cargo || "—"}</td>
+                    <td className="text-slate-600">{linha.modalidade || "—"}</td>
+                    <td className="whitespace-nowrap tabular-nums text-slate-600">{dateBr(linha.inicio)}</td>
+                    <td className="text-slate-600">{linha.situacao}</td>
+                    <td className="whitespace-nowrap text-right tabular-nums">{money(numero(linha.valorTexto))}</td>
                   </tr>
                 ))}
               </tbody>
@@ -249,17 +251,19 @@ export function RelatorioEmpresaPainel({
         {competencia && linhas.length > 0 ? (
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="text-sm">
-              <p className="font-semibold">Total {money(total)} · {visiveis.length} {visiveis.length === 1 ? "linha" : "linhas"}</p>
+              <p className="font-semibold text-navy-900"><span className="tabular-nums">Total {money(total)}</span> · {visiveis.length} {visiveis.length === 1 ? "linha" : "linhas"}</p>
               {alterado ? <p className="text-slate-500">Calculado {money(original)}. A edição vale para este envio. Se o boleto do mês já existir, o valor dele não muda.</p> : null}
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button type="button" variant="secondary" disabled={visiveis.length === 0} onClick={baixar}>Baixar relatório</Button>
-              <Button type="button" variant="secondary" onClick={() => dados && setLinhas(linhasDe(dados.itens))}>Restaurar</Button>
-              <Button type="button" disabled={enviar.isPending || visiveis.length === 0} onClick={() => enviar.mutate()}>{enviar.isPending ? "Enviando..." : "Enviar este relatório"}</Button>
+              <Button type="button" variant="secondary" disabled={visiveis.length === 0} onClick={baixar}><Download size={16} /> Baixar relatório</Button>
+              <Button type="button" variant="ghost" onClick={() => dados && setLinhas(linhasDe(dados.itens))}><RotateCcw size={16} /> Restaurar</Button>
+              <Button type="button" disabled={enviar.isPending || visiveis.length === 0} onClick={() => enviar.mutate()}><Send size={16} /> {enviar.isPending ? "Enviando…" : "Enviar este relatório"}</Button>
             </div>
           </div>
         ) : null}
-        {aviso ? <p className={`text-sm font-semibold ${aviso.startsWith("Relatório enviado") ? "text-emerald-700" : "text-rose-600"}`}>{aviso}</p> : null}
+        {aviso ? (aviso.startsWith("Relatório enviado")
+          ? <p role="status" className="rounded-lg bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800">{aviso}</p>
+          : <Alerta>{aviso}</Alerta>) : null}
       </Card>
     </div>
   );

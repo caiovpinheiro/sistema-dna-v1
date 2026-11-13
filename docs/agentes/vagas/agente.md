@@ -1,36 +1,36 @@
 # Agente — Vagas
 
-> Última revisão: 2026-11-12 (filtro por prioridade)
+> Última revisão: 2026-11-13 (commit "Repagina as telas restantes no padrão novo")
 
 ## Para que serve
 
-Aqui o usuário consulta todas as vagas (cópia do Lightsail em `dna_work.vaga`) com filtros por cargo, grupo, empresa, modalidade, situação e prioridade, e muda a situação direto na lista. Também pode abrir a ficha de uma vaga, com funil, mensagem para o candidato, candidatos sugeridos e contratados, e editar a vaga. Em "Consultar Modelos", mantém os **modelos globais de vaga** (um por cargo e modalidade, em `public.vaga_repetida`), que preenchem o formulário de abertura de vaga. As vagas abertas usadas pela Triagem (`public.vaga`) vêm de syncs automáticos a partir do Lightsail, do Notion e de `public.cargo`.
+Aqui o usuário consulta todas as vagas (cópia do Lightsail em `dna_work.vaga`) com filtros por cargo, grupo, empresa, modalidade, situação e prioridade, e muda a situação direto na lista. Também pode abrir a ficha de uma vaga, com funil, mensagem para o candidato, candidatos sugeridos e contratados, e editar a vaga. Em "Consultar Modelos" (tela "Modelos de vaga"), mantém os **modelos globais de vaga** (um por cargo e modalidade, em `public.vaga_repetida`), que preenchem o formulário de abertura de vaga. As vagas abertas usadas pela Triagem (`public.vaga`) vêm de syncs automáticos a partir do Lightsail, do Notion e de `public.cargo`.
 
 ## Rotas e abas
 
 | Rota | Componente | Arquivo | O que mostra |
 |---|---|---|---|
-| `/vagas` | `VagasPage` | `frontend/src/pages/VagasPage.tsx` | Menu "Consultar". Filtros (Cargo, Grupo, Empresa, Modalidade, Situação, Prioridade) na URL, tabela em telas largas e cartões em telas estreitas, prioridade editável (`PrioridadeEditavel`: Alta, Média, Baixa), ocupação das posições, tempo em aberto, selo de situação clicável (`StatusEditavel`) e paginação de 20, 25, 50 ou 100. |
-| `/vagas/modelos` | `ConsultarModelosPage` | `frontend/src/pages/NovasAbasPage.tsx` (linha 180) | Menu "Consultar Modelos". Busca por cargo (com sugestões) e modalidade. Tabela com Cargo, Modalidade, Salário, Carga, Horário e as ações Abrir vaga, Editar e Apagar. |
-| `/vagas/modelos/novo` e `/vagas/modelos/:id/editar` | `ModeloFormPage` → `AbaVaga modo="modelo"` | `frontend/src/pages/GruposEmpresasPage.tsx` (linhas 452-741) | Formulário do modelo: o mesmo da abertura de vaga, sem empresa e sem quantidade. |
-| `/vagas/:id` | `VagaDetailPage` | `frontend/src/pages/VagaDetailPage.tsx` | Ficha da vaga: cabeçalho com Fechar/Reabrir, Novo processo, Contratar e Editar; os blocos Abertura, Inscritos, Entrevista e Contrato; as 4 etapas; mensagem para o candidato (com a foto do cargo, quando houver; "Copiar foto e mensagem" copia as duas num único item, como na Triagem); informações gerais; candidatos sugeridos; quem já trabalhou; contratados; processos relacionados (`ProcessosRelacionados` de `ProcessosPage.tsx`). |
-| `/vagas/:id/editar` | `VagaFormPage` | `frontend/src/pages/VagaFormPage.tsx` | Edição da vaga: cargo, situação, modalidade, salário, quantidade, km, carga, sexo, horário por dia (Fixo/Escala/Folga), texto do horário, atividades, benefícios, requisitos, destaques e observações. A empresa fica travada. |
+| `/vagas` | `VagasPage` | `frontend/src/pages/VagasPage.tsx` | Menu "Consultar". Filtros (Cargo, Grupo, Empresa, Modalidade, Situação, Prioridade) na URL, tabela em telas largas e cartões em telas estreitas, prioridade editável (`PrioridadeEditavel`: Alta, Média, Baixa; o `<select>` do selo usa `text-inherit!` para herdar a cor do selo nos dois temas), ocupação das posições, tempo em aberto, selo de situação clicável (`StatusEditavel`) e paginação de 20, 25, 50 ou 100. |
+| `/vagas/modelos` | `ConsultarModelosPage` | `frontend/src/pages/NovasAbasPage.tsx` (linha 338) | Menu "Consultar Modelos", título "Modelos de vaga". No padrão de Vagas/Empresas: `CabecalhoPagina` com "Novo modelo" à direita; filtros Cargo (com sugestões e ícone de busca) e Modalidade em `CampoFiltro`, botão Pesquisar; `ResumoResultados` (total + "Limpar filtros"). Tabela `data-table` em telas largas e blocos em telas estreitas: Cargo (link para editar), Modalidade (selo), Salário em `money` (o servidor manda "2600,00"; `salarioDoModelo` converte), Carga ("44 h por semana"), Horário (uma linha por grupo de dias, `linhasDoHorario`) e as ações compactas `AcoesModelo` à direita (Abrir vaga, Editar, Apagar). |
+| `/vagas/modelos/novo` e `/vagas/modelos/:id/editar` | `ModeloFormPage` → `AbaVaga modo="modelo"` | `frontend/src/pages/GruposEmpresasPage.tsx` (linhas 517-838) | "Novo/Editar modelo de vaga", com "Voltar aos modelos" no cabeçalho. O mesmo formulário da abertura de vaga, em blocos numerados (Cargo e remuneração, Horário, Perfil do candidato, Atividades e benefícios), sem empresa e sem quantidade. |
+| `/vagas/:id` | `VagaDetailPage` | `frontend/src/pages/VagaDetailPage.tsx` | Ficha da vaga: link de volta para Vagas; cabeçalho com cargo, selos de situação e modalidade, empresa, salário e código, e as ações Editar vaga, Novo processo, Fechar/Reabrir e Contratar; as 4 etapas do funil em números; os cartões Abertura, Inscritos, Entrevistas e Contrato (pares rótulo/valor); mensagem para o candidato (com a foto do cargo, quando houver; "Copiar foto e mensagem" copia as duas num único item, como na Triagem); informações gerais; candidatos sugeridos; quem já trabalhou; contratados; processos relacionados (`ProcessosRelacionados` de `ProcessosPage.tsx`). |
+| `/vagas/:id/editar` | `VagaFormPage` | `frontend/src/pages/VagaFormPage.tsx` | Edição da vaga em 3 blocos numerados: Dados da vaga (empresa travada, cargo, situação, modalidade, salário, quantidade, carga, km, sexo), Horário (entrada/saída padrão, um dia por linha com Tipo Fixo/Escala/Folga, texto do horário e "Gerar texto pelos dias") e Descrição da vaga (atividades, benefícios, atividades no contrato, requisitos, destaques e observações). "Salvar alterações" no cabeçalho e no fim; "Voltar para a vaga"/"Cancelar" levam a `/vagas/:id`. |
 | `/vagas/nova` | — | `frontend/src/App.tsx:81` | Redireciona para `/grupos-empresas?aba=vaga`. A abertura de vaga mora na tela de Grupos e Empresas (`AbaVaga modo="vaga"`). |
 
 Menu: `vagaLinks` em `frontend/src/components/shell.tsx` (linhas 36-39). Para liberar as telas, `paginaDoCaminho` (shell.tsx:58-88) faz este mapa: `/vagas/modelos/novo` → `vagas-modelo`; `/vagas/modelos` e subrotas (inclusive `/:id/editar`) → `vagas-modelos`; o resto de `/vagas` → `vagas`.
 
-`CadastrarModeloPage` (NovasAbasPage.tsx:253) é um formulário estático, sem chamadas à API, e não está em nenhuma rota do `App.tsx`.
+`CadastrarModeloPage` (NovasAbasPage.tsx:456) é um formulário estático, sem chamadas à API, e não está em nenhuma rota do `App.tsx`.
 
 ## Arquivos
 
 **Frontend**
 - `frontend/src/pages/VagasPage.tsx`: `VagasPage`, `PrioridadeEditavel` (lista `PRIORIDADES` com nome e cores), `Modalidade`, `Ocupacao`, `Disponiveis`, `TempoAberto`, `StatusEditavel` (menu em portal, pede confirmação antes de gravar).
-- `frontend/src/pages/VagaDetailPage.tsx`: `VagaDetailPage`, `MensagemVaga` (usa `fotoDoCargo` e `copiarComFoto` de `frontend/src/lib/foto-cargo.ts`; fotos em `frontend/public/cargos/`, ver o agente da Triagem).
-- `frontend/src/pages/VagaFormPage.tsx`: edição (react-hook-form + zod).
-- `frontend/src/pages/NovasAbasPage.tsx`: `ConsultarModelosPage` e `Pesquisa` (campo com sugestões).
+- `frontend/src/pages/VagaDetailPage.tsx`: `VagaDetailPage`, `Secao` e `Dados` (cartões com pares rótulo/valor), `MensagemVaga` (usa `fotoDoCargo` e `copiarComFoto` de `frontend/src/lib/foto-cargo.ts`; fotos em `frontend/public/cargos/`, ver o agente da Triagem).
+- `frontend/src/pages/VagaFormPage.tsx`: edição (react-hook-form + zod), com `Bloco` e `Celula` (grade de 6 colunas) locais.
+- `frontend/src/pages/NovasAbasPage.tsx`: `ConsultarModelosPage`, `Pesquisa` (campo com sugestões), `AcoesModelo`, `salarioDoModelo`, `linhasDoHorario`, `Horario`, `Carga` e `ModalidadeModelo`.
 - `frontend/src/pages/GruposEmpresasPage.tsx`: `ModeloFormPage` e `AbaVaga` (formulário compartilhado entre vaga e modelo; também `cargaDoHorario`, `modosDoModelo`, `textoPrevisto`).
 - `frontend/src/pages/ProcessosPage.tsx`: `ProcessosRelacionados`, usado na ficha.
-- `frontend/src/components/busca-opcao.tsx` (`BuscaOpcao`), `paginacao.tsx`, `pagina.tsx` (`CabecalhoPagina`, `CampoFiltro`, `ResumoResultados`).
+- `frontend/src/components/busca-opcao.tsx` (`BuscaOpcao`), `paginacao.tsx`, `pagina.tsx` (`CabecalhoPagina`, `CampoFiltro`, `ResumoResultados`, `Alerta`).
 - `frontend/src/lib/format.ts` (`STATUS_VAGA`, `situacaoLabel`, `regimeLabel`, `diasEmAberto`, `money`, `textoPlano`) e `frontend/src/lib/horario-escala.ts` (cópia da versão do backend).
 
 **Backend**
@@ -141,7 +141,7 @@ Menu: `vagaLinks` em `frontend/src/components/shell.tsx` (linhas 36-39). Para li
   - um por cargo (comparado por `chaveCargo`) e modalidade; repetido dá 409 `MODELO_JA_EXISTE`;
   - o cargo vem da lista (`cargo_id`) **ou** é novo (`novo_cargo` com nome, descrição e requisitos). Ter os dois ou nenhum é erro;
   - estágio usa carga 20 ou 30, CLT usa 40 ou 44; `idade_ate` não pode ser menor que `idade`; idades entre 14 e 80; `km` é sempre 30;
-  - a carga é sugerida pelo horário: CLT ≥ 42 h → 44, senão 40; estágio ≥ 25 h → 30, senão 20 (GruposEmpresasPage.tsx:431-432);
+  - a carga é sugerida pelo horário: CLT ≥ 42 h → 44, senão 40; estágio ≥ 25 h → 30, senão 20 (GruposEmpresasPage.tsx:495-496);
   - apagar remove só o modelo.
 - **Sugeridos** (`VagaRepository.sugeridos`):
   - exclui colaboradores e quem tem contratação ativa;
@@ -162,13 +162,14 @@ Menu: `vagaLinks` em `frontend/src/components/shell.tsx` (linhas 36-39). Para li
 - `AbaVaga` é compartilhado entre a abertura de vaga (tela de Grupos e Empresas) e o formulário de modelo: mexer nele afeta as duas telas.
 - `reagruparVagaIds` lê `public.vaga` inteira e atualiza linha a linha. Incluir um campo em `CAMPOS_ASSINATURA` muda o agrupamento de todas as vagas.
 - `ProcessosRelacionados` vem de `ProcessosPage.tsx`: mudar a assinatura dele quebra a ficha da vaga.
+- A consulta de modelos recebe `salario` como texto no formato legado ("2600,00" ou "—"); a tela converte com `salarioDoModelo` só para mostrar. Se o backend passar a mandar número, ajuste essa função.
 
 ## Como testar
 
 - `/vagas`: aplique cada filtro e confira a URL e o total. Mude a situação pelo selo numa vaga de teste (isso grava no Lightsail).
 - `/vagas/:id`: confira a mensagem, a foto do cargo e o "Copiar foto e mensagem" (cargo sem foto mostra "Copiar mensagem"), os sugeridos e os contratados. Use Fechar/Reabrir só numa vaga de teste.
 - `/vagas/:id/editar`: mude o horário (Fixo/Escala/Folga), use "Gerar texto pelos dias", salve e confira o `public.vaga.horario` da vaga, se ela estiver aberta.
-- `/vagas/modelos`: crie um modelo, tente criar outro com o mesmo cargo e modalidade (deve dar 409), edite, use "Abrir vaga" e apague.
+- `/vagas/modelos`: crie um modelo ("Novo modelo"), tente criar outro com o mesmo cargo e modalidade (deve dar 409), edite, use "Abrir vaga" e apague. Pesquise por cargo e modalidade e use "Limpar filtros" (a modalidade volta para "Todas"). Confira o salário formatado ("R$ 2.600,00") e o horário em linhas.
 - Sync: `POST /api/v1/configuracoes/sync?dry=1` (administrador) mostra o que seria feito sem gravar.
 - `/vagas`: troque a prioridade de uma vaga, recarregue a página e confira que ficou salva. Use o filtro "Prioridade" e confira o total. Volte a vaga para Média depois.
 - Testes do backend: `backend/test/vaga-prioridade.test.ts` (Postgres embutido: começa média, grava alta/baixa, CHECK do banco, filtro por prioridade), `backend/test/vaga-consulta.test.ts` (status, posições, unidades, cargos), `vaga-id.test.ts`, `mensagem-vaga.test.ts`, `horario-escala.test.ts`, `cargo.test.ts` e `triagem.test.ts` (horário e Notion).

@@ -58,7 +58,7 @@ export function RescisaoPage() {
   const total = lista ? Number(lista.meta?.total ?? lista.data.length) : null;
 
   return (
-    <div className="grid gap-5">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-5">
       <CabecalhoPagina
         titulo="Rescisão"
         descricao="Pessoas com vínculo ativo. Abra o registro para gerar a rescisão, demitir e enviar o documento para assinatura."
@@ -90,7 +90,7 @@ export function RescisaoPage() {
         <p role="alert" className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">Não foi possível listar os vínculos ativos. Atualize a página; se continuar, avise o suporte.</p>
       ) : lista && (lista.data.length || Number(lista.meta?.total ?? 0) > 0) ? (
         <Card className="p-0">
-          <div className="hidden overflow-x-auto lg:block">
+          <div className="relative hidden overflow-x-auto lg:block">
             <table className="data-table">
               <thead>
                 <tr>

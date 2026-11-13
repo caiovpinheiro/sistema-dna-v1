@@ -47,7 +47,7 @@ export function ProcessosPage() {
   const filtrando = FILTROS.some((chave) => params.get(chave));
   const total = lista ? Number(lista.meta?.total ?? lista.data.length) : null;
   return (
-    <div className="grid gap-5">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-5">
       <CabecalhoPagina
         titulo="Processos"
         descricao="Cada processo liga um candidato a uma vaga e diz quem o trouxe: captado pela DNAWORK (pelo atendimento) ou enviado pela empresa."
@@ -104,7 +104,7 @@ export function ProcessosRelacionados({ filtro }: { filtro: string }) {
     queryFn: () => api<Row[]>(`/api/v1/processos?page=1&pageSize=20&${filtro}`),
   });
   return (
-    <section className="grid gap-3">
+    <section className="grid grid-cols-[minmax(0,1fr)] gap-3">
       <h2 className="text-[15px] font-bold text-navy-900">Processos seletivos</h2>
       {result.isLoading ? <Skeleton className="h-16" /> : null}
       {result.isError ? <Alerta>Não foi possível carregar os processos.</Alerta> : null}
@@ -134,7 +134,7 @@ export function EtapaBadge({ etapa }: { etapa: string }) {
 
 function Lista({ linhas }: { linhas: Row[] }) {
   return (
-    <div className="overflow-x-auto">
+    <div className="relative overflow-x-auto">
       <table className="data-table">
         <thead>
           <tr>

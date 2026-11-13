@@ -1,10 +1,12 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useEffect, useRef } from "react";
+import { Save } from "lucide-react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { useForm } from "react-hook-form";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { z } from "zod";
-import { Button, Card, Field, Input, Textarea } from "@/components/ui";
+import { Alerta, CabecalhoPagina } from "@/components/pagina";
+import { Button, Card, Field, Input, Skeleton, Textarea } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 
 const schema = z.object({
@@ -71,28 +73,65 @@ export function EmpresaFormPage() {
     onSuccess: (result) => navigate(`/empresas/${id ?? (result.data as { id_empresa: string }).id_empresa}`),
   });
   const erro = mensagemErro(save.error) || (form.formState.submitCount > 0 && !form.formState.isValid ? "Revise os campos marcados antes de salvar." : "");
+  const erros = form.formState.errors;
+  const voltar = id ? `/empresas/${id}` : "/empresas";
   return (
-    <form className="grid gap-5" onSubmit={form.handleSubmit((values) => save.mutate(values))}>
-      <div className="flex items-center justify-between gap-3"><h1 className="text-2xl font-extrabold">{id ? "Editar empresa" : "Nova empresa"}</h1><Button type="submit" disabled={save.isPending}>Salvar</Button></div>
-      {erro ? <p className="text-sm text-rose-600" role="alert">{erro}</p> : null}
-      <Card className="grid gap-4 md:grid-cols-2">
-        <Field label="Razão social" error={form.formState.errors.razao_social?.message}><Input {...form.register("razao_social")} /></Field>
-        <Field label="Nome fantasia"><Input {...form.register("nome_fantasia")} /></Field>
-        <Field label="CNPJ (opcional)" error={form.formState.errors.cnpj?.message}><Input {...form.register("cnpj")} /></Field>
-        <Field label="E-mail" error={form.formState.errors.email?.message}><Input type="email" {...form.register("email")} /></Field>
-        <Field label="Telefone"><Input {...form.register("telefone")} /></Field>
-        <Field label="Celular"><Input {...form.register("celular")} /></Field>
-        <Field label="Responsável"><Input {...form.register("responsavel")} /></Field>
-        <Field label="Matriz (ID existente)"><Input {...form.register("matriz")} /></Field>
-        <Field label="CEP"><Input {...form.register("cep")} /></Field>
-        <Field label="Logradouro"><Input {...form.register("logradouro")} /></Field>
-        <Field label="Número"><Input {...form.register("numero")} /></Field>
-        <Field label="Bairro"><Input {...form.register("bairro")} /></Field>
-        <Field label="Cidade"><Input {...form.register("cidade")} /></Field>
-        <Field label="UF"><Input maxLength={2} {...form.register("uf")} /></Field>
-        <div className="md:col-span-2"><Field label="Observações"><Textarea {...form.register("obs")} /></Field></div>
-      </Card>
-      <div className="flex justify-end"><Button type="submit" disabled={save.isPending}>Salvar</Button></div>
+    <form className="mx-auto grid w-full max-w-5xl gap-5" onSubmit={form.handleSubmit((values) => save.mutate(values))}>
+      <CabecalhoPagina
+        titulo={id ? "Editar empresa" : "Nova empresa"}
+        descricao={id ? "Altere o que precisar; só os campos mudados são gravados." : "Só a razão social é obrigatória; o resto pode ser completado depois."}
+      />
+      {id && current.isLoading ? <Skeleton className="h-64" /> : null}
+      <Secao titulo="Identificação" texto="Nome e documentos da empresa cliente.">
+        <Col span={4}><Field label="Razão social" error={erros.razao_social?.message}><Input {...form.register("razao_social")} /></Field></Col>
+        <Col span={2}><Field label="CNPJ (opcional)" error={erros.cnpj?.message}><Input placeholder="00.000.000/0000-00" {...form.register("cnpj")} /></Field></Col>
+        <Col span={4}><Field label="Nome fantasia"><Input {...form.register("nome_fantasia")} /></Field></Col>
+        <Col span={2}><Field label="Matriz (ID existente)"><Input {...form.register("matriz")} /></Field></Col>
+      </Secao>
+      <Secao titulo="Contato" texto="Quem fala pela empresa e como falar com ela.">
+        <Col span={3}><Field label="Responsável"><Input {...form.register("responsavel")} /></Field></Col>
+        <Col span={3}><Field label="E-mail" error={erros.email?.message}><Input type="email" {...form.register("email")} /></Field></Col>
+        <Col span={3}><Field label="Telefone"><Input placeholder="(11) 0000-0000" {...form.register("telefone")} /></Field></Col>
+        <Col span={3}><Field label="Celular"><Input placeholder="(11) 90000-0000" {...form.register("celular")} /></Field></Col>
+      </Secao>
+      <Secao titulo="Endereço" texto="Endereço da sede ou da unidade.">
+        <Col span={2}><Field label="CEP"><Input placeholder="00000-000" {...form.register("cep")} /></Field></Col>
+        <Col span={3}><Field label="Logradouro"><Input {...form.register("logradouro")} /></Field></Col>
+        <Col span={1}><Field label="Número"><Input {...form.register("numero")} /></Field></Col>
+        <Col span={2}><Field label="Bairro"><Input {...form.register("bairro")} /></Field></Col>
+        <Col span={3}><Field label="Cidade"><Input {...form.register("cidade")} /></Field></Col>
+        <Col span={1}><Field label="UF"><Input maxLength={2} placeholder="SP" className="uppercase" {...form.register("uf")} /></Field></Col>
+      </Secao>
+      <Secao titulo="Observações" texto="Anotações internas sobre a empresa.">
+        <Col span={6}><Field label="Observações"><Textarea {...form.register("obs")} /></Field></Col>
+      </Secao>
+      {/* Rodapé fixo: o botão e o erro ficam sempre à vista enquanto o formulário rola. */}
+      <div className="sticky bottom-0 z-10 grid gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-lg">
+        {erro ? <Alerta>{erro}</Alerta> : null}
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Link to={voltar}><Button type="button" variant="ghost">Cancelar</Button></Link>
+          <Button type="submit" disabled={save.isPending}><Save size={16} /> {save.isPending ? "Salvando…" : id ? "Salvar alterações" : "Cadastrar empresa"}</Button>
+        </div>
+      </div>
     </form>
   );
+}
+
+/** Bloco do formulário: título, uma frase e a grade de 6 colunas. */
+function Secao({ titulo, texto, children }: { titulo: string; texto: string; children: ReactNode }) {
+  return (
+    <Card className="grid gap-4 md:p-5">
+      <header>
+        <h2 className="text-[15px] font-bold text-navy-900">{titulo}</h2>
+        <p className="text-sm text-slate-500">{texto}</p>
+      </header>
+      <div className="grid gap-3 sm:grid-cols-6">{children}</div>
+    </Card>
+  );
+}
+
+const LARGURA = { 1: "sm:col-span-1", 2: "sm:col-span-2", 3: "sm:col-span-3", 4: "sm:col-span-4", 6: "sm:col-span-6" } as const;
+
+function Col({ span, children }: { span: keyof typeof LARGURA; children: ReactNode }) {
+  return <div className={LARGURA[span]}>{children}</div>;
 }

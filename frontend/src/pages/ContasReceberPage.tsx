@@ -379,11 +379,11 @@ export function ContasReceberPage() {
                         />
                       ) : null}
                     </td>
-                    <td className="max-w-72">
+                    <td className="min-w-48 max-w-72">
                       <p className="truncate font-semibold text-navy-900" title={nome}>{nome}</p>
-                      {row.empresa_cnpj ? <p className="text-xs tabular-nums text-slate-500">{formatCnpj(row.empresa_cnpj)}</p> : null}
+                      {row.empresa_cnpj ? <p className="whitespace-nowrap text-xs tabular-nums text-slate-500">{formatCnpj(row.empresa_cnpj)}</p> : null}
                     </td>
-                    <td className="text-slate-600">{row.descricao}</td>
+                    <td className="min-w-40 text-slate-600">{row.descricao}</td>
                     <td className="whitespace-nowrap tabular-nums text-slate-600">{dateBr(row.vencimento)}</td>
                     <td className="whitespace-nowrap text-right font-semibold tabular-nums text-navy-900">{money(row.valor)}</td>
                     <td><Badge value={row.situacao === "paga" ? "ativa" : row.situacao === "aberta" ? "aberta" : "encerrada"}>{situacaoLabel[row.situacao] ?? row.situacao}</Badge></td>

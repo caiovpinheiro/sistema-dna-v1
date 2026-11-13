@@ -1,6 +1,6 @@
 # Agente — Contratações
 
-> Última revisão: 2026-11-12 (commit 5f1e2d0)
+> Última revisão: 2026-11-13 (commit "Repagina as telas restantes no padrão novo")
 
 ## Para que serve
 
@@ -10,19 +10,19 @@ Registra o vínculo (contratação) de um candidato numa vaga aberta com posiç�
 
 | Rota | Componente | Arquivo | O que mostra |
 | --- | --- | --- | --- |
-| `/contratacoes` (menu "Consultar") | `ContratacoesPage` | `frontend/src/pages/ContratacoesPage.tsx` | Lista paginada (20 por página) com filtros: busca, regime, status (1 ativa / 2 encerrada), início de/até. Filtros ficam na URL. |
-| `/contratacoes/nova` | `NovaContratacaoPage` | `frontend/src/pages/NovaContratacaoPage.tsx` | Assistente em 3 passos: empresa → vaga aberta com posição livre → candidato (busca ou "Criar candidato"), data de início e "Registrar contratação". Aceita `?empresa=&vaga=&candidato=&processo=` (vem de `ProcessoDetailPage` e `VagaDetailPage`). |
-| `/contratacoes/:id` | `ContratacaoDetailPage` | `frontend/src/pages/ContratacaoDetailPage.tsx` | Ficha do vínculo, links para candidato/empresa/vaga, tabela "Documentos gerados", botão "Gerar TCE" (só regime estágio) e "Encerrar vínculo" (só se ativa). |
-| `/contratacoes/rescisao` (menu "Rescisão") | `RescisaoPage` | `frontend/src/pages/RescisaoPage.tsx` | Só vínculos ativos (`status=1` fixo na query), busca e regime, botão "Ver detalhes". |
-| `/contratacoes/rescisao/:id` | `RescisaoDetailPage` | `frontend/src/pages/RescisaoDetailPage.tsx` | Dados do candidato, formulário "Demitir" (motivo, data, avaliação, resumo das atividades, motivo interno), "Gerar prévia" (só na tela), "Gerar rescisão e demitir", depois modal perguntando se envia para assinatura digital. |
-
+| `/contratacoes` (menu "Consultar") | `ContratacoesPage` | `frontend/src/pages/ContratacoesPage.tsx` | Título "Contratações" com o botão "Nova contratação". Filtros com rótulo (Buscar, Regime, Situação, Início a partir de, Início até) gravados na URL (`q`, `regime`, `status`, `inicio_de`, `inicio_ate`); a busca aplica ao sair do campo ou com Enter. Contador + "Limpar filtros". Tabela `data-table` (lg+): candidato (link, CPF e nº embaixo), empresa (fantasia e razão), vaga (modalidade embaixo só se diferente do regime), regime em selo, início, fim (encerramento ou previsão), situação em selo e "Abrir". Em tela estreita vira lista em blocos. Paginação fixa de 20. |
+| `/contratacoes/nova` | `NovaContratacaoPage` | `frontend/src/pages/NovaContratacaoPage.tsx` | Blocos numerados (1 Empresa, 2 Vaga disponível, 3 Candidato com "Criar candidato") e painel lateral "Registrar a contratação" com o resumo do que foi escolhido, a data de início e o botão "Registrar contratação". Tela de sucesso com links para candidato, vaga e empresa e "Abrir contratação". Aceita `?empresa=&vaga=&candidato=&processo=` (vem de `ProcessoDetailPage` e `VagaDetailPage`). |
+| `/contratacoes/:id` | `ContratacaoDetailPage` | `frontend/src/pages/ContratacaoDetailPage.tsx` | Cabeçalho com nome, selos de situação e regime e o botão "Gerar TCE" (só regime estágio). Cards "Vínculo" (candidato, empresa e vaga como links) e "Datas", tabela "Documentos gerados" e card "Encerrar vínculo" (só se ativa). |
+| `/contratacoes/rescisao` (menu "Rescisão") | `RescisaoPage` | `frontend/src/pages/RescisaoPage.tsx` | Só vínculos ativos (`status=1` fixo na query). Filtros com rótulo (Buscar, Regime), contador, tabela `data-table` com "Abrir" (lista em blocos em tela estreita). |
+| `/contratacoes/rescisao/:id` | `RescisaoDetailPage` | `frontend/src/pages/RescisaoDetailPage.tsx` | Cabeçalho com nome, selos e "Abrir contratação"; card "Dados do contratado"; formulário "Demitir" (motivo, data, avaliação em chips `FiltroChips`, resumo das atividades, motivo interno), botões "Gerar rescisão e demitir" e "Ver prévia" (só na tela); depois modal perguntando se envia para assinatura digital ("Sim, enviar" / "Não, agora não"). |
 Permissão de menu/página: id `contratacoes` (`frontend/src/components/shell.tsx:24-27`, `:79-80`).
 
 ## Arquivos
 
 Frontend
 - `frontend/src/pages/ContratacoesPage.tsx`, `NovaContratacaoPage.tsx`, `ContratacaoDetailPage.tsx`, `RescisaoPage.tsx`, `RescisaoDetailPage.tsx`
-- `frontend/src/components/documentos-contratacao.tsx` — tabela "Documentos gerados" + painel de assinatura ZapSign (usado na ficha e na rescisão)
+- `frontend/src/components/documentos-contratacao.tsx` — tabela "Documentos gerados" (`data-table`, assinatura em selo) + painel de assinatura ZapSign (tabela de partes, "Copiar link", "Enviar para assinatura", "Imprimir original", "Ver assinaturas na ZapSign"; usado na ficha e na rescisão)
+- `frontend/src/components/pagina.tsx` (`CabecalhoPagina`, `CampoFiltro`, `ResumoResultados`, `FiltroChips`, `Alerta`)
 - `frontend/src/components/paginacao.tsx`, `frontend/src/components/ui.tsx`
 - `frontend/src/lib/api.ts` (`api`, `ApiError`, `idempotencyKey`), `frontend/src/lib/format.ts` (`regimeLabel`, `situacaoLabel`, `dateBr`, `money`, `textoPlano`)
 
@@ -112,7 +112,9 @@ Listagem:
 - Nova contratação e Rescisão chamam APIs de `empresas`, `candidatos` e `vagas`. Um usuário com acesso só a `contratacoes` recebe 403 nessas chamadas (`lib/paginas.ts`).
 - `garantirRescisao` roda `CREATE TABLE/ALTER TABLE IF NOT EXISTS` a cada leitura/gravação de rescisão; precisa de permissão DDL no banco.
 - O teste de concorrência depende do advisory lock e do `FOR UPDATE`; não tire.
-- "Gerar prévia" é só visual; nada é gravado.
+- "Ver prévia" (antes "Gerar prévia") é só visual; nada é gravado.
+- Visual no padrão das telas de Vagas/Empresas: só classes com remapeamento de tema em `index.css` (sem laranja fixo). As tabelas que rolam na horizontal têm `relative` no contêiner, para o `sr-only` do cabeçalho "Ações" não alargar a página no celular.
+- O selo de assinatura (`valorAssinatura` em `documentos-contratacao.tsx`) escolhe a cor pelo texto ("Assinado", "Recusado", "Aguardando"/"Enviado"). Se o backend mudar esses textos, o selo fica cinza.
 
 ## Como testar
 

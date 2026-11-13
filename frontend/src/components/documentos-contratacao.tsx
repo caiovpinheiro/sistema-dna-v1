@@ -228,7 +228,7 @@ function AssinaturaPainel({ id, carregando, dados, falha, aviso, enviando, onFec
         {falha ? <Alerta>Não foi possível acompanhar a assinatura.</Alerta> : null}
         {dados ? (
           <>
-            <div className="overflow-x-auto rounded-lg border border-slate-200">
+            <div className="relative overflow-x-auto rounded-lg border border-slate-200">
               <table className="data-table compact">
                 <thead>
                   <tr>
