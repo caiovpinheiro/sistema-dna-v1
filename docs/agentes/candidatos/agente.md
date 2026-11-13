@@ -1,6 +1,6 @@
 # Agente — Candidatos
 
-> Última revisão: 2026-11-13 (commit "Cadastro de candidato sem e-mail e empresa escolhida pelo CNPJ")
+> Última revisão: 2026-11-13 (botão "Abertura de conta" na ficha)
 
 ## Para que serve
 
@@ -12,7 +12,7 @@ Consultar, cadastrar e editar as pessoas (candidatos) da base. A lista mostra co
 |---|---|---|---|
 | `/candidatos` | `CandidatosPage` | `frontend/src/pages/CandidatosPage.tsx` | Lista paginada (20 por página) com filtros nome, CPF, telefone e "Mais filtros" (e-mail, cidade, UF, contratação, regime, cadastrado por). Tabela em tela larga, cartões em tela estreita. Passar o mouse numa linha abre um preview flutuante (busca a ficha). |
 | `/candidatos/novo` | `CandidatoFormPage` | `frontend/src/pages/CandidatoFormPage.tsx` | Formulário de cadastro em blocos (`Card` com título e frase, grade de 6 colunas): Identificação (cadastrado por, empresa, nome, CPF, e-mail, nascimento, telefones), Endereço, Estudos e trabalho, Dados bancários, Observações. Rodapé fixo (`sticky`) com o erro, "Cancelar" e "Cadastrar candidato" / "Salvar alterações". |
-| `/candidatos/:id` | `CandidatoDetailPage` | `frontend/src/pages/CandidatoDetailPage.tsx` | Ficha: `CabecalhoPagina` (nome, idade · CPF, selos "Candidato DNA"/"Cadastrado por <empresa>" e "Captado pela DNAWORK"; botões "Novo processo" (`/processos/novo?candidato=:id`) e "Editar"); card "Contato e cadastro" (`dl` com e-mail, telefone, endereço, nascimento, origem do currículo, última atualização) ao lado do card "Acesso aos cursos" (LMS); `FichaCandidato` (destaques objetivo/último cargo/entrevistas, currículo do atendimento, formação, perfil comportamental, conhecimentos em selos, dados do atendimento, experiência); vagas sugeridas e histórico de contratações lado a lado; processos seletivos; documentos. |
+| `/candidatos/:id` | `CandidatoDetailPage` | `frontend/src/pages/CandidatoDetailPage.tsx` | Ficha: `CabecalhoPagina` (nome, idade · CPF, selos "Candidato DNA"/"Cadastrado por <empresa>" e "Captado pela DNAWORK"; botões "Abertura de conta" (`AberturaConta`), "Novo processo" (`/processos/novo?candidato=:id`) e "Editar"); card "Contato e cadastro" (`dl` com e-mail, telefone, endereço, nascimento, origem do currículo, última atualização) ao lado do card "Acesso aos cursos" (LMS); `FichaCandidato` (destaques objetivo/último cargo/entrevistas, currículo do atendimento, formação, perfil comportamental, conhecimentos em selos, dados do atendimento, experiência); vagas sugeridas e histórico de contratações lado a lado; processos seletivos; documentos. |
 | `/candidatos/:id/editar` | `CandidatoFormPage` | `frontend/src/pages/CandidatoFormPage.tsx` | Mesmo formulário, preenchido; envia só os campos alterados. |
 
 Não há abas: cada rota é uma tela.
@@ -25,6 +25,7 @@ Frontend
 - `frontend/src/pages/CandidatoDetailPage.tsx` — ficha + componente interno `AcessoCursos` (LMS).
 - `frontend/src/components/ficha-candidato.tsx` — `FichaCandidato` (também usado em `ProcessoDetailPage`).
 - `frontend/src/components/documentos-candidato.tsx` — `DocumentosCandidato`.
+- `frontend/src/components/abertura-conta.tsx` — `AberturaConta`: botão e janela da carta "Abertura de conta" (campos editáveis, gera o PDF); `lerValor` lê "1.234,56".
 - `ProcessosRelacionados` exportado de `frontend/src/pages/ProcessosPage.tsx` (também usado em `VagaDetailPage`).
 - `frontend/src/components/preview.tsx`, `paginacao.tsx`, `pagina.tsx`, `ui.tsx`; `frontend/src/lib/api.ts`, `frontend/src/lib/format.ts`.
 - Menu: `frontend/src/components/shell.tsx` (item `candidatos`; `/candidatos` → página `candidatos`).
@@ -37,6 +38,7 @@ Backend
 - Schemas: `backend/src/schemas/candidato.ts`, `backend/src/schemas/common.ts` (CPF, telefone, e-mail, UF).
 - Apresentação: `backend/src/services/presenters.ts` (`presentCandidato`).
 - LMS: `backend/src/lib/lms-acesso.ts` (`criarAcessoLms`).
+- Carta "Abertura de conta": `backend/src/lib/abertura-conta.ts` (`sugestaoAberturaConta`, `aberturaContaSchema`, `linhasAberturaConta`, `buildAberturaContaPdf` com pdf-lib, `valorPorExtenso`, `dataDaCarta`).
 - Permissão por página: `backend/src/lib/paginas.ts` + hook `onRequest` em `backend/src/app.ts`.
 
 ## API usada
@@ -50,6 +52,8 @@ Backend
 | GET | `/api/v1/candidatos/:id/contratacoes` | Histórico de contratações (paginado) | `routes/index.ts:184` → `ContratacaoService.listByCandidato` |
 | GET | `/api/v1/candidatos/:id/documentos` | Documentos do candidato | `routes/index.ts:169` → `listarDocumentos` |
 | GET | `/api/v1/candidatos/:id/documentos/:documento/arquivo` | Baixa/abre o arquivo do documento (inline, `no-store`) | `routes/index.ts:172` → `arquivoDoDocumento` |
+| GET | `/api/v1/candidatos/:id/abertura-conta` | Sugestão para a carta: nome, CPF, endereço e telefone da ficha; bolsa (`vaga.salario`) e empresa (CNPJ, razão social e, entre parênteses, a fantasia) da contratação ativa ou, sem ela, da mais recente; `contratacao` = `ativa`/`recente`/`nenhuma`. 404 se o candidato não existe | `routes/index.ts` → `sugestaoAberturaConta` |
+| POST | `/api/v1/candidatos/:id/abertura-conta` | Gera o PDF da carta com os campos conferidos (`aberturaContaSchema`: data, nome, cpf, endereco, telefone, bolsa, cnpj, empresa). Não grava nada | `routes/index.ts` → `buildAberturaContaPdf` |
 | POST | `/api/v1/candidatos/:id/acesso-lms` | Cria/reaproveita o aluno no LMS | `app.ts:170` → `criarAcessoLms` |
 | GET | `/api/v1/processos?page=1&pageSize=20&id_candidato=:id` | Processos seletivos do candidato (via `ProcessosRelacionados`) | rota de processos (fora desta seção) |
 | GET | `/api/v1/empresas?pageSize=20&q=...` | Busca de empresa no formulário quando "Outra empresa" | `routes/index.ts:194` (ver agente de Empresas) |
@@ -91,6 +95,11 @@ Variáveis de config que mudam a lista: `CONTRATACAO_STATUS_ATIVO` (padrão 1) e
 - **Vagas sugeridas**: até 8 vagas com `status` 0 na mesma cidade da empresa (ILIKE) e, se houver, mesma escolaridade (`modalidadecurso`), mais recentes primeiro (`candidato.repository.ts:299`).
 - **Dados bancários e atendimento** só saem no detalhe (`presentCandidato(row, true)`), não na lista.
 - **Acesso LMS** (`AcessoCursos` + `lib/lms-acesso.ts`): exige nome e e-mail com "@" na ficha (422 `NOME_AUSENTE`/`EMAIL_AUSENTE`); senha opcional, mínimo 8 (422 `SENHA_CURTA`; o botão fica desabilitado no frontend); checkbox "trocar a senha" manda `resetPassword: true`. O mesmo e-mail não gera outra conta. A senha só volta se o LMS a definiu nessa chamada; ela não fica salva. Erros do LMS são traduzidos sem repassar o corpo: 401 → 502 `LMS_CREDENCIAL`, 404 → 502 `LMS_SEM_ROTA`, 422 → 422 `LMS_RECUSOU`, 503 → 503, outros → 502. O schema da rota aceita `trails`, mas ele é ignorado.
+- **Abertura de conta** (carta para o banco abrir a conta da bolsa auxílio, no modelo em papel: data por extenso, "REF. SOLICITAÇÃO DE ABERTURA DE CONTA PARA CRÉDITO DE BOLSA AUXÍLIO", nome, CPF, endereço, telefone, bolsa com valor por extenso, CNPJ e empresa, linha "ASS." para o carimbo e a assinatura da empresa):
+  - a janela abre com a sugestão do GET e tudo é editável; a data vem como hoje;
+  - nome, empresa e bolsa maior que zero são obrigatórios (front e `aberturaContaSchema`);
+  - nome, endereço e empresa saem em maiúsculas; CPF, CNPJ e telefone são formatados quando têm o número certo de dígitos; campo vazio sai "—";
+  - nada é gravado: nem a carta nem os campos editados.
 - **Permissão**: todas as rotas `/api/v1/candidatos*` (inclusive `acesso-lms`) exigem a página `candidatos` ou admin (`lib/paginas.ts:32`). A seção "Processos seletivos" da ficha chama `/api/v1/processos`, que exige a página `processos`.
 
 ## Cuidados ao mudar
@@ -111,6 +120,7 @@ Variáveis de config que mudam a lista: `CONTRATACAO_STATUS_ATIVO` (padrão 1) e
 - Manual: abrir `/candidatos`, filtrar por nome/CPF/telefone e pelos "Mais filtros"; passar o mouse numa linha (preview); abrir uma ficha; criar candidato em `/candidatos/novo` (testar CPF repetido → mensagem de duplicado); editar e conferir que só o alterado é enviado; em "Outra empresa", pesquisar empresa com 2+ letras. Na ficha, "Criar acesso no LMS" só funciona com `LMS_ACCESS_TOKEN` configurado — não use com e-mail real em ambiente de teste sem querer criar a conta.
 - Testes backend:
   - `backend/test/escopo.test.ts` (Postgres embutido): "cadastra candidato e bloqueia CPF duplicado", "pesquisa candidatos e empresas com filtro e paginação".
+  - `backend/test/abertura-conta.test.ts`: valor por extenso, data, linhas da carta, schema e geração do PDF.
   - `backend/test/lms-acesso.test.ts`: token ausente, corpo enviado, senha devolvida, fallback de host, tradução de erros, senha curta.
   - Não encontrado teste para `/candidatos/:id/documentos`, para a ficha (`fichaDoCandidato`) nem para vagas sugeridas.
 - Frontend: não há teste específico desta seção (só `frontend/test/triagem-matching.test.ts`).

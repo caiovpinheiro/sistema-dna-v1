@@ -9,6 +9,7 @@ import { dateBr, formatCpf, formatPhone, regimeLabel, situacaoLabel, textoPlano 
 import { ProcessosRelacionados } from "@/pages/ProcessosPage";
 import { FichaCandidato, type FichaCandidatoDados } from "@/components/ficha-candidato";
 import { DocumentosCandidato } from "@/components/documentos-candidato";
+import { AberturaConta } from "@/components/abertura-conta";
 
 type Candidate = FichaCandidatoDados;
 
@@ -47,6 +48,7 @@ export function CandidatoDetailPage() {
         descricao={[idade(data.datanascimento), formatCpf(data.cpf)].filter(Boolean).join(" · ")}
         acoes={(
           <>
+            <AberturaConta idCandidato={data.id_candidato} />
             <Link to={`/processos/novo?candidato=${id}`}><Button variant="secondary"><Plus size={16} /> Novo processo</Button></Link>
             <Link to={`/candidatos/${id}/editar`}><Button><Pencil size={16} /> Editar</Button></Link>
           </>

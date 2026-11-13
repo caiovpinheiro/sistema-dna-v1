@@ -17,6 +17,7 @@ import { documentoSchema } from "../schemas/documento-contrato.js";
 import { gerarDocumento } from "../lib/documento-contrato.js";
 import { notasSugeridas } from "../lib/nota-fiscal.js";
 import { buildRescisaoMedioPdf } from "../lib/rescisao-medio-pdf.js";
+import { aberturaContaSchema, buildAberturaContaPdf, sugestaoAberturaConta } from "../lib/abertura-conta.js";
 import type { AsaasService } from "../services/asaas.service.js";
 import type { ReguaService } from "../services/regua.service.js";
 import type { CandidatoService } from "../services/candidato.service.js";
@@ -184,6 +185,25 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
   api.patch("/api/v1/candidatos/:id", {
     schema: { tags: ["candidatos"], params: z.object({ id: z.string().min(1) }), body: candidatoPatchSchema },
   }, async (request) => ok(await services.candidatos.update(request.params.id, request.body)));
+  // Carta "Abertura de conta" (crédito da bolsa auxílio): sugestão preenchida pela ficha e pela contratação; o PDF sai do que o operador conferiu.
+  api.get("/api/v1/candidatos/:id/abertura-conta", {
+    schema: { tags: ["candidatos"], params: z.object({ id: z.string().min(1) }) },
+  }, async (request) => {
+    const sugestao = await sugestaoAberturaConta(db, request.params.id, config.CONTRATACAO_STATUS_ATIVO);
+    if (!sugestao) throw new AppError(404, "CANDIDATO_NAO_ENCONTRADO", "Candidato não encontrado.");
+    return ok(sugestao);
+  });
+  api.post("/api/v1/candidatos/:id/abertura-conta", {
+    schema: { tags: ["candidatos"], params: z.object({ id: z.string().min(1) }), body: aberturaContaSchema },
+  }, async (request, reply) => {
+    const pdf = await buildAberturaContaPdf(request.body);
+    const nome = `Abertura de conta - ${request.body.nome}.pdf`;
+    const ascii = nome.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\w.\- ]+/g, "");
+    return reply
+      .type("application/pdf")
+      .header("Content-Disposition", `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(nome)}`)
+      .send(Buffer.from(pdf));
+  });
   api.get("/api/v1/candidatos/:id/documentos", {
     schema: { tags: ["candidatos"], params: z.object({ id: z.string().min(1) }) },
   }, async (request) => ok(await listarDocumentos(db, request.params.id)));
