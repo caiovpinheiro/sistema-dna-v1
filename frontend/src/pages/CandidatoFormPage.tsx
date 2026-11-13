@@ -1,6 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Save, Search } from "lucide-react";
+import { Check, Save, Search } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useForm } from "react-hook-form";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -8,7 +8,7 @@ import { z } from "zod";
 import { Alerta, CabecalhoPagina } from "@/components/pagina";
 import { Button, Card, Field, Input, Select, Skeleton, Textarea } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
-import { textoPlano } from "@/lib/format";
+import { formatCnpj, textoPlano } from "@/lib/format";
 
 const schema = z.object({
   nome: z.string().min(3, "Informe o nome."),
@@ -40,7 +40,7 @@ const schema = z.object({
   }
 });
 type Form = z.infer<typeof schema>;
-type EmpresaOpcao = { id_empresa: string; razao_social: string; nome_fantasia: string | null };
+type EmpresaOpcao = { id_empresa: string; razao_social: string; nome_fantasia: string | null; cnpj: string | null; cidade: string | null; uf: string | null };
 
 function compact<T extends Record<string, unknown>>(values: T) {
   return Object.fromEntries(Object.entries(values).filter(([, value]) => value !== undefined && value !== null && value !== ""));
@@ -72,6 +72,8 @@ export function CandidatoFormPage() {
   const form = useForm<Form>({ resolver: zodResolver(schema), defaultValues: { vinculo: "dna", id_empresa: "" } });
   const vinculo = form.watch("vinculo");
   const [buscaEmpresa, setBuscaEmpresa] = useState("");
+  // Empresa escolhida na lista: mostrada com o CNPJ, para não confundir unidades com o mesmo nome (ex.: Lumi).
+  const [empresaEscolhida, setEmpresaEscolhida] = useState<EmpresaOpcao | null>(null);
   const empresas = useQuery({
     queryKey: ["empresas-candidato", buscaEmpresa],
     enabled: vinculo === "empresa" && buscaEmpresa.trim().length >= 2,
@@ -137,25 +139,44 @@ export function CandidatoFormPage() {
                   className="pl-9"
                   onChange={(event) => {
                     setBuscaEmpresa(event.target.value);
+                    setEmpresaEscolhida(null);
                     form.setValue("id_empresa", "");
                   }}
                 />
               </div>
-              {empresas.data?.data.length ? (
-                <div className="mt-1 max-h-44 overflow-auto rounded-lg border border-slate-200 bg-white">
-                  {empresas.data.data.map((item) => (
-                    <button
-                      key={item.id_empresa}
-                      type="button"
-                      className="block w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
-                      onClick={() => {
-                        form.setValue("id_empresa", item.id_empresa, { shouldValidate: true });
-                        setBuscaEmpresa(item.nome_fantasia || item.razao_social);
-                      }}
-                    >
-                      {textoPlano(item.nome_fantasia || item.razao_social)}
-                    </button>
-                  ))}
+              {form.watch("id_empresa") ? (
+                <span className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+                  <Check size={15} className="shrink-0" />
+                  <span className="font-semibold">{textoPlano(empresaEscolhida?.nome_fantasia || empresaEscolhida?.razao_social || buscaEmpresa)}</span>
+                  {empresaEscolhida?.cnpj ? <span className="tabular-nums">CNPJ {formatCnpj(empresaEscolhida.cnpj)}</span> : null}
+                  <button type="button" className="ml-auto text-xs font-semibold underline" onClick={() => { form.setValue("id_empresa", ""); setEmpresaEscolhida(null); setBuscaEmpresa(""); }}>Trocar</button>
+                </span>
+              ) : empresas.data?.data.length ? (
+                <div className="mt-1 max-h-56 overflow-auto rounded-lg border border-slate-200 bg-white shadow-lg">
+                  {empresas.data.data.map((item) => {
+                    const nome = textoPlano(item.nome_fantasia || item.razao_social);
+                    const cnpj = item.cnpj ? formatCnpj(item.cnpj) : "sem CNPJ";
+                    const local = [item.cidade, item.uf].filter(Boolean).join(" / ");
+                    return (
+                      <button
+                        key={item.id_empresa}
+                        type="button"
+                        title={`${nome}\nCNPJ ${cnpj}${item.razao_social ? `\n${textoPlano(item.razao_social)}` : ""}${local ? `\n${local}` : ""}`}
+                        className="grid w-full gap-0.5 border-b border-slate-100 px-3 py-2 text-left last:border-0 hover:bg-slate-50"
+                        onClick={() => {
+                          form.setValue("id_empresa", item.id_empresa, { shouldValidate: true });
+                          setEmpresaEscolhida(item);
+                          setBuscaEmpresa(nome);
+                        }}
+                      >
+                        <span className="flex flex-wrap items-baseline justify-between gap-x-3">
+                          <span className="text-sm font-semibold text-navy-900">{nome}</span>
+                          <span className="text-xs font-semibold tabular-nums text-slate-600">CNPJ {cnpj}</span>
+                        </span>
+                        <span className="text-xs text-slate-500">{[item.razao_social && textoPlano(item.razao_social) !== nome ? textoPlano(item.razao_social) : null, local || null].filter(Boolean).join(", ") || "\u00a0"}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               ) : null}
             </Field>

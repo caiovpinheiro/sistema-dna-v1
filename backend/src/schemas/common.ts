@@ -56,7 +56,7 @@ export const pageSchema = {
 export const ufSchema = z
   .string()
   .trim()
-  .length(2)
+  .length(2, "A UF tem 2 letras (ex.: SP).")
   .transform((value) => value.toUpperCase())
   .optional();
 

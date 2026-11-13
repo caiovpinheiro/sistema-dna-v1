@@ -113,7 +113,7 @@ export class CandidatoRepository {
     `, [
       id, input.nome, input.cpf, input.rg ?? null, input.rg_expedidor ?? null,
       input.datanascimento ? isoToLegacy(input.datanascimento) : null, today,
-      input.telefonefixo ?? null, input.celular ?? null, input.email.toLowerCase(),
+      input.telefonefixo ?? null, input.celular ?? null, (input.email ?? "").toLowerCase(),
       input.logradouro ?? null, input.numero ?? null, input.complemento ?? null,
       input.bairro ?? null, input.cidade ?? null, input.estado ?? null, input.cep ?? null,
       input.escola ?? null, input.nome_escola ?? null, input.modalidadecurso ?? null,

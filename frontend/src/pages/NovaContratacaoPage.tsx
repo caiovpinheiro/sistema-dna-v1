@@ -45,6 +45,8 @@ export function NovaContratacaoPage() {
   const [start, setStart] = useState(new Date().toISOString().slice(0, 10));
   const [showCreate, setShowCreate] = useState(false);
   const [draft, setDraft] = useState({ nome: "", cpf: "", email: "" });
+  // Candidato que veio da própria empresa (não é da DNA): grava com a empresa escolhida no passo 1.
+  const [daEmpresa, setDaEmpresa] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<{ id_contratacao: number; id_colaborador: string; id_candidato: string; id_vaga: string; id_empresa: string } | null>(null);
   // Só para mostrar no resumo o nome do que foi escolhido (a busca some quando o texto muda).
@@ -58,14 +60,17 @@ export function NovaContratacaoPage() {
   const selectedJob = jobs.data?.data.find((job) => job.id_vaga === jobId);
 
   const createPerson = useMutation({
-    mutationFn: () => api<Person>("/api/v1/candidatos", { method: "POST", body: JSON.stringify(draft) }),
+    mutationFn: () => api<Person>("/api/v1/candidatos", {
+      method: "POST",
+      body: JSON.stringify({ ...draft, email: draft.email.trim() || undefined, ...(daEmpresa && companyId ? { id_empresa: companyId } : {}) }),
+    }),
     onSuccess: async (response) => {
       setPersonId(response.data.id_candidato);
       setPersonName(response.data.nome || draft.nome);
       setShowCreate(false);
       await client.invalidateQueries({ queryKey: ["busca-candidatos"] });
     },
-    onError: (err) => setError(err instanceof ApiError ? err.message : "Não foi possível cadastrar o candidato."),
+    onError: (err) => setError(err instanceof ApiError ? detalheDoErro(err) : "Não foi possível cadastrar o candidato."),
   });
   const hire = useMutation({
     mutationFn: () => api<{ id_contratacao: number; id_colaborador: string; id_candidato: string; id_vaga: string; id_empresa: string }>("/api/v1/contratacoes", {
@@ -191,8 +196,15 @@ export function NovaContratacaoPage() {
                 <div className="grid gap-3 sm:grid-cols-6">
                   <div className="sm:col-span-3"><Field label="Nome"><Input value={draft.nome} onChange={(event) => setDraft({ ...draft, nome: event.target.value })} /></Field></div>
                   <div className="sm:col-span-3"><Field label="CPF"><Input inputMode="numeric" value={draft.cpf} onChange={(event) => setDraft({ ...draft, cpf: event.target.value })} /></Field></div>
-                  <div className="sm:col-span-6"><Field label="E-mail"><Input type="email" value={draft.email} onChange={(event) => setDraft({ ...draft, email: event.target.value })} /></Field></div>
+                  <div className="sm:col-span-6"><Field label="E-mail (opcional)"><Input type="email" value={draft.email} onChange={(event) => setDraft({ ...draft, email: event.target.value })} /></Field></div>
                 </div>
+                <label className="flex items-start gap-2 text-sm text-slate-700">
+                  <input type="checkbox" className="mt-0.5 h-4 w-4 accent-cyan-700" checked={daEmpresa} disabled={!companyId} onChange={(event) => setDaEmpresa(event.target.checked)} />
+                  <span>
+                    Candidato da própria empresa{companyName ? ` (${companyName})` : ""}, não da DNA Work
+                    {!companyId ? <span className="block text-xs text-slate-500">Escolha a empresa no passo 1 para marcar.</span> : null}
+                  </span>
+                </label>
                 <Button type="button" className="justify-self-start" onClick={() => createPerson.mutate()} disabled={createPerson.isPending}>
                   <UserPlus size={16} /> {createPerson.isPending ? "Salvando…" : "Salvar candidato"}
                 </Button>
@@ -285,4 +297,14 @@ function Par({ rotulo, children }: { rotulo: string; children: ReactNode }) {
       <dd className="text-slate-700">{children}</dd>
     </div>
   );
+}
+
+/** Mensagem do servidor; em erro de validação, a primeira mensagem do campo (já em português). */
+function detalheDoErro(err: ApiError) {
+  const details = err.details as unknown;
+  if (Array.isArray(details)) {
+    const item = details.find((entry) => entry && typeof entry === "object" && "message" in entry) as { message?: string } | undefined;
+    if (item?.message) return item.message;
+  }
+  return err.message;
 }

@@ -1,6 +1,6 @@
 # Agente — Candidatos
 
-> Última revisão: 2026-11-13 (commit "Botões com retorno de clique e Pesquisar sempre recarrega")
+> Última revisão: 2026-11-13 (commit "Cadastro de candidato sem e-mail e empresa escolhida pelo CNPJ")
 
 ## Para que serve
 
@@ -78,6 +78,7 @@ Variáveis de config que mudam a lista: `CONTRATACAO_STATUS_ATIVO` (padrão 1) e
 
 ## Regras e comportamentos importantes
 
+- **Cadastro (novo candidato):** só nome e CPF são obrigatórios também no servidor — o e-mail ficou opcional em `candidatoCreateSchema` (antes o cadastro sem e-mail era recusado com mensagem genérica e "não avançava"); grava e-mail vazio quando não vem. Mensagens de nome, CPF, e-mail e UF em português. Em "Cadastrado por: Outra empresa", a busca mostra cada empresa com CNPJ, razão social e cidade (e tudo no `title` ao passar o mouse), para separar unidades com o mesmo nome (ex.: Lumi); escolhida, a lista fecha e aparece a empresa com o CNPJ e "Trocar".
 - **Pesquisar sempre tem efeito:** com os mesmos filtros, recarrega a lista (`refetch`, ou a chave `rodada` no Financeiro); o botão mostra "Pesquisando…" com ícone girando enquanto carrega. Todo botão do sistema afunda e muda o tom ao ser pressionado (`index.css`, `.app-canvas button:active`).
 - **CPF único**: create e update recusam CPF já usado por outro candidato (comparando só dígitos) → 409 `CPF_DUPLICADO` com `details.id_candidato` (`candidato.service.ts:51`, `:75`). O CPF é validado e normalizado para dígitos por `cpfSchema` (`schemas/common.ts:8`).
 - **E-mail obrigatório só no create** do backend (`candidatoCreateSchema` usa `z.string().email()`), mas o formulário do frontend aceita e-mail vazio — salvar candidato novo sem e-mail volta erro de validação da API.

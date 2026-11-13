@@ -1,6 +1,6 @@
 # Agente — Contratações
 
-> Última revisão: 2026-11-13 (commit "Corrige faturamento Todas, nomes com &amp;, rescisão pela ficha e cadastro de instituição")
+> Última revisão: 2026-11-13 (commit "Cadastro de candidato sem e-mail e empresa escolhida pelo CNPJ")
 
 ## Para que serve
 
@@ -72,6 +72,7 @@ Serviço externo: **ZapSign** (`lib/zapsign.ts`), variáveis `ZAPSIGN_API_URL`, 
 
 ## Regras e comportamentos importantes
 
+- **Cadastro rápido de candidato na Nova contratação:** e-mail opcional e a caixa "Candidato da própria empresa (…), não da DNA Work", que grava o candidato com a empresa do passo 1 (`id_empresa`). Erro de validação mostra a mensagem do campo.
 Criação (`contratacao.service.ts:93-207`, tudo numa transação):
 - Idempotência: mesma chave + mesmo corpo devolve a resposta gravada; mesma chave com corpo diferente → 409 `IDEMPOTENCIA_DIVERGENTE`. O frontend gera uma chave nova a cada clique (`crypto.randomUUID()`).
 - Advisory lock por candidato e `FOR UPDATE` na vaga (evita estourar posições em concorrência).

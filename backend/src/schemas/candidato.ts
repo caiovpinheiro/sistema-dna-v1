@@ -2,7 +2,7 @@ import { z } from "zod";
 import { isoDateSchema, optionalCep, optionalEmail, optionalPhone, pageSchema, ufSchema, cpfSchema } from "./common.js";
 
 const fields = {
-  nome: z.string().trim().min(3).max(180),
+  nome: z.string().trim().min(3, "Informe o nome completo (pelo menos 3 letras).").max(180, "O nome pode ter até 180 letras."),
   cpf: cpfSchema,
   rg: z.string().trim().max(30).optional(),
   rg_expedidor: z.string().trim().max(40).optional(),
@@ -41,7 +41,8 @@ export const candidatoCreateSchema = z.object({
   ...fields,
   nome: fields.nome,
   cpf: fields.cpf,
-  email: z.string().email(),
+  // A tela pede só nome e CPF; e-mail é opcional também aqui (antes o cadastro era recusado sem e-mail).
+  email: optionalEmail,
 });
 
 export const candidatoPatchSchema = z.object(fields).partial();
