@@ -1,17 +1,17 @@
 # Agente — Métricas
 
-> Última revisão: 2026-11-16 (abas Estágio e CLT)
+> Última revisão: 2026-11-16 (projeção de CLT pelo mesmo mês do último ano × variação)
 
 ## Para que serve
 
-Mostra indicadores de gestão que só o administrador vê. Hoje tem a **permanência dos estagiários** (quanto tempo, em média, um estagiário fica contratado, pelo método Kaplan-Meier, com os ativos contando como "ainda não saiu") e **quanto um estagiário rende** pelos preços de cada empresa (aba **Estágio**), e as **contratações CLT** com a receita delas, cobrada uma vez por contratação (aba **CLT**). Tudo pode ser filtrado por período.
+Mostra indicadores de gestão que só o administrador vê. Hoje tem a **permanência dos estagiários** (quanto tempo, em média, um estagiário fica contratado, pelo método Kaplan-Meier, com os ativos contando como "ainda não saiu") e **quanto um estagiário rende** pelos preços de cada empresa (aba **Estágio**), e as **contratações CLT** com a receita delas, cobrada uma vez por contratação, e projeções de receita (aba **CLT**, sem métricas de tempo). Tudo pode ser filtrado por período.
 
 ## Rotas e abas
 
 | Rota | Componente | Arquivo | O que mostra |
 |---|---|---|---|
 | `/metricas` (aba Estágio, padrão) | `MetricasPage` → `MetricasEstagio` | `frontend/src/pages/MetricasPage.tsx` | Abas Estágio/CLT no topo; filtro de período (De/Até, na URL como `?de=AAAA-MM-DD&ate=AAAA-MM-DD`, com atalhos Tudo, Últimos 12 meses, ano atual e ano anterior) e, com período escolhido, o seletor "Considerar": "Só quem entrou no período" (padrão) ou "Todos ativos no período" (`&modo=ativos`), indicadores (média restrita, mediana, ativos, contratos analisados), bloco "Quanto um estagiário rende", gráfico "Receita por mês" (histórico + projeção de 12 meses), curva de quantos continuam contratados com o tempo, distribuição de quem já saiu por faixa, tabela por ano de início e nota dos descartes. |
-| `/metricas?tipo=clt` (aba CLT) | `MetricasClt` | `frontend/src/components/metricas-clt.tsx` | Mesmo filtro de período (sem o "Considerar": sempre pela data de início), indicadores (contratações, receita das contratações, receita média por contratação, ainda contratados), salário médio e taxa como % do salário, gráfico "Receita por mês" (taxa no mês da contratação, sem projeção), permanência (média restrita e mediana), curva até 36 meses, faixas, tabela por ano e nota dos descartes. |
+| `/metricas?tipo=clt` (aba CLT) | `MetricasClt` | `frontend/src/components/metricas-clt.tsx` | Mesmo filtro de período (sem o "Considerar": sempre pela data de início), indicadores (contratações, receita das contratações, receita média por contratação, taxa média sobre o salário), bloco "Projeções" (base e fator, próximos 12 meses, fechamento do ano, média por mês, últimos 3 meses com a tendência, e o mês atual contra o esperado, cada um com a conta escrita), gráfico "Receita por mês" (realizado + 12 meses projetados, variando mês a mês) e nota dos descartes. **Não mostra métricas de tempo** (permanência, curva, faixas, por ano), a pedido. |
 
 O erro de carregamento aparece com `Alerta` (de `components/pagina.tsx`), no mesmo formato das outras telas.
 
@@ -21,14 +21,14 @@ A aba fica na URL (`tipo=clt`; sem o parâmetro, Estágio). O período e o modo 
 
 **Frontend**
 - `frontend/src/pages/MetricasPage.tsx`: a página, as abas, o filtro de período e a aba Estágio (`MetricasEstagio`). Gráficos com `recharts`, no mesmo estilo escuro do Painel.
-- `frontend/src/components/metricas.tsx`: peças comuns às duas abas (`Indicador`, `Secao`, `CurvaPermanencia`, `FaixasSaida`, `TabelaPorAno`, `NotaDescartes`, formatadores e o tipo `ResumoPermanencia`).
-- `frontend/src/components/metricas-clt.tsx`: aba CLT (`MetricasClt`).
+- `frontend/src/components/metricas.tsx`: peças comuns às duas abas (`Indicador`, `Secao`, `CurvaPermanencia`, `FaixasSaida`, `TabelaPorAno`, `NotaDescartes`, formatadores e o tipo `ResumoPermanencia`). Toda dica (`Tooltip`) usa `itemStyle={textoTooltip}`: sem isso o texto sai na cor da série, e a barra clara da projeção fica ilegível.
+- `frontend/src/components/metricas-clt.tsx`: aba CLT (`MetricasClt`). Não usa `CurvaPermanencia`, `FaixasSaida` nem `TabelaPorAno`.
 - `frontend/src/components/shell.tsx`: item do menu (só `admin`), título da rota e a mensagem "Somente o administrador vê as métricas." para quem não é admin.
 - `frontend/src/App.tsx`: rota `/metricas`.
 
 **Backend**
 - `backend/src/lib/metricas/permanencia.ts`: regras puras: `dataLegado`, `observacoes`, `kaplanMeier`, `resumoPermanencia` (comum a estágio e CLT), `permanenciaEstagio`, `receita`, `receitaMensal`, `FAIXAS`, `DIAS_POR_MES` (30,44), `LIMITE_DIAS`.
-- `backend/src/lib/metricas/clt.ts`: `metricasClt`, `receitaClt`, `receitaMensalClt`, `SALARIO_MENSAL_MINIMO`.
+- `backend/src/lib/metricas/clt.ts`: `metricasClt`, `receitaClt`, `receitaMensalClt`, `ritmo`, `projecaoClt`, `SALARIO_MENSAL_MINIMO`.
 - `backend/src/services/metricas.service.ts`: `MetricasService.permanenciaEstagio` e `MetricasService.contratacoesClt`, que fazem o SELECT (`sqlContratos`) e chamam as regras. Preços em `MENSAL`, `RS` (estágio) e `TAXA_CLT`.
 - `backend/src/routes/index.ts`: rotas `GET /api/v1/metricas/permanencia-estagio` e `GET /api/v1/metricas/contratacoes-clt`.
 - `backend/src/app.ts`: bloqueio de `/api/v1/metricas*` para quem não é administrador (mesmo esquema de `/api/v1/configuracoes`).
@@ -39,7 +39,7 @@ A aba fica na URL (`tipo=clt`; sem o parâmetro, Estágio). O período e o modo 
 | Método | Caminho | O que faz | Onde está no backend |
 |---|---|---|---|
 | GET | `/api/v1/metricas/permanencia-estagio?de=&ate=&modo=` | Calcula a permanência e a receita dos estagiários (só leitura). `de`/`ate` (AAAA-MM-DD, opcionais) definem o período; `modo` = `inicio` (padrão: só contratos que começaram no período) ou `ativos` (todos que estiveram contratados em algum dia do período). Devolve `calculadoEm`, `periodo`, `lidos`, `foraDoPeriodo`, `validos`, `receita`, `receitaMensal`, `descartados`, `descartes`, `geral` (Kaplan-Meier com `curva`), `encerrados` (média, mediana, faixas) e `porAno`. Só administrador (403 `ACESSO_NEGADO` para os demais). | routes/index.ts → `MetricasService.permanenciaEstagio` |
-| GET | `/api/v1/metricas/contratacoes-clt?de=&ate=` | Contratações CLT (só leitura). O período filtra sempre pela data de início. Devolve o mesmo resumo de permanência (`geral`, `encerrados`, `porAno`, descartes) mais `receita` (`total`, `porContratacao`, `contratacoesComValor`, `semValor`, `salarioMedio`, `percentualMedio`) e `receitaMensal` (`mes`, `receita`, `contratacoes`). Só administrador. | routes/index.ts → `MetricasService.contratacoesClt` |
+| GET | `/api/v1/metricas/contratacoes-clt?de=&ate=` | Contratações CLT (só leitura). O período filtra sempre pela data de início. Devolve o mesmo resumo de permanência (`geral`, `encerrados`, `porAno`, descartes) mais `receita` (`total`, `porContratacao`, `contratacoesComValor`, `semValor`, `salarioMedio`, `percentualMedio`) e `receitaMensal` (`mes`, `receita`, `contratacoes`) e `projecao` (`ritmo12`, `ritmo3`, `tendencia`, `base` com as duas janelas e os fatores, `mesAtual`, `proximos12`, `ano`, `serie` com o mês-base de cada mês). Só administrador. | routes/index.ts → `MetricasService.contratacoesClt` |
 
 ## Dados
 
@@ -76,7 +76,15 @@ A aba fica na URL (`tipo=clt`; sem o parâmetro, Estágio). O período e o modo 
   - Período recente no modo `inicio` tem média restrita curta (ainda não deu tempo de observar contratos longos).
 - **CLT** (`clt.ts`):
   - receita = soma das taxas das contratações com taxa > 0, no mês de início (não tem projeção, porque não há recorrência);
-  - permanência: mesmo Kaplan-Meier, **sem** o limite de 24 meses (CLT não tem prazo). Como a maioria ainda está contratada, a mediana pode não ser atingida ("não atingida");
+  - permanência: o backend ainda calcula (mesmo Kaplan-Meier, sem o limite de 24 meses), mas a tela **não mostra métricas de tempo** em CLT, a pedido;
+  - **projeções** (`projecaoClt`), sempre com **todas** as contratações (o filtro de período não muda):
+    - cada mês projetado = valor do **mesmo mês** nos últimos 12 meses completos × **fator**; fator = total dos últimos 12 meses ÷ total dos 12 meses antes deles (receita e contratações, cada um com o seu). Assim a projeção repete a sazonalidade do último ano e acompanha a tendência; não fica reta;
+    - próximos 12 meses = soma dos 12 meses projetados, do mês seguinte ao atual (= últimos 12 meses × fator);
+    - fechamento do ano = realizado no ano até hoje + o que falta para o mês atual chegar no esperado (mesmo mês do ano anterior × fator; zero se já passou) + meses projetados que ainda caem no ano;
+    - "Média por mês" (últimos 12 ÷ 12) e "Últimos 3 meses" (com a `tendencia` em % sobre a média de 12) ficam como referência;
+    - a tela mostra a conta de cada número (linha "Base" e texto embaixo de cada card) e o tooltip de cada barra projetada mostra o mês-base e o fator;
+    - o gráfico acrescenta as 12 barras projetadas só quando o período chega ao mês atual;
+    - é ordem de grandeza: não prevê vagas novas, mudança de preço nem clientes novos. Em 16/11/2026: nov/25–out/26 R$ 75.050 (44 contratações), nov/24–out/25 R$ 86.471 (57), fator 0,87 (−13,2%); próximos 12 meses ≈ R$ 65,1 mil (≈ 34 contratações); fechamento de 2026 ≈ R$ 71,9 mil (R$ 51,3 mil realizados + R$ 3,6 mil do mês atual + R$ 17,0 mil de dez/26).
   - salário médio e % do salário só com salário ≥ R$ 500 (`SALARIO_MENSAL_MINIMO`): há vagas com salário por hora ("24,00", "25,00") e taxa fixa, que davam % absurdo. O % é soma das taxas ÷ soma dos salários;
   - período: sempre pela data de início (o seletor "Considerar" não aparece na aba CLT); com período, o gráfico mostra todos os meses do período, inclusive os zerados.
   - Referência em 16/11/2026, sem filtro: 151 contratações lidas, 148 válidas, 104 ainda contratadas, 143 com taxa e 5 sem; receita ≈ R$ 207,6 mil, ≈ R$ 1.451 por contratação, salário médio ≈ R$ 2.142, taxa ≈ 67,9% do salário.
@@ -93,6 +101,6 @@ A aba fica na URL (`tipo=clt`; sem o parâmetro, Estágio). O período e o modo 
 ## Como testar
 
 - `npx tsx --test test/metricas-permanencia.test.ts test/metricas-clt.test.ts` dentro de `backend`.
-- Aba CLT (`/metricas?tipo=clt`): sem filtro, confira ≈ 148 contratações e ≈ R$ 1.451 por contratação; troque o período e veja o gráfico mostrar os meses do período.
+- Aba CLT (`/metricas?tipo=clt`): sem filtro, confira ≈ 148 contratações e ≈ R$ 1.451 por contratação, o bloco Projeções (≈ R$ 65 mil nos próximos 12 meses em 16/11/2026) e as 12 barras claras variando no fim do gráfico; escolha 2025 e veja as projeções iguais e o gráfico sem as barras projetadas.
 - Entre como administrador e abra `/metricas`: confira os indicadores, o bloco de receita, os atalhos de período (2025 deve dar 700 contratos e ≈ 4,5 meses, igual à linha 2025 da tabela), a curva (começa em 100% e cruza a linha de 50% perto de 3,3 meses), as faixas e a tabela por ano.
 - Com um usuário que não é administrador: o menu não mostra "Métricas", `/metricas` mostra "Somente o administrador vê as métricas." e a API responde 403.

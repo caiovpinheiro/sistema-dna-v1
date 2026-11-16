@@ -3,7 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import {
   COR, CurvaPermanencia, DIAS_POR_MES, FaixasSaida, Indicador, NotaDescartes, Secao, TabelaPorAno,
-  dataBr, diasTxt, eixo, eixoReais, meses, num, reais, rotuloMes, tooltip, type ResumoPermanencia,
+  dataBr, diasTxt, eixo, eixoReais, meses, num, reais, rotuloMes, textoTooltip, tooltip, type ResumoPermanencia,
 } from "@/components/metricas";
 import { MetricasClt } from "@/components/metricas-clt";
 import { Alerta, CabecalhoPagina } from "@/components/pagina";
@@ -198,7 +198,7 @@ function MetricasEstagio({ de, ate, modo, ativo, comPeriodo }: { de: string; ate
                 <XAxis dataKey="mes" {...eixo} tickFormatter={rotuloMes} minTickGap={24} />
                 <YAxis {...eixo} width={64} tickFormatter={eixoReais} />
                 <Tooltip
-                  contentStyle={tooltip}
+                  contentStyle={tooltip} itemStyle={textoTooltip}
                   cursor={{ fill: "rgba(255,255,255,0.04)" }}
                   labelFormatter={(mes) => rotuloMes(String(mes))}
                   formatter={(v, nome, item) => {

@@ -21,6 +21,8 @@ export type ResumoPermanencia = {
 };
 
 export const tooltip = { background: "#15181e", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, color: "#e7e9ee", fontSize: 12 };
+/** Texto das dicas sempre na cor de texto: a cor da série (ex.: a barra clara da projeção) fica ilegível no fundo escuro. */
+export const textoTooltip = { color: "#e7e9ee" };
 export const eixo = { stroke: "#8b95a7", fontSize: 11, tickLine: false, axisLine: false } as const;
 export const COR = "#67e8f9";
 const NOMES_MES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
@@ -76,7 +78,7 @@ export function CurvaPermanencia({ data, mesesMax, texto }: { data: ResumoPerman
             <YAxis {...eixo} domain={[0, 100]} width={36} tickFormatter={(v: number) => `${v}%`} />
             <ReferenceLine y={50} stroke="#8b95a7" strokeDasharray="4 4" />
             <Tooltip
-              contentStyle={tooltip}
+              contentStyle={tooltip} itemStyle={textoTooltip}
               labelFormatter={(v) => `${Number(v).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} meses`}
               formatter={(v) => [`${Number(v).toLocaleString("pt-BR")}%`, "Ainda contratados"]}
             />
@@ -101,7 +103,7 @@ export function FaixasSaida({ data }: { data: ResumoPermanencia }) {
             <CartesianGrid stroke="rgba(255,255,255,0.06)" horizontal={false} />
             <XAxis type="number" {...eixo} allowDecimals={false} />
             <YAxis type="category" dataKey="faixa" {...eixo} width={92} />
-            <Tooltip contentStyle={tooltip} cursor={{ fill: "rgba(255,255,255,0.04)" }} formatter={(v, _n, item) => [`${num(Number(v))} (${(item.payload as { pct: number }).pct.toLocaleString("pt-BR")}%)`, "Contratos"]} />
+            <Tooltip contentStyle={tooltip} itemStyle={textoTooltip} cursor={{ fill: "rgba(255,255,255,0.04)" }} formatter={(v, _n, item) => [`${num(Number(v))} (${(item.payload as { pct: number }).pct.toLocaleString("pt-BR")}%)`, "Contratos"]} />
             <Bar dataKey="total" fill={COR} barSize={14} radius={[0, 4, 4, 0]} isAnimationActive={false} />
           </BarChart>
         </ResponsiveContainer>

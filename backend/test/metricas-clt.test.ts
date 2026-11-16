@@ -45,3 +45,32 @@ test("CLT: salário por hora não entra no salário médio nem no %", () => {
   assert.equal(r.receita.salarioMedio, 2000);
   assert.equal(r.receita.percentualMedio, 50);
 });
+
+test("CLT: projeção = mesmo mês do último ano × variação do último ano", () => {
+  // hoje = 16/11/2026; últimos 12 meses completos = nov/2025 a out/2026; anteriores = nov/2024 a out/2025
+  const c = (data: string, rs: number) => ({ status: 1, datainicio: data, data_contratacao: null, data_demicao: null, rs });
+  const contratos = [
+    c("2024/12/05", 2000), c("2025/03/05", 2000), // anteriores: R$ 4.000, 2 contratações
+    c("2025/12/05", 2000), c("2026/03/05", 1000), // últimos 12: R$ 3.000, 2 contratações
+    c("2026/11/03", 500), // mês atual
+  ];
+  const r = metricasClt(contratos, HOJE, { de: Date.UTC(2020, 0, 1), ate: Date.UTC(2020, 11, 31) });
+  const p = r.projecao;
+  assert.equal(r.validos, 0); // o filtro não afeta a projeção
+  assert.equal(p.base.fatorReceita, 0.75);
+  assert.equal(p.base.fatorContratacoes, 1);
+  assert.equal(p.serie[0].mes, "2026-12");
+  assert.equal(p.serie[0].receita, 1500); // dez/25 R$ 2.000 × 0,75
+  assert.equal(p.serie[0].base.mes, "2025-12");
+  assert.equal(p.serie[3].mes, "2027-03");
+  assert.equal(p.serie[3].receita, 750); // mar/26 R$ 1.000 × 0,75
+  assert.equal(p.serie[1].receita, 0); // jan/26 sem contratação
+  assert.equal(p.proximos12.receita, 2250);
+  assert.equal(p.proximos12.contratacoes, 2);
+  // nov/26: base nov/25 = 0, então nada falta; fechamento = realizado em 2026 (mar 1.000 + nov 500) + dez/26 projetado
+  assert.equal(p.mesAtual.realizado, 500);
+  assert.equal(p.mesAtual.esperado, 0);
+  assert.equal(p.ano.realizado, 1500);
+  assert.equal(p.ano.restoDoAno, 1500);
+  assert.equal(p.ano.fechamento, 3000);
+});
