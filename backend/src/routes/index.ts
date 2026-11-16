@@ -918,6 +918,20 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
   api.get("/api/v1/grupos/:id", {
     schema: { tags: ["grupos"], params: z.object({ id: z.string().uuid() }) },
   }, async (request) => ok(await services.cadastro.obterGrupo(request.params.id)));
+  api.get("/api/v1/grupos/:id/vagas", {
+    schema: {
+      tags: ["grupos"],
+      params: z.object({ id: z.string().uuid() }),
+      querystring: z.object({
+        situacao: z.enum(["aberta", "pausada", "contratada", "fechada"]).optional(),
+        page: z.coerce.number().int().min(1).default(1),
+        pageSize: z.coerce.number().int().min(1).max(100).default(20),
+      }),
+    },
+  }, async (request) => {
+    const resultado = await services.vagas.doGrupo(request.params.id, request.query);
+    return ok({ contagem: resultado.contagem, disponiveis: resultado.disponiveis, vagas: resultado.vagas }, resultado.meta);
+  });
   api.get("/api/v1/grupos/:id/cobranca", {
     schema: { tags: ["grupos"], params: z.object({ id: z.string().uuid() }) },
   }, async (request) => ok(await valoresDoGrupo(db, request.params.id)));

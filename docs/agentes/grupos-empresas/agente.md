@@ -1,6 +1,6 @@
 # Agente — Grupos (Grupos, Empresas e Vagas)
 
-> Última revisão: 2026-11-13 (commit "Vaga de estágio diz se aceita ensino médio e o portal das empresas abre vaga pelo mesmo fluxo")
+> Última revisão: 2026-11-16 (vagas do grupo por situação)
 
 ## Para que serve
 
@@ -11,7 +11,7 @@ Tela de cadastro em cascata: primeiro o grupo, depois a empresa do grupo, depois
 | Rota | Componente | Arquivo | O que mostra |
 |---|---|---|---|
 | `/grupos-empresas` ou `?aba=grupo` | `GruposEmpresasPage` → `AbaGrupo` | `frontend/src/pages/GruposEmpresasPage.tsx` | `CabecalhoPagina` "Grupos, empresas e vagas" e as abas em `FiltroChips` (Grupo, Empresa, Vaga). Formulário "Novo grupo" à esquerda + lista pesquisável de grupos à direita (filtro no navegador, contador, cada grupo com seta para abrir). |
-| `/grupos-empresas?aba=grupo&grupo=<uuid>` | `AbaGrupo` (selecionado) | idem | "Voltar para os grupos"; cartão do grupo com contato, link "Cadastrar empresa neste grupo" (`?aba=empresa&grupo=<uuid>`) e a tabela `data-table` "Empresas do grupo" (clique ou "Abrir" leva a `/empresas/:id`); "Cobrança das empresas" (`CobrancaEmpresa` por empresa). |
+| `/grupos-empresas?aba=grupo&grupo=<uuid>` | `AbaGrupo` (selecionado) | idem | "Voltar para os grupos"; cartão do grupo com contato, link "Cadastrar empresa neste grupo" (`?aba=empresa&grupo=<uuid>`) e a tabela `data-table` "Empresas do grupo" (clique ou "Abrir" leva a `/empresas/:id`); "Vagas do grupo" (`VagasDoGrupo`: botões Aberta, Pausada, Contratada, Fechada e Todas com a contagem, o número de vagas e o de posições disponíveis da situação escolhida em destaque (ex.: "13 vagas abertas · 16 posições disponíveis") e "Ver vagas" para expandir a lista paginada; aparece só quando o grupo tem empresa); "Cobrança das empresas" (`CobrancaEmpresa` por empresa). |
 | `/grupos-empresas?aba=empresa[&grupo=<uuid>]` | `AbaEmpresa` | idem | Formulário de empresa nova em 3 blocos numerados (`Bloco` + grade de 6 colunas): 1 Grupo e identificação (grupo, CNPJ opcional, razão social, fantasia), 2 Endereço (CEP com ViaCEP, endereço, número, complemento, bairro, cidade, UF), 3 Contato. "Salvar empresa" no fim. |
 | `/grupos-empresas?aba=vaga[&empresa=<uuid>][&modelo=<vaga_id>]` | `AbaVaga` (modo `vaga`) | idem | Formulário de abertura de vaga em 5 blocos numerados: 1 Empresa e modelo (empresa, modelo opcional, quantidade), 2 Cargo e remuneração (tipo, carga, cargo da lista ou "+ Novo cargo", salário), 3 Horário (entrada, saída, dias fixo/escala/folga, texto previsto), 4 Perfil do candidato (sexo, idade de/até e, só no estágio, "Aceita ensino médio?" obrigatório), 5 Atividades e benefícios. Botão "Abrir vaga" no fim. |
 | `/vagas/modelos/novo` | `ModeloFormPage` → `AbaVaga` (modo `modelo`) | idem | "Novo modelo de vaga": os mesmos blocos sem o bloco da empresa (a numeração começa em Cargo e remuneração). "Voltar aos modelos" no cabeçalho; Cancelar/Salvar modelo no fim. Salvar volta para `/vagas/modelos`. |
@@ -38,6 +38,7 @@ Backend
 - Service: `backend/src/services/cadastro.service.ts` (`CadastroService`) — grupos, empresas, vagas e modelos.
 - Cargos: `backend/src/services/cargo.service.ts` (`CargoService`), `backend/src/lib/cargo.ts`.
 - Cobrança do grupo: `backend/src/repositories/valor-empresa.repository.ts` (`valoresDoGrupo`).
+- Vagas do grupo: `VagaService.doGrupo` (`backend/src/services/vaga.service.ts`) usa `VagaRepository.contarPorSituacao` e `VagaRepository.vagasJuntasDoGrupo`, que partilham o SQL `sqlGruposDoGrupo` (`backend/src/repositories/vaga.repository.ts`). Não usa a `list` de Consultar Vagas, porque junta as vagas repetidas.
 - Schemas: `backend/src/schemas/cadastro.ts` (`grupoCreateSchema`, `empresaCadastroSchema`, `vagaCadastroSchema`, `modeloVagaSchema`), `backend/src/schemas/common.ts`.
 - Libs usadas na vaga: `backend/src/lib/horario-escala.ts`, `backend/src/lib/money.ts`, `backend/src/lib/dates.ts` (`legacyToday`), `backend/src/lib/vaga-id.ts` (`reagruparVagaIds`), `backend/src/services/vagas-abertas-sync.service.ts` (`horarioDe`, `faixaDaSemana`).
 - MySQL: `backend/src/db/mysql.ts`.
@@ -49,6 +50,7 @@ Backend
 | GET | `/api/v1/grupos` | Lista grupos (até 500, por nome) | `routes/index.ts:747` → `listarGrupos` |
 | GET | `/api/v1/grupos/:id` | Grupo + empresas do grupo | `routes/index.ts:748` → `obterGrupo` |
 | GET | `/api/v1/grupos/:id/cobranca` | Empresas do grupo com `cobranca` (ou `null`) | `routes/index.ts:751` → `valoresDoGrupo` |
+| GET | `/api/v1/grupos/:id/vagas?situacao&page&pageSize` | `{ contagem, disponiveis, vagas }` + `meta.total` (total de vagas já juntas). Cada item de `vagas` traz também `linhas` (quantas aberturas juntou) e `codigos`. `contagem` e `disponiveis` têm `aberta`, `pausada`, `contratada`, `fechada` e `total` (vagas e posições livres). As duas somam todas as empresas do grupo e não depende do filtro; `vagas` é a página da lista na `situacao` pedida (sem `situacao`, todas). | `routes/index.ts` → `VagaService.doGrupo` |
 | POST | `/api/v1/grupos` | Cria grupo | `routes/index.ts:754` → `criarGrupo` |
 | GET | `/api/v1/grupos-empresas/empresas` | Empresas de `public.empresa` (até 500) para o seletor da vaga | `routes/index.ts:758` → `listarEmpresas` |
 | POST | `/api/v1/grupos-empresas/empresas` | Cria (ou reativa) empresa no Lightsail e no Postgres | `routes/index.ts:759` → `criarEmpresa` |
@@ -114,6 +116,8 @@ Serviços externos:
   - Dias de folga vão sem horário; dias de escala exigem horário.
   - Aplicar modelo preenche tudo menos empresa e quantidade; se o cargo do modelo não estiver na lista (por id ou chave), abre "+ Novo cargo" com o nome do modelo.
   - Texto digitado no campo cargo que coincide com um cargo da lista é resolvido para esse cargo ao salvar; se não coincide, vira "Novo cargo" e exige descrição e requisitos.
+- **Vagas do grupo, vagas repetidas**: o sistema grava uma linha por posição (abrir 3 posições = 3 linhas de 1) e a mesma vaga às vezes é aberta de novo em outro dia. Aqui, linhas da **mesma empresa** com o mesmo **cargo** (sem diferenciar caixa e espaços), **modalidade, salário, horário** (texto da carga ou entrada/saída), **sexo e idade de/até**, na **mesma situação**, viram uma linha só, com posições, ocupadas e disponíveis somadas, a abertura mais recente e os códigos de todas ("2 aberturas · EQK-7174, JZA-9866"). "Abrir" leva à abertura mais recente. A prioridade da linha é a maior entre as juntas. Carga horária (40/44) e benefícios **não** entram na regra (foi a escolha do usuário: juntar pelo que aparece na lista), então duas aberturas que só diferem nisso viram uma. O número de vagas conta essas linhas já juntas. Consultar Vagas (`/vagas`) e a Triagem não mudam: lá continua uma linha por registro (a Triagem junta pelo `vaga_id`, que considera todos os campos).
+- **Vagas do grupo**: a vaga entra pelo grupo da empresa em `public.empresa` (`public.empresa.id = dna_work.vaga.id_empresa`), igual ao filtro Grupo de Consultar Vagas. Empresa que não está em `public.empresa` não entra. A situação segue `lib/vaga-status.ts`: código desconhecido ou nulo conta como fechada. O número principal conta vagas já juntas (ver acima); ao lado vêm as posições disponíveis, com a mesma conta de `posicoesLivres` (posições da vaga, ou 1 se vazio, menos contratações com `CONTRATACAO_STATUS_ATIVO`, nunca abaixo de zero). Uma vaga com 2 posições conta 1 vaga e 2 posições. As posições disponíveis só aparecem em Aberta e Pausada; em Todas aparecem as das abertas ("nas vagas abertas"); em Contratada e Fechada não aparecem, porque a conta não olha a situação e uma vaga fechada sem contratação daria "posições disponíveis". A lista vem da abertura mais recente para a mais antiga; "Abrir" leva a `/vagas/:id`, que exige a página de Vagas.
 - **Permissões** (`lib/paginas.ts`): `/api/v1/grupos*` e `/api/v1/grupos-empresas*` exigem a página `empresas`; `/api/v1/cargos` aceita `empresas`, `vagas`, `vagas-modelos` ou `vagas-modelo`; `/api/v1/vagas/modelos*` exige uma das páginas de vagas. Consequência: quem só tem `empresas` consegue abrir vaga, mas `?aba=vaga&modelo=...` falha (403) ao buscar o modelo.
 
 ## Cuidados ao mudar

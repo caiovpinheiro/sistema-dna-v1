@@ -13,6 +13,8 @@ import { VagaRepository } from "../repositories/vaga.repository.js";
 import type { PrioridadeVaga, VagaCreate, VagaListQuery, VagaPatch } from "../schemas/vaga.js";
 import { reagruparVagaIds } from "../lib/vaga-id.js";
 import { presentVaga } from "./presenters.js";
+import { classifyRegime } from "../lib/normalize.js";
+import { legacyToIso } from "../lib/dates.js";
 import { mensagemDaVaga } from "../lib/mensagem-vaga.js";
 import { DIAS_ESCALA, textoDoHorario } from "../lib/horario-escala.js";
 
@@ -204,6 +206,37 @@ export class VagaService {
     if (!vaga) throw new AppError(404, "VAGA_NAO_ENCONTRADA", "Vaga não encontrada.");
     await this.repo.salvarPrioridade(this.db, id, prioridade);
     return { id_vaga: id, prioridade };
+  }
+
+  /**
+   * Vagas do grupo (todas as empresas dele), juntas pelo que aparece na lista (ver
+   * VagaRepository.vagasJuntasDoGrupo): contagem por situação e a página da situação escolhida.
+   */
+  async doGrupo(grupoId: string, filtro: { situacao?: "aberta" | "pausada" | "contratada" | "fechada"; page: number; pageSize: number }) {
+    const [contagem, lista] = await Promise.all([
+      this.repo.contarPorSituacao(this.db, grupoId),
+      this.repo.vagasJuntasDoGrupo(this.db, grupoId, filtro),
+    ]);
+    const prioridades = ["alta", "media", "baixa"];
+    return {
+      contagem: contagem.vagas,
+      disponiveis: contagem.disponiveis,
+      vagas: lista.rows.map((row) => ({
+        id_vaga: row.id_vaga,
+        cargo: row.cargo,
+        empresa: row.empresa,
+        regime: classifyRegime(row.modalidade),
+        situacao: row.situacao,
+        quantidade_posicoes: row.posicoes,
+        ocupadas: row.ocupadas,
+        disponiveis: row.disponiveis,
+        dataabertura: legacyToIso(row.dataabertura),
+        prioridade: prioridades[row.faixa] ?? "media",
+        linhas: row.linhas,
+        codigos: row.codigos,
+      })),
+      meta: { page: filtro.page, pageSize: filtro.pageSize, total: lista.total },
+    };
   }
 
   async list(query: VagaListQuery) {

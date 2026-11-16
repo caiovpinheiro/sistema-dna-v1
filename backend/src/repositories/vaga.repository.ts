@@ -38,6 +38,13 @@ export type VagaRow = {
   idadeate?: string | null;
 };
 
+type SituacaoContada = "aberta" | "pausada" | "contratada" | "fechada";
+export type ContagemSituacao = Record<SituacaoContada | "total", number>;
+export type VagaJuntaRow = {
+  situacao: SituacaoContada; chave: string; id_vaga: string; cargo: string | null; empresa: string | null; modalidade: string | null;
+  dataabertura: string | null; linhas: number; posicoes: number; ocupadas: number; disponiveis: number; codigos: string[]; faixa: number;
+};
+
 type ContextoVaga = {
   tipo_vaga: number | null;
   cargo: string | null;
@@ -363,6 +370,108 @@ export class VagaRepository {
   private async nomesDeCargo(db: Db) {
     const linhas = await many<{ cargo: string }>(db, "SELECT DISTINCT cargo FROM dna_work.vaga WHERE cargo IS NOT NULL AND btrim(cargo) <> ''");
     return linhas.map((linha) => linha.cargo);
+  }
+
+  /**
+   * Vagas do grupo juntas "pelo que aparece na lista": mesma empresa, cargo, modalidade, salário,
+   * horário, sexo e idade, na mesma situação, viram uma linha só (o sistema grava uma linha por
+   * posição e a mesma vaga às vezes é aberta de novo em outro dia). Posições, ocupadas e disponíveis
+   * são somadas; disponíveis segue posicoesLivres (posições ou 1, menos contratações ativas, mínimo 0).
+   * A vaga entra pelo grupo da empresa em public.empresa, como no filtro Grupo da lista de vagas.
+   */
+  private sqlGruposDoGrupo() {
+    return `
+      WITH base AS (
+        SELECT v.id_vaga, v.cargo, v.dataabertura, v.codigo,
+               coalesce(v.quantidade_posicoes, 1) AS posicoes,
+               coalesce(o.ocupadas, 0) AS ocupadas,
+               greatest(coalesce(v.quantidade_posicoes, 1) - coalesce(o.ocupadas, 0), 0) AS livres,
+               CASE coalesce(v.prioridade, 'media') WHEN 'alta' THEN 0 WHEN 'baixa' THEN 2 ELSE 1 END AS faixa,
+               CASE
+                 WHEN v.status = ANY($3::int[]) THEN 'aberta'
+                 WHEN v.status = ANY($4::int[]) THEN 'pausada'
+                 WHEN v.status = ANY($5::int[]) THEN 'contratada'
+                 ELSE 'fechada'
+               END AS situacao,
+               coalesce(NULLIF(btrim(pe.nome_fantasia), ''), e.nome_fantasia, e.razao_social) AS empresa,
+               m.descricao AS modalidade,
+               concat_ws('|',
+                 v.id_empresa,
+                 lower(btrim(coalesce(v.cargo, ''))),
+                 coalesce(v.tipo_vaga::text, ''),
+                 replace(btrim(coalesce(v.salario::text, '')), ',', '.'),
+                 lower(coalesce(NULLIF(btrim(v.texto_carga), ''), concat(v.horabase, ' às ', v.hora_saida_base))),
+                 upper(btrim(coalesce(v.sexo, ''))),
+                 btrim(coalesce(v.idade::text, '')),
+                 btrim(coalesce(v.idadeate::text, ''))
+               ) AS chave
+        FROM dna_work.vaga v
+        JOIN public.empresa pe ON pe.id::text = v.id_empresa::text
+        LEFT JOIN dna_work.empresa e ON e.id_empresa = v.id_empresa
+        LEFT JOIN dna_work.modalidade_vaga m ON m.id = v.tipo_vaga
+        LEFT JOIN (
+          SELECT id_vaga, count(*)::int AS ocupadas
+          FROM dna_work.conratacaovaga
+          WHERE status = $2
+          GROUP BY id_vaga
+        ) o ON o.id_vaga = v.id_vaga
+        WHERE pe.grupo_id::text = $1
+      ),
+      grupos AS (
+        SELECT situacao, chave,
+               (array_agg(id_vaga ORDER BY dataabertura DESC NULLS LAST, id_vaga))[1] AS id_vaga,
+               max(cargo) AS cargo, max(empresa) AS empresa, max(modalidade) AS modalidade,
+               max(dataabertura) AS dataabertura,
+               count(*)::int AS linhas,
+               sum(posicoes)::int AS posicoes, sum(ocupadas)::int AS ocupadas, sum(livres)::int AS disponiveis,
+               coalesce(array_agg(DISTINCT codigo) FILTER (WHERE NULLIF(btrim(codigo), '') IS NOT NULL), '{}') AS codigos,
+               min(faixa)::int AS faixa
+        FROM base
+        GROUP BY situacao, chave
+      )
+    `;
+  }
+
+  private paramsGrupo(grupoId: string) {
+    return [grupoId, this.statusAtivo, CODIGOS_POR_STATUS.aberta, CODIGOS_POR_STATUS.pausada, CODIGOS_POR_STATUS.contratada];
+  }
+
+  /** Por situação: quantas vagas (já juntas) o grupo tem e quantas posições ainda estão disponíveis. */
+  async contarPorSituacao(db: Db, grupoId: string): Promise<{ vagas: ContagemSituacao; disponiveis: ContagemSituacao }> {
+    const linhas = await many<{ situacao: SituacaoContada; vagas: number; disponiveis: number }>(db, `
+      ${this.sqlGruposDoGrupo()}
+      SELECT situacao, count(*)::int AS vagas, coalesce(sum(disponiveis), 0)::int AS disponiveis
+      FROM grupos GROUP BY situacao
+    `, this.paramsGrupo(grupoId));
+    const vazio = (): ContagemSituacao => ({ aberta: 0, pausada: 0, contratada: 0, fechada: 0, total: 0 });
+    const vagas = vazio();
+    const disponiveis = vazio();
+    for (const linha of linhas) {
+      vagas[linha.situacao] = linha.vagas;
+      disponiveis[linha.situacao] = linha.disponiveis;
+      vagas.total += linha.vagas;
+      disponiveis.total += linha.disponiveis;
+    }
+    return { vagas, disponiveis };
+  }
+
+  /** Página das vagas (já juntas) do grupo, da abertura mais recente para a mais antiga. */
+  async vagasJuntasDoGrupo(db: Db, grupoId: string, filtro: { situacao?: SituacaoContada; page: number; pageSize: number }): Promise<{ rows: VagaJuntaRow[]; total: number }> {
+    const params = [...this.paramsGrupo(grupoId), filtro.situacao ?? null, filtro.pageSize, (filtro.page - 1) * filtro.pageSize];
+    const rows = await many<VagaJuntaRow & { total: number }>(db, `
+      ${this.sqlGruposDoGrupo()}
+      SELECT g.*, count(*) OVER ()::int AS total
+      FROM grupos g
+      WHERE $6::text IS NULL OR g.situacao = $6
+      ORDER BY g.dataabertura DESC NULLS LAST, g.id_vaga
+      LIMIT $7 OFFSET $8
+    `, params);
+    let total = rows[0]?.total ?? 0;
+    if (!rows.length && filtro.page > 1) {
+      const contagem = await this.contarPorSituacao(db, grupoId);
+      total = filtro.situacao ? contagem.vagas[filtro.situacao] : contagem.vagas.total;
+    }
+    return { rows: rows.map(({ total: _total, ...row }) => row), total };
   }
 
   async list(db: Db, query: VagaListQuery): Promise<{ rows: VagaRow[]; total: number }> {

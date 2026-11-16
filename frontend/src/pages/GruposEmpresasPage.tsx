@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, ChevronRight, Save, Search } from "lucide-react";
+import { ArrowLeft, ChevronDown, ChevronRight, Save, Search } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { BuscaOpcao, normalizarBusca } from "@/components/busca-opcao";
@@ -7,7 +7,8 @@ import { CobrancaEmpresa, type ValorEmpresa } from "@/components/cobranca-empres
 import { Alerta, CabecalhoPagina, FiltroChips } from "@/components/pagina";
 import { Button, Card, Empty, Field, Input, Select, Skeleton, Textarea, cn } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
-import { formatCnpj } from "@/lib/format";
+import { STATUS_VAGA, dateBr, formatCnpj, regimeLabel, situacaoLabel } from "@/lib/format";
+import { Paginacao } from "@/components/paginacao";
 import { cargoDoModelo, type CargoOpcao } from "@/lib/cargo";
 import { DIAS_ESCALA, textoDoHorario, type DiaEscala, type ModoDia } from "@/lib/horario-escala";
 
@@ -109,6 +110,132 @@ function Erro({ error }: { error: unknown }) {
   return <Alerta>{error.message}</Alerta>;
 }
 
+type SituacaoVaga = (typeof STATUS_VAGA)[number]["id"];
+type FiltroSituacao = SituacaoVaga | "todas";
+type VagaDoGrupo = {
+  id_vaga: string; cargo: string | null; empresa: string | null; regime: string; situacao: SituacaoVaga;
+  quantidade_posicoes: number | null; ocupadas: number; disponiveis: number | null; dataabertura: string | null; prioridade: string;
+  /** Quantas aberturas a linha junta (mesma empresa, cargo, modalidade, salário, horário, sexo e idade) e os códigos delas. */
+  linhas: number; codigos: string[];
+};
+type RespostaVagasGrupo = { contagem: Record<SituacaoVaga | "total", number>; disponiveis: Record<SituacaoVaga | "total", number>; vagas: VagaDoGrupo[] };
+
+/** "12 vagas abertas", "1 vaga aberta", "30 vagas no total". */
+function rotuloDoNumero(numero: number, situacao: FiltroSituacao) {
+  const vaga = numero === 1 ? "vaga" : "vagas";
+  if (situacao === "todas") return `${vaga} no total`;
+  const nome = (situacaoLabel[situacao] ?? situacao).toLowerCase();
+  return `${vaga} ${numero === 1 ? nome : `${nome}s`}`;
+}
+
+/** Vagas de todas as empresas do grupo: número por situação e, se pedir, a lista. */
+function VagasDoGrupo({ grupoId }: { grupoId: string }) {
+  const [situacao, setSituacao] = useState<FiltroSituacao>("aberta");
+  const [aberto, setAberto] = useState(false);
+  const [pagina, setPagina] = useState(1);
+  const [tamanho, setTamanho] = useState(20);
+  const consulta = useQuery({
+    queryKey: ["grupo-vagas", grupoId, situacao, pagina, tamanho],
+    queryFn: () => {
+      const params = new URLSearchParams({ page: String(pagina), pageSize: String(tamanho) });
+      if (situacao !== "todas") params.set("situacao", situacao);
+      return api<RespostaVagasGrupo>(`/api/v1/grupos/${grupoId}/vagas?${params}`);
+    },
+    placeholderData: (anterior) => anterior,
+  });
+  const contagem = consulta.data?.data.contagem;
+  const vagas = consulta.data?.data.vagas ?? [];
+  const total = Number(consulta.data?.meta?.total ?? 0);
+  const chave = situacao === "todas" ? "total" : situacao;
+  const numero = contagem ? contagem[chave] : null;
+  // Posições ainda livres: uma vaga pode ter mais de uma posição. Só faz sentido em vaga aberta ou pausada;
+  // em "Todas" mostra as das abertas, e em contratada/fechada não mostra (a vaga não está disponível).
+  const disponiveis = consulta.data?.data.disponiveis;
+  const posicoes = !disponiveis ? null
+    : situacao === "aberta" || situacao === "pausada" ? disponiveis[situacao]
+      : situacao === "todas" ? disponiveis.aberta
+        : null;
+  function trocarSituacao(nova: FiltroSituacao) {
+    setSituacao(nova);
+    setPagina(1);
+  }
+  const opcoes: Array<{ id: FiltroSituacao; rotulo: string; contagem?: number }> = [
+    ...STATUS_VAGA.map((item) => ({ id: item.id as FiltroSituacao, rotulo: item.nome, contagem: contagem?.[item.id] })),
+    { id: "todas", rotulo: "Todas", contagem: contagem?.total },
+  ];
+  return (
+    <Card className="grid gap-4 md:p-5">
+      <div>
+        <h3 className="text-[15px] font-bold text-navy-900">Vagas do grupo</h3>
+        <p className="text-sm text-slate-500">Somando todas as empresas do grupo. A mesma vaga aberta mais de uma vez (mesma empresa, cargo, modalidade, salário, horário, sexo e idade) conta uma vez, com as posições somadas.</p>
+      </div>
+      <FiltroChips rotulo="Situação das vagas" opcoes={opcoes} valor={situacao} onChange={trocarSituacao} />
+      <Erro error={consulta.error} />
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        {consulta.isLoading ? <Skeleton className="h-12 w-48" /> : (
+          <p className="text-navy-900" aria-live="polite">
+            <span className="text-4xl font-extrabold tabular-nums">{numero ?? "—"}</span>
+            <span className="ml-2 text-sm font-semibold text-slate-500">{rotuloDoNumero(numero ?? 0, situacao)}</span>
+            {posicoes != null ? (
+              <>
+                <span className="mx-3 text-slate-300" aria-hidden>·</span>
+                <span className="text-2xl font-extrabold tabular-nums">{posicoes}</span>
+                <span className="ml-2 text-sm font-semibold text-slate-500">{posicoes === 1 ? "posição disponível" : "posições disponíveis"}{situacao === "todas" ? " nas vagas abertas" : ""}</span>
+              </>
+            ) : null}
+          </p>
+        )}
+        <Button type="button" variant="secondary" aria-expanded={aberto} disabled={!numero} onClick={() => setAberto((valor) => !valor)}>
+          {aberto ? "Esconder vagas" : "Ver vagas"}
+          <ChevronDown size={16} className={cn("transition", aberto && "rotate-180")} aria-hidden />
+        </Button>
+      </div>
+      {aberto && numero ? (
+        <div className="grid gap-2">
+          <div className="overflow-x-auto">
+            <table className="data-table">
+              <thead>
+                <tr><th>Cargo</th><th>Empresa</th><th>Modalidade</th><th>Posições</th><th className="text-center">Disponíveis</th><th>Última abertura</th>{situacao === "todas" ? <th>Situação</th> : null}<th><span className="sr-only">Ações</span></th></tr>
+              </thead>
+              <tbody>
+                {vagas.map((vaga) => (
+                  <tr key={vaga.id_vaga}>
+                    <td className="max-w-64">
+                      <Link to={`/vagas/${vaga.id_vaga}`} className="block truncate">{vaga.cargo || "Vaga"}</Link>
+                      {vaga.prioridade === "alta" || vaga.prioridade === "baixa" ? <p className="text-xs text-slate-500">Prioridade {vaga.prioridade}</p> : null}
+                    </td>
+                    <td className="max-w-64 text-slate-600">
+                      <p className="truncate">{vaga.empresa ?? "—"}</p>
+                      {vaga.linhas > 1 ? (
+                        <p className="truncate text-xs text-slate-500" title={vaga.codigos.join(", ")}>
+                          {vaga.linhas} aberturas{vaga.codigos.length ? ` · ${vaga.codigos.join(", ")}` : ""}
+                        </p>
+                      ) : null}
+                    </td>
+                    <td className="whitespace-nowrap text-slate-600">{regimeLabel[vaga.regime] ?? vaga.regime}</td>
+                    <td className="whitespace-nowrap tabular-nums text-slate-600">{vaga.ocupadas}/{vaga.quantidade_posicoes ?? "—"} preenchidas</td>
+                    <td className="text-center tabular-nums">{vaga.disponiveis ?? "—"}</td>
+                    <td className="whitespace-nowrap text-slate-600">{dateBr(vaga.dataabertura)}</td>
+                    {situacao === "todas" ? <td className="whitespace-nowrap text-slate-600">{situacaoLabel[vaga.situacao] ?? vaga.situacao}</td> : null}
+                    <td className="w-px whitespace-nowrap text-right">
+                      <Link to={`/vagas/${vaga.id_vaga}`} aria-label={`Abrir ${vaga.cargo ?? "vaga"}`} className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs">Abrir <ChevronRight size={14} /></Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {total > tamanho || tamanho !== 20 ? (
+            <div className="flex justify-end">
+              <Paginacao pagina={pagina} tamanho={tamanho} total={total} onPagina={setPagina} onTamanho={(novo) => { setTamanho(novo); setPagina(1); }} />
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </Card>
+  );
+}
+
 function AbaGrupo({ selecionado, onSelect }: { selecionado: string; onSelect: (id: string) => void }) {
   const client = useQueryClient();
   const navigate = useNavigate();
@@ -181,6 +308,7 @@ function AbaGrupo({ selecionado, onSelect }: { selecionado: string; onSelect: (i
             </div>
           </Card>
         ) : null}
+        {grupo && grupo.empresas.length ? <VagasDoGrupo grupoId={grupo.id} /> : null}
         {grupo && grupo.empresas.length ? (
           <Card className="grid gap-3 md:p-5">
             <div>
