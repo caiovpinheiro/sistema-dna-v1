@@ -4,8 +4,8 @@
  */
 
 /** mensal = taxa mensal por estagiário da empresa; rs = taxa de recrutamento e seleção (uma vez). 0 quando a empresa não tem preço. */
-export type ContratoBruto = { status: number | null; datainicio: string | null; data_contratacao: string | null; data_demicao: string | null; mensal?: number | string | null; rs?: number | string | null };
-export type Observacao = { dias: number; saiu: boolean; ano: number; inicio: number; mensal: number; rs: number };
+export type ContratoBruto = { status: number | null; datainicio: string | null; data_contratacao: string | null; data_demicao: string | null; mensal?: number | string | null; rs?: number | string | null; salario?: number | string | null };
+export type Observacao = { dias: number; saiu: boolean; ano: number; inicio: number; mensal: number; rs: number; salario?: number };
 /**
  * Período (ms UTC, dias inteiros). `modo`:
  * - "inicio" (padrão): só os contratos que começaram no período;
@@ -53,7 +53,7 @@ export function observacoes(contratos: ContratoBruto[], hoje: number, periodo: P
     const inicio = dataLegado(c.datainicio?.trim() ? c.datainicio : c.data_contratacao);
     if (inicio == null) { descartes.formato++; continue; }
     const ano = new Date(inicio).getUTCFullYear();
-    const valores = { inicio, mensal: valor(c.mensal), rs: valor(c.rs) };
+    const valores = { inicio, mensal: valor(c.mensal), rs: valor(c.rs), salario: valor(c.salario) };
     if (c.status === 2) {
       const fim = dataLegado(c.data_demicao);
       if (fim === null) { descartes.encerradoSemDemissao++; continue; }
@@ -133,30 +133,41 @@ function mediana(valores: number[]): number | null {
 }
 
 /** Tudo o que a página Métricas mostra sobre a permanência dos estagiários. Só contagens e médias, sem dados pessoais. */
-export function permanenciaEstagio(contratos: ContratoBruto[], hoje: number, periodo: Periodo = {}) {
+/** Partes comuns a estágio e CLT: Kaplan-Meier geral e por ano, encerrados e descartes. `limiteDias` corta a média restrita. */
+export function resumoPermanencia(contratos: ContratoBruto[], hoje: number, periodo: Periodo, limiteDias: number) {
   const { observacoes: obs, descartes, foraDoPeriodo } = observacoes(contratos, hoje, periodo);
-  const geral = kaplanMeier(obs);
+  const geral = kaplanMeier(obs, limiteDias);
   const encerrados = obs.filter((o) => o.saiu).map((o) => o.dias);
   const porAno = [...new Set(obs.map((o) => o.ano))].sort((a, b) => a - b).map((ano) => {
-    const { curva: _curva, ...km } = kaplanMeier(obs.filter((o) => o.ano === ano));
+    const { curva: _curva, ...km } = kaplanMeier(obs.filter((o) => o.ano === ano), limiteDias);
     return { ano, ...km };
   });
   return {
-    lidos: contratos.length,
-    foraDoPeriodo,
-    validos: obs.length,
-    descartados: Object.values(descartes).reduce((a, b) => a + b, 0),
-    descartes,
-    geral,
-    encerrados: {
-      total: encerrados.length,
-      mediaDias: encerrados.length ? encerrados.reduce((a, b) => a + b, 0) / encerrados.length : null,
-      medianaDias: mediana(encerrados),
-      faixas: FAIXAS.map(({ faixa, de, ate }) => ({ faixa, total: encerrados.filter((d) => d >= de && d < ate).length })),
+    obs,
+    resumo: {
+      lidos: contratos.length,
+      foraDoPeriodo,
+      validos: obs.length,
+      descartados: Object.values(descartes).reduce((a, b) => a + b, 0),
+      descartes,
+      geral,
+      encerrados: {
+        total: encerrados.length,
+        mediaDias: encerrados.length ? encerrados.reduce((a, b) => a + b, 0) / encerrados.length : null,
+        medianaDias: mediana(encerrados),
+        faixas: FAIXAS.map(({ faixa, de, ate }) => ({ faixa, total: encerrados.filter((d) => d >= de && d < ate).length })),
+      },
+      porAno,
     },
-    porAno,
-    receita: receita(obs, geral),
-    receitaMensal: receitaMensal(obs, geral.curva, hoje, 12, periodo),
+  };
+}
+
+export function permanenciaEstagio(contratos: ContratoBruto[], hoje: number, periodo: Periodo = {}) {
+  const { obs, resumo } = resumoPermanencia(contratos, hoje, periodo, LIMITE_DIAS);
+  return {
+    ...resumo,
+    receita: receita(obs, resumo.geral),
+    receitaMensal: receitaMensal(obs, resumo.geral.curva, hoje, 12, periodo),
   };
 }
 

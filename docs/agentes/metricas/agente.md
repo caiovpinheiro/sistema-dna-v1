@@ -1,45 +1,51 @@
 # Agente — Métricas
 
-> Última revisão: 2026-11-13 (commit "Repagina as telas restantes no padrão novo")
+> Última revisão: 2026-11-16 (abas Estágio e CLT)
 
 ## Para que serve
 
-Mostra indicadores de gestão que só o administrador vê. Hoje tem a **permanência dos estagiários** (quanto tempo, em média, um estagiário fica contratado, pelo método Kaplan-Meier, com os ativos contando como "ainda não saiu") e **quanto um estagiário rende** pelos preços de cada empresa. Tudo pode ser filtrado pela data de início do contrato.
+Mostra indicadores de gestão que só o administrador vê. Hoje tem a **permanência dos estagiários** (quanto tempo, em média, um estagiário fica contratado, pelo método Kaplan-Meier, com os ativos contando como "ainda não saiu") e **quanto um estagiário rende** pelos preços de cada empresa (aba **Estágio**), e as **contratações CLT** com a receita delas, cobrada uma vez por contratação (aba **CLT**). Tudo pode ser filtrado por período.
 
 ## Rotas e abas
 
 | Rota | Componente | Arquivo | O que mostra |
 |---|---|---|---|
-| `/metricas` | `MetricasPage` | `frontend/src/pages/MetricasPage.tsx` | Filtro de período (De/Até, na URL como `?de=AAAA-MM-DD&ate=AAAA-MM-DD`, com atalhos Tudo, Últimos 12 meses, ano atual e ano anterior) e, com período escolhido, o seletor "Considerar": "Só quem entrou no período" (padrão) ou "Todos ativos no período" (`&modo=ativos`), indicadores (média restrita, mediana, ativos, contratos analisados), bloco "Quanto um estagiário rende", gráfico "Receita por mês" (histórico + projeção de 12 meses), curva de quantos continuam contratados com o tempo, distribuição de quem já saiu por faixa, tabela por ano de início e nota dos descartes. |
+| `/metricas` (aba Estágio, padrão) | `MetricasPage` → `MetricasEstagio` | `frontend/src/pages/MetricasPage.tsx` | Abas Estágio/CLT no topo; filtro de período (De/Até, na URL como `?de=AAAA-MM-DD&ate=AAAA-MM-DD`, com atalhos Tudo, Últimos 12 meses, ano atual e ano anterior) e, com período escolhido, o seletor "Considerar": "Só quem entrou no período" (padrão) ou "Todos ativos no período" (`&modo=ativos`), indicadores (média restrita, mediana, ativos, contratos analisados), bloco "Quanto um estagiário rende", gráfico "Receita por mês" (histórico + projeção de 12 meses), curva de quantos continuam contratados com o tempo, distribuição de quem já saiu por faixa, tabela por ano de início e nota dos descartes. |
+| `/metricas?tipo=clt` (aba CLT) | `MetricasClt` | `frontend/src/components/metricas-clt.tsx` | Mesmo filtro de período (sem o "Considerar": sempre pela data de início), indicadores (contratações, receita das contratações, receita média por contratação, ainda contratados), salário médio e taxa como % do salário, gráfico "Receita por mês" (taxa no mês da contratação, sem projeção), permanência (média restrita e mediana), curva até 36 meses, faixas, tabela por ano e nota dos descartes. |
 
 O erro de carregamento aparece com `Alerta` (de `components/pagina.tsx`), no mesmo formato das outras telas.
 
-Não tem abas. O item "Métricas" do menu (`shell.tsx`) só aparece para o administrador, logo acima de "Configurações".
+A aba fica na URL (`tipo=clt`; sem o parâmetro, Estágio). O período e o modo ficam na URL e valem para as duas abas. O item "Métricas" do menu (`shell.tsx`) só aparece para o administrador, logo acima de "Configurações".
 
 ## Arquivos
 
 **Frontend**
-- `frontend/src/pages/MetricasPage.tsx`: a página (componentes `Indicador` e `Secao` no próprio arquivo). Gráficos com `recharts`, no mesmo estilo escuro do Painel.
+- `frontend/src/pages/MetricasPage.tsx`: a página, as abas, o filtro de período e a aba Estágio (`MetricasEstagio`). Gráficos com `recharts`, no mesmo estilo escuro do Painel.
+- `frontend/src/components/metricas.tsx`: peças comuns às duas abas (`Indicador`, `Secao`, `CurvaPermanencia`, `FaixasSaida`, `TabelaPorAno`, `NotaDescartes`, formatadores e o tipo `ResumoPermanencia`).
+- `frontend/src/components/metricas-clt.tsx`: aba CLT (`MetricasClt`).
 - `frontend/src/components/shell.tsx`: item do menu (só `admin`), título da rota e a mensagem "Somente o administrador vê as métricas." para quem não é admin.
 - `frontend/src/App.tsx`: rota `/metricas`.
 
 **Backend**
-- `backend/src/lib/metricas/permanencia.ts`: regras puras: `dataLegado`, `observacoes`, `kaplanMeier`, `permanenciaEstagio`, `FAIXAS`, `DIAS_POR_MES` (30,44).
-- `backend/src/services/metricas.service.ts`: `MetricasService.permanenciaEstagio`, que faz o SELECT e chama as regras.
-- `backend/src/routes/index.ts`: rota `GET /api/v1/metricas/permanencia-estagio`.
+- `backend/src/lib/metricas/permanencia.ts`: regras puras: `dataLegado`, `observacoes`, `kaplanMeier`, `resumoPermanencia` (comum a estágio e CLT), `permanenciaEstagio`, `receita`, `receitaMensal`, `FAIXAS`, `DIAS_POR_MES` (30,44), `LIMITE_DIAS`.
+- `backend/src/lib/metricas/clt.ts`: `metricasClt`, `receitaClt`, `receitaMensalClt`, `SALARIO_MENSAL_MINIMO`.
+- `backend/src/services/metricas.service.ts`: `MetricasService.permanenciaEstagio` e `MetricasService.contratacoesClt`, que fazem o SELECT (`sqlContratos`) e chamam as regras. Preços em `MENSAL`, `RS` (estágio) e `TAXA_CLT`.
+- `backend/src/routes/index.ts`: rotas `GET /api/v1/metricas/permanencia-estagio` e `GET /api/v1/metricas/contratacoes-clt`.
 - `backend/src/app.ts`: bloqueio de `/api/v1/metricas*` para quem não é administrador (mesmo esquema de `/api/v1/configuracoes`).
-- `backend/test/metricas-permanencia.test.ts`: testes das regras.
+- `backend/test/metricas-permanencia.test.ts` e `backend/test/metricas-clt.test.ts`: testes das regras.
 
 ## API usada
 
 | Método | Caminho | O que faz | Onde está no backend |
 |---|---|---|---|
 | GET | `/api/v1/metricas/permanencia-estagio?de=&ate=&modo=` | Calcula a permanência e a receita dos estagiários (só leitura). `de`/`ate` (AAAA-MM-DD, opcionais) definem o período; `modo` = `inicio` (padrão: só contratos que começaram no período) ou `ativos` (todos que estiveram contratados em algum dia do período). Devolve `calculadoEm`, `periodo`, `lidos`, `foraDoPeriodo`, `validos`, `receita`, `receitaMensal`, `descartados`, `descartes`, `geral` (Kaplan-Meier com `curva`), `encerrados` (média, mediana, faixas) e `porAno`. Só administrador (403 `ACESSO_NEGADO` para os demais). | routes/index.ts → `MetricasService.permanenciaEstagio` |
+| GET | `/api/v1/metricas/contratacoes-clt?de=&ate=` | Contratações CLT (só leitura). O período filtra sempre pela data de início. Devolve o mesmo resumo de permanência (`geral`, `encerrados`, `porAno`, descartes) mais `receita` (`total`, `porContratacao`, `contratacoesComValor`, `semValor`, `salarioMedio`, `percentualMedio`) e `receitaMensal` (`mes`, `receita`, `contratacoes`). Só administrador. | routes/index.ts → `MetricasService.contratacoesClt` |
 
 ## Dados
 
 - **Postgres, schema `dna_work`, só leitura:** `conratacaovaga` (`status`, `datainicio`, `data_contratacao`, `data_demicao`) com `JOIN vaga ON id_vaga`, filtrando `vaga.tipo_vaga = 1` (estágio).
 - **Preço de cada contrato** (mesma ordem do Faturamento, `VALOR_CONTRATO` em `legado.service.ts`): `public.valor_empresas` conferido (`est_status = 'ok'`: `est_mensal` e `est_rs`) → `dna_work.vaga_valores` pelo `comparador` (`valor_recorrente`, `valor_selecao`/`tipo_selecao`) → `dna_work.faturamento_empresa` da empresa com `modalidade_vaga = 1` (pega uma linha só, via `LATERAL ... LIMIT 1`, porque há empresa com duas). R&S percentual (`tipo_selecao = 'P'`) é % do `vaga.salario`.
+- **Taxa de cada contratação CLT** (`TAXA_CLT`, mesma ordem do Faturamento): `public.valor_empresas` conferido (`clt_status = 'ok'`: `clt_modelo = 'Percentual'` → `vaga.salario × clt_valor / 100`; senão `clt_valor` fixo) → seleção do cadastro antigo (`vaga_valores`/`faturamento_empresa` com `modalidade_vaga = 2`, `tipo_selecao` P = % do salário, senão valor fixo). Não há mensalidade em CLT.
 - Não lê nem devolve nenhum dado pessoal (nome, CPF, telefone): só datas e status, e a resposta só tem contagens e médias.
 - Nada é gravado. O cálculo roda a cada acesso (o front guarda por 5 minutos).
 
@@ -68,6 +74,12 @@ Não tem abas. O item "Métricas" do menu (`shell.tsx`) só aparece para o admin
   - `ativos`: entra quem tinha início ≤ `ate` e fim (demissão, ou hoje se ativo) ≥ `de`. A receita por mês fica igual à de "Tudo" nos meses do período. A permanência fica maior (viés de duração: contratos longos têm mais chance de cruzar o período); em 12/11/2026, nos últimos 12 meses, foi 6,9 meses contra 5,3 no modo `inicio`.
   - Com período, o gráfico de receita mostra só os meses do período; a projeção só aparece se o período chega ao mês atual.
   - Período recente no modo `inicio` tem média restrita curta (ainda não deu tempo de observar contratos longos).
+- **CLT** (`clt.ts`):
+  - receita = soma das taxas das contratações com taxa > 0, no mês de início (não tem projeção, porque não há recorrência);
+  - permanência: mesmo Kaplan-Meier, **sem** o limite de 24 meses (CLT não tem prazo). Como a maioria ainda está contratada, a mediana pode não ser atingida ("não atingida");
+  - salário médio e % do salário só com salário ≥ R$ 500 (`SALARIO_MENSAL_MINIMO`): há vagas com salário por hora ("24,00", "25,00") e taxa fixa, que davam % absurdo. O % é soma das taxas ÷ soma dos salários;
+  - período: sempre pela data de início (o seletor "Considerar" não aparece na aba CLT); com período, o gráfico mostra todos os meses do período, inclusive os zerados.
+  - Referência em 16/11/2026, sem filtro: 151 contratações lidas, 148 válidas, 104 ainda contratadas, 143 com taxa e 5 sem; receita ≈ R$ 207,6 mil, ≈ R$ 1.451 por contratação, salário médio ≈ R$ 2.142, taxa ≈ 67,9% do salário.
 - Referência: em 12/11/2026, sem filtro: receita média ≈ R$ 709 por estagiário (taxa mensal média ≈ R$ 138, R&S ≈ R$ 6,60), 1.313 contratos com preço e 56 sem. Também em 12/11/2026, 1.396 contratos lidos, 1.369 válidos, 27 descartados; média restrita ≈ 5,1 meses (5,3 antes do limite de 24 meses), mediana ≈ 3,3 meses, 227 ativos.
 
 ## Cuidados ao mudar
@@ -75,11 +87,12 @@ Não tem abas. O item "Métricas" do menu (`shell.tsx`) só aparece para o admin
 - O acesso é por `sessao.admin`, não pela lista de páginas de `lib/paginas.ts`. Não registre `/api/v1/metricas` em `REGRAS_API` nem crie um id de página, senão um usuário comum poderia ganhar acesso pela tela de Configurações.
 - Novas métricas: acrescente rotas em `/api/v1/metricas/...` (o bloqueio de admin já cobre o prefixo) e seções nesta página; atualize este arquivo.
 - Mantenha a resposta sem dados pessoais.
-- Se mudar a regra de preço do Faturamento (`VALOR_CONTRATO`), mude `MENSAL`/`RS` em `metricas.service.ts` também.
+- Se mudar a regra de preço do Faturamento (`VALOR_CONTRATO`), mude `MENSAL`/`RS`/`TAXA_CLT` em `metricas.service.ts` também.
 - As regras de `permanencia.ts` são testadas; ao mudar o cálculo, ajuste `metricas-permanencia.test.ts` e confira com a referência acima.
 
 ## Como testar
 
-- `npx tsx --test test/metricas-permanencia.test.ts` dentro de `backend`.
+- `npx tsx --test test/metricas-permanencia.test.ts test/metricas-clt.test.ts` dentro de `backend`.
+- Aba CLT (`/metricas?tipo=clt`): sem filtro, confira ≈ 148 contratações e ≈ R$ 1.451 por contratação; troque o período e veja o gráfico mostrar os meses do período.
 - Entre como administrador e abra `/metricas`: confira os indicadores, o bloco de receita, os atalhos de período (2025 deve dar 700 contratos e ≈ 4,5 meses, igual à linha 2025 da tabela), a curva (começa em 100% e cruza a linha de 50% perto de 3,3 meses), as faixas e a tabela por ano.
 - Com um usuário que não é administrador: o menu não mostra "Métricas", `/metricas` mostra "Somente o administrador vê as métricas." e a API responde 403.

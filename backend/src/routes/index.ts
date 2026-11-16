@@ -167,6 +167,15 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
       }),
     },
   }, async (request) => ok(await services.metricas.permanenciaEstagio(request.query)));
+  api.get("/api/v1/metricas/contratacoes-clt", {
+    schema: {
+      tags: ["metricas"],
+      querystring: z.object({
+        de: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        ate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      }),
+    },
+  }, async (request) => ok(await services.metricas.contratacoesClt(request.query)));
 
   api.get("/api/v1/modalidades", { schema: { tags: ["vagas"] } }, async () => {
     const rows = await many<{ id: number; descricao: string | null; descricaomenu: string | null; estudando: number | null }>(
