@@ -11,7 +11,8 @@ type Ritmo = { meses: number; contratacoesPorMes: number; receitaPorMes: number 
 type MesBase = { mes: string; receita: number; contratacoes: number };
 type Janela = { de: string; ate: string; receita: number; contratacoes: number };
 type MesProjetado = MesBase & { base: MesBase };
-type Clt = {
+/** Resposta de GET /api/v1/metricas/contratacoes-clt. */
+export type Clt = {
   calculadoEm: string;
   periodo: { de: string | null; ate: string | null };
   lidos: number;
@@ -50,9 +51,9 @@ function Conta({ children }: { children: React.ReactNode }) {
   return <p className="px-4 pb-3 text-[11px] leading-snug text-slate-500">{children}</p>;
 }
 
-export function MetricasClt({ de, ate, ativo }: { de: string; ate: string; ativo: boolean }) {
-  const comPeriodo = Boolean(de || ate);
-  const query = useQuery({
+/** Consulta da aba CLT (a aba Geral usa a mesma, com o mesmo cache). */
+export function useMetricasClt(de: string, ate: string, ativo: boolean) {
+  return useQuery({
     queryKey: ["metricas-clt", de, ate],
     queryFn: () => {
       const busca = new URLSearchParams();
@@ -65,6 +66,11 @@ export function MetricasClt({ de, ate, ativo }: { de: string; ate: string; ativo
     staleTime: 5 * 60_000,
     placeholderData: (anterior) => anterior,
   });
+}
+
+export function MetricasClt({ de, ate, ativo }: { de: string; ate: string; ativo: boolean }) {
+  const comPeriodo = Boolean(de || ate);
+  const query = useMetricasClt(de, ate, ativo);
   const data = query.data?.data;
 
   // Histórico do período + 12 meses projetados no ritmo dos últimos 12 meses (só quando o período chega ao mês atual).

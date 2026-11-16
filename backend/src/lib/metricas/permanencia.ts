@@ -167,7 +167,33 @@ export function permanenciaEstagio(contratos: ContratoBruto[], hoje: number, per
   return {
     ...resumo,
     receita: receita(obs, resumo.geral),
-    receitaMensal: receitaMensal(obs, resumo.geral.curva, hoje, 12, periodo),
+    // Mês atual + 12 seguintes: a aba Geral soma os mesmos 12 meses da projeção de CLT (que começa no mês seguinte).
+    receitaMensal: receitaMensal(obs, resumo.geral.curva, hoje, 13, periodo),
+    simulacao: baseSimulacao(contratos, hoje),
+  };
+}
+
+/**
+ * Base para simular novas contratações de estágio (aba Geral), sempre com todos os contratos (o período não muda):
+ * - contratacoesPorMes: contratos que começaram nos 12 meses completos antes do mês atual ÷ 12;
+ * - mensalMedio / rsMedio: taxa mensal e R&S médias desses contratos (preço atual), só os com taxa mensal;
+ * - permanencia[k]: fração que continua contratada k meses depois de começar (Kaplan-Meier, S(k × 30,44 dias)),
+ *   de 0 a 24 meses (depois disso o estágio acaba, pela lei).
+ */
+export function baseSimulacao(contratos: ContratoBruto[], hoje: number) {
+  const { observacoes: todos } = observacoes(contratos, hoje);
+  const km = kaplanMeier(todos);
+  const d = new Date(hoje);
+  const fim = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1);
+  const inicio = Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 12, 1);
+  const recentes = todos.filter((o) => o.inicio >= inicio && o.inicio < fim);
+  const comValor = recentes.filter((o) => o.mensal > 0);
+  const base = comValor.length ? comValor : todos.filter((o) => o.mensal > 0);
+  return {
+    contratacoesPorMes: recentes.length / 12,
+    mensalMedio: base.length ? base.reduce((a, o) => a + o.mensal, 0) / base.length : 0,
+    rsMedio: base.length ? base.reduce((a, o) => a + o.rs, 0) / base.length : 0,
+    permanencia: Array.from({ length: 25 }, (_, k) => sobrevivencia(km.curva, k * DIAS_POR_MES)),
   };
 }
 
@@ -211,7 +237,8 @@ export function sobrevivencia(curva: PontoCurva[], dias: number): number {
  * `mesesCheios` = soma das frações do mês que cada um ficou: quem entrou ou saiu no meio do mês paga só a parte dele.
  * Por isso um mês com mais estagiários pode render menos que o seguinte.
  */
-export type MesReceita = { mes: string; realizado: number | null; projetado: number | null; estagiarios: number; mesesCheios: number };
+/** `rs` = parte única (taxa de R&S) dentro do valor do mês; o resto é recorrente (mensalidades). Na projeção é 0. */
+export type MesReceita = { mes: string; realizado: number | null; projetado: number | null; estagiarios: number; mesesCheios: number; rs: number };
 
 /**
  * Receita por mês dos contratos com taxa mensal.
@@ -238,6 +265,7 @@ export function receitaMensal(obs: Observacao[], curva: PontoCurva[], hoje: numb
     const fimMes = proximoMes(m);
     const diasMes = (fimMes - m) / DIA_MS;
     let total = 0;
+    let rsMes = 0;
     let estagiarios = 0;
     let mesesCheios = 0;
     for (const o of comValor) {
@@ -249,9 +277,9 @@ export function receitaMensal(obs: Observacao[], curva: PontoCurva[], hoje: numb
         mesesCheios += fracao;
         estagiarios++;
       }
-      if (o.inicio >= m && o.inicio < fimMes) total += o.rs;
+      if (o.inicio >= m && o.inicio < fimMes) { total += o.rs; rsMes += o.rs; }
     }
-    meses.push({ mes: rotulo(m), realizado: total, projetado: null, estagiarios, mesesCheios });
+    meses.push({ mes: rotulo(m), realizado: total, projetado: null, estagiarios, mesesCheios, rs: rsMes });
   }
 
   const ativos = comValor.filter((o) => !o.saiu);
@@ -266,7 +294,7 @@ export function receitaMensal(obs: Observacao[], curva: PontoCurva[], hoje: numb
       total += o.mensal * p;
       esperados += p;
     }
-    meses.push({ mes: rotulo(m), realizado: null, projetado: total, estagiarios: esperados, mesesCheios: esperados });
+    meses.push({ mes: rotulo(m), realizado: null, projetado: total, estagiarios: esperados, mesesCheios: esperados, rs: 0 });
   }
   return meses;
 }

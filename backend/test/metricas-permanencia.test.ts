@@ -122,3 +122,19 @@ test("média restrita para em 24 meses mesmo com contrato registrado mais longo"
   assert.ok(Math.abs(km.mediaRestritaDias - (100 + 0.5 * (limite - 100))) < 1e-9);
   assert.equal(km.ateDias, limite);
 });
+
+test("baseSimulacao usa os últimos 12 meses completos e a curva até 24 meses", () => {
+  const hoje = Date.UTC(2026, 10, 16);
+  const r = permanenciaEstagio([
+    { status: 2, datainicio: "2025/11/01", data_contratacao: null, data_demicao: "2025/12/01", mensal: 100, rs: 20 },
+    { status: 1, datainicio: "2026/10/01", data_contratacao: null, data_demicao: null, mensal: 200, rs: 0 },
+    { status: 1, datainicio: "2026/11/02", data_contratacao: null, data_demicao: null, mensal: 999, rs: 0 }, // mês atual: fora
+    { status: 2, datainicio: "2024/01/01", data_contratacao: null, data_demicao: "2024/03/01", mensal: 50, rs: 0 }, // antigo: fora
+  ], hoje, { de: Date.UTC(2020, 0, 1), ate: Date.UTC(2020, 0, 2) });
+  const b = r.simulacao;
+  assert.equal(b.contratacoesPorMes, 2 / 12);
+  assert.equal(b.mensalMedio, 150);
+  assert.equal(b.rsMedio, 10);
+  assert.equal(b.permanencia.length, 25);
+  assert.equal(b.permanencia[0], 1);
+});

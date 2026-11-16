@@ -1,32 +1,15 @@
-import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import {
   COR, CurvaPermanencia, DIAS_POR_MES, FaixasSaida, Indicador, NotaDescartes, Secao, TabelaPorAno,
-  dataBr, diasTxt, eixo, eixoReais, meses, num, reais, rotuloMes, textoTooltip, tooltip, type ResumoPermanencia,
+  dataBr, diasTxt, eixo, eixoReais, meses, num, reais, rotuloMes, textoTooltip, tooltip, useMetricasEstagio, type Modo,
 } from "@/components/metricas";
 import { MetricasClt } from "@/components/metricas-clt";
+import { MetricasGeral } from "@/components/metricas-geral";
 import { Alerta, CabecalhoPagina } from "@/components/pagina";
 import { Skeleton, cn } from "@/components/ui";
-import { api } from "@/lib/api";
 
-type Modo = "inicio" | "ativos";
-type Tipo = "estagio" | "clt";
-type Receita = {
-  contratosComValor: number;
-  semValor: number;
-  mensalMedio: number | null;
-  rsMedio: number | null;
-  mesesMedios: number;
-  porEstagiario: number | null;
-  estimadoPeriodo: number | null;
-  realizado: number;
-};
-type Permanencia = ResumoPermanencia & {
-  periodo: { de: string | null; ate: string | null; modo: Modo };
-  receita: Receita;
-  receitaMensal: Array<{ mes: string; realizado: number | null; projetado: number | null; estagiarios: number; mesesCheios: number }>;
-};
+type Tipo = "estagio" | "clt" | "geral";
 
 /** Pela lei do estágio (Lei 11.788/2008, art. 11), o contrato na mesma empresa não passa de 2 anos. */
 const MESES_MAXIMOS = 24;
@@ -50,12 +33,15 @@ function atalhos() {
 const DESCRICAO: Record<Tipo, string> = {
   estagio: "Quanto tempo os estagiários ficam contratados e quanto eles rendem. Calculado pelo método Kaplan-Meier: quem ainda está ativo conta como “ainda não saiu”, para a média não ficar abaixo da real.",
   clt: "Contratações CLT e quanto elas rendem. A taxa é cobrada uma vez, no mês da contratação (% do salário ou valor fixo), sem mensalidade.",
+  geral: "Estágio e CLT juntos: quanto entrou, quantas contratações e para onde a receita vai, somando as duas abas.",
 };
 
 /** Métricas de estágio e CLT. Página só para o administrador. */
 export function MetricasPage() {
   const [params, setParams] = useSearchParams();
-  const tipo: Tipo = params.get("tipo") === "clt" ? "clt" : "estagio";
+  const tipoUrl = params.get("tipo");
+  const tipo: Tipo = tipoUrl === "clt" || tipoUrl === "geral" ? tipoUrl : "estagio";
+  const usaModo = tipo !== "clt";
   const de = params.get("de") ?? "";
   const ate = params.get("ate") ?? "";
   const comPeriodo = Boolean(de || ate);
@@ -74,8 +60,8 @@ export function MetricasPage() {
     <div className="grid gap-5">
       <CabecalhoPagina titulo="Métricas" descricao={DESCRICAO[tipo]} />
       <div className="flex w-fit rounded-xl bg-[#12141a] p-1 ring-1 ring-white/10" role="tablist" aria-label="Tipo de contratação">
-        {([["estagio", "Estágio"], ["clt", "CLT"]] as const).map(([valor, rotulo]) => (
-          <button key={valor} type="button" role="tab" aria-selected={tipo === valor} onClick={() => trocar({ tipo: valor === "clt" ? "clt" : "" })}
+        {([["estagio", "Estágio"], ["clt", "CLT"], ["geral", "Geral"]] as const).map(([valor, rotulo]) => (
+          <button key={valor} type="button" role="tab" aria-selected={tipo === valor} onClick={() => trocar({ tipo: valor === "estagio" ? "" : valor })}
             className={cn("h-9 rounded-lg px-5 text-sm", tipo === valor ? "bg-cyan-700 font-semibold text-white" : "text-slate-300 hover:bg-white/10")}>
             {rotulo}
           </button>
@@ -83,7 +69,7 @@ export function MetricasPage() {
       </div>
       <section className="flex flex-wrap items-end gap-x-4 gap-y-2 rounded-xl bg-[#12141a] px-4 py-3 ring-1 ring-white/10">
         <div className="grid gap-1">
-          <span className="text-xs text-slate-400">{tipo === "estagio" && comPeriodo && modo === "ativos" ? "Contratos ativos entre" : "Contratos que começaram"}</span>
+          <span className="text-xs text-slate-400">{usaModo && comPeriodo && modo === "ativos" ? "Contratos ativos entre" : "Contratos que começaram"}</span>
           <div className="flex flex-wrap items-center gap-2">
             <input aria-label="Início do período" type="date" value={de} max={ate || undefined} onChange={(e) => trocar({ de: e.target.value })} className="h-8 rounded-lg border border-white/10 bg-white/5 px-2 text-sm text-white [color-scheme:dark]" />
             <span className="text-sm text-slate-400">até</span>
@@ -101,7 +87,7 @@ export function MetricasPage() {
             );
           })}
         </div>
-        {tipo === "estagio" && comPeriodo ? (
+        {usaModo && comPeriodo ? (
           <div className="grid gap-1">
             <span className="text-xs text-slate-400">Considerar</span>
             <div className="flex rounded-lg bg-white/5 p-0.5" role="group" aria-label="Quais contratos considerar">
@@ -114,39 +100,26 @@ export function MetricasPage() {
             </div>
           </div>
         ) : null}
-        {tipo === "estagio" && comPeriodo ? (
+        {usaModo && comPeriodo ? (
           <p className="w-full text-xs text-slate-500">
             {modo === "inicio"
               ? "Entram só os contratos que começaram no período. A receita por mês mostra só o que eles renderam."
               : "Entram todos que estiveram contratados em algum dia do período, inclusive quem começou antes. A receita por mês fica igual à de “Tudo”; a permanência tende a ficar maior, porque contratos longos têm mais chance de cruzar o período."}
           </p>
         ) : null}
-        {tipo === "clt" && comPeriodo ? <p className="w-full text-xs text-slate-500">Entram as contratações CLT que começaram no período, porque a taxa é cobrada nesse mês.</p> : null}
+        {tipo !== "estagio" && comPeriodo ? <p className="w-full text-xs text-slate-500">{tipo === "geral" ? "No CLT entram sempre" : "Entram"} as contratações CLT que começaram no período, porque a taxa é cobrada nesse mês.{tipo === "geral" ? " O “Considerar” vale só para o estágio." : ""}</p> : null}
         {invertido ? <p className="w-full text-xs text-rose-300">A data inicial é depois da final.</p> : null}
       </section>
-      {tipo === "estagio"
-        ? <MetricasEstagio de={de} ate={ate} modo={comPeriodo ? modo : "inicio"} ativo={!invertido} comPeriodo={comPeriodo} />
-        : <MetricasClt de={de} ate={ate} ativo={!invertido} />}
+      {tipo === "estagio" ? <MetricasEstagio de={de} ate={ate} modo={comPeriodo ? modo : "inicio"} ativo={!invertido} comPeriodo={comPeriodo} /> : null}
+      {tipo === "clt" ? <MetricasClt de={de} ate={ate} ativo={!invertido} /> : null}
+      {tipo === "geral" ? <MetricasGeral de={de} ate={ate} modo={comPeriodo ? modo : "inicio"} ativo={!invertido} /> : null}
     </div>
   );
 }
 
 /** Aba Estágio: permanência (Kaplan-Meier, até 24 meses) e receita recorrente. */
 function MetricasEstagio({ de, ate, modo, ativo, comPeriodo }: { de: string; ate: string; modo: Modo; ativo: boolean; comPeriodo: boolean }) {
-  const query = useQuery({
-    queryKey: ["metricas-permanencia", de, ate, modo],
-    queryFn: () => {
-      const busca = new URLSearchParams();
-      if (de) busca.set("de", de);
-      if (ate) busca.set("ate", ate);
-      if (modo === "ativos") busca.set("modo", "ativos");
-      const texto = busca.toString();
-      return api<Permanencia>(`/api/v1/metricas/permanencia-estagio${texto ? `?${texto}` : ""}`);
-    },
-    enabled: ativo,
-    staleTime: 5 * 60_000,
-    placeholderData: (anterior) => anterior,
-  });
+  const query = useMetricasEstagio(de, ate, modo, ativo);
   const data = query.data?.data;
 
   if (query.isLoading) return <Skeleton className="h-64" />;

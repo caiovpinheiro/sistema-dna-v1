@@ -1,7 +1,9 @@
 /** Peças comuns às abas Estágio e CLT da página Métricas (pages/MetricasPage.tsx). */
+import { useQuery } from "@tanstack/react-query";
 import { useMemo, type ReactNode } from "react";
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { cn } from "@/components/ui";
+import { api } from "@/lib/api";
 
 export const DIAS_POR_MES = 30.44;
 
@@ -19,6 +21,43 @@ export type ResumoPermanencia = {
   encerrados: { total: number; mediaDias: number | null; medianaDias: number | null; faixas: Array<{ faixa: string; total: number }> };
   porAno: Array<Km & { ano: number }>;
 };
+
+export type Modo = "inicio" | "ativos";
+/** Resposta de GET /api/v1/metricas/permanencia-estagio. */
+export type PermanenciaEstagio = ResumoPermanencia & {
+  periodo: { de: string | null; ate: string | null; modo: Modo };
+  receita: {
+    contratosComValor: number;
+    semValor: number;
+    mensalMedio: number | null;
+    rsMedio: number | null;
+    mesesMedios: number;
+    porEstagiario: number | null;
+    estimadoPeriodo: number | null;
+    realizado: number;
+  };
+  receitaMensal: Array<{ mes: string; realizado: number | null; projetado: number | null; estagiarios: number; mesesCheios: number; rs: number }>;
+  /** Base para simular novas contratações (aba Geral). permanencia[k] = fração que continua k meses depois de começar. */
+  simulacao: { contratacoesPorMes: number; mensalMedio: number; rsMedio: number; permanencia: number[] };
+};
+
+/** Consulta da aba Estágio (a aba Geral usa a mesma, com o mesmo cache). */
+export function useMetricasEstagio(de: string, ate: string, modo: Modo, ativo: boolean) {
+  return useQuery({
+    queryKey: ["metricas-permanencia", de, ate, modo],
+    queryFn: () => {
+      const busca = new URLSearchParams();
+      if (de) busca.set("de", de);
+      if (ate) busca.set("ate", ate);
+      if (modo === "ativos") busca.set("modo", "ativos");
+      const texto = busca.toString();
+      return api<PermanenciaEstagio>(`/api/v1/metricas/permanencia-estagio${texto ? `?${texto}` : ""}`);
+    },
+    enabled: ativo,
+    staleTime: 5 * 60_000,
+    placeholderData: (anterior) => anterior,
+  });
+}
 
 export const tooltip = { background: "#15181e", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, color: "#e7e9ee", fontSize: 12 };
 /** Texto das dicas sempre na cor de texto: a cor da série (ex.: a barra clara da projeção) fica ilegível no fundo escuro. */
