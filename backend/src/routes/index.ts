@@ -28,7 +28,7 @@ import type { EmpresaService } from "../services/empresa.service.js";
 import { camposFromBody, type TceService } from "../services/tce.service.js";
 import type { TermoService } from "../services/termo.service.js";
 import { MANUAL_FIELDS } from "../lib/tce-fields.js";
-import { arquivoDoDocumento, candidatoDoTce, gravarDocumentosDoTce, listarDocumentos } from "../repositories/candidato-documento.repository.js";
+import { TIPOS_DOCUMENTO, arquivoDoDocumento, candidatoDoTce, gravarArquivoDoDocumento, gravarDocumentosDoTce, listarDocumentos, prepararArquivoDocumento } from "../repositories/candidato-documento.repository.js";
 import { valorDaEmpresa, valoresDoGrupo } from "../repositories/valor-empresa.repository.js";
 import { origemComCache } from "../origem/cache.js";
 import { webhookGanho } from "../origem/webhook-ganho.js";
@@ -240,6 +240,21 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
       .header("Content-Disposition", `inline; filename="${nome.replace(/[^\w.\-]+/g, "_")}"`)
       .header("Cache-Control", "private, no-store")
       .send(arquivo.arquivo);
+  });
+  // Anexa ou troca o arquivo de um documento pela ficha do candidato (PDF, PNG, JPG ou WEBP até 5 MB, em base64).
+  api.put("/api/v1/candidatos/:id/documentos/:tipo/arquivo", {
+    bodyLimit: 8 * 1024 * 1024,
+    config: { rateLimit: { max: 30, timeWindow: "1 minute" } },
+    schema: {
+      tags: ["candidatos"],
+      params: z.object({ id: z.string().min(1), tipo: z.enum(TIPOS_DOCUMENTO) }),
+      body: z.object({ nome: z.string().trim().min(1).max(200), base64: z.string().min(1).max(7_200_000) }),
+    },
+  }, async (request) => {
+    const existe = await db.query("SELECT 1 FROM dna_work.candidato WHERE id_candidato = $1", [request.params.id]);
+    if (!existe.rowCount) throw new AppError(404, "CANDIDATO_NAO_ENCONTRADO", "Candidato não encontrado.");
+    const arquivo = prepararArquivoDocumento(request.body);
+    return ok(await gravarArquivoDoDocumento(db, request.params.id, request.params.tipo, arquivo));
   });
   api.get("/api/v1/candidatos/:id/contratacoes", {
     schema: { tags: ["candidatos"], params: z.object({ id: z.string().min(1) }), querystring: pageQuery },

@@ -1,4 +1,6 @@
 import type { Pool } from "pg";
+import { AppError } from "../lib/errors.js";
+import { decodificarBase64, detectarTipo } from "../lib/curriculo/arquivo.js";
 
 /** Documentos do candidato (public.candidato_documentos): um por tipo, vindos do TCE e dos arquivos do sistema antigo. */
 export const TIPOS_DOCUMENTO = ["cpf", "rg", "nascimento", "endereco", "matricula", "responsavel"] as const;
@@ -94,4 +96,41 @@ export async function arquivoDoDocumento(db: Pool, idCandidato: string, id: stri
     [idCandidato, id],
   );
   return rows[0]?.arquivo ? rows[0] : null;
+}
+
+/** Tipos de arquivo aceitos no envio pela ficha (detectados pelos bytes) e o content-type gravado. */
+export const MIME_DOCUMENTO = { pdf: "application/pdf", png: "image/png", jpeg: "image/jpeg", webp: "image/webp" } as const;
+export const TAMANHO_MAXIMO_DOCUMENTO = 5 * 1024 * 1024;
+
+/**
+ * Anexa ou troca o arquivo de um tipo de documento, enviado pela ficha do candidato.
+ * O número/texto do documento (valor e dados, vindos do TCE) continua como está.
+ */
+export async function gravarArquivoDoDocumento(
+  db: Pool,
+  idCandidato: string,
+  tipo: TipoDocumento,
+  arquivo: { conteudo: Buffer; nome: string; mime: string },
+): Promise<DocumentoCandidato> {
+  const { rows } = await db.query<DocumentoCandidato>(
+    `INSERT INTO public.candidato_documentos (id_candidato, tipo, arquivo, arquivo_nome, arquivo_tipo, origem, atualizado_em)
+     VALUES ($1, $2, $3, $4, $5, 'ficha', now())
+     ON CONFLICT (id_candidato, tipo) DO UPDATE SET
+       arquivo = EXCLUDED.arquivo, arquivo_nome = EXCLUDED.arquivo_nome, arquivo_tipo = EXCLUDED.arquivo_tipo,
+       origem = 'ficha', atualizado_em = now()
+     RETURNING id::text, tipo, valor, dados, arquivo_nome, arquivo_tipo, (arquivo IS NOT NULL) AS tem_arquivo, origem, tce_id, atualizado_em::text`,
+    [idCandidato, tipo, arquivo.conteudo, arquivo.nome, arquivo.mime],
+  );
+  return rows[0];
+}
+
+/** Valida o arquivo enviado (base64): só PDF, PNG, JPG ou WEBP, pelo conteúdo, até 5 MB. */
+export function prepararArquivoDocumento(arquivo: { nome: string; base64: string }) {
+  const conteudo = decodificarBase64(arquivo.base64);
+  if (!conteudo.length) throw new AppError(422, "ARQUIVO_VAZIO", "O arquivo está vazio.");
+  if (conteudo.length > TAMANHO_MAXIMO_DOCUMENTO) throw new AppError(413, "ARQUIVO_GRANDE", "O arquivo passa de 5 MB.");
+  const tipo = detectarTipo(conteudo);
+  if (!(tipo in MIME_DOCUMENTO)) throw new AppError(415, "TIPO_NAO_ACEITO", "Envie o documento em PDF, PNG, JPG ou WEBP.");
+  const nome = arquivo.nome.replace(/[\\/]/g, "_").replace(/\s+/g, " ").trim().slice(0, 200) || "documento";
+  return { conteudo, nome, mime: MIME_DOCUMENTO[tipo as keyof typeof MIME_DOCUMENTO] };
 }

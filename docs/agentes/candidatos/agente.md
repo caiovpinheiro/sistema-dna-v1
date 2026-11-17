@@ -1,6 +1,6 @@
 # Agente — Candidatos
 
-> Última revisão: 2026-11-16 (pesquisa inteligente nas buscas)
+> Última revisão: 2026-11-17 (anexar e trocar arquivo dos documentos na ficha)
 
 ## Para que serve
 
@@ -24,7 +24,7 @@ Frontend
 - `frontend/src/pages/CandidatoFormPage.tsx` — criar/editar.
 - `frontend/src/pages/CandidatoDetailPage.tsx` — ficha + componente interno `AcessoCursos` (LMS).
 - `frontend/src/components/ficha-candidato.tsx` — `FichaCandidato` (também usado em `ProcessoDetailPage`).
-- `frontend/src/components/documentos-candidato.tsx` — `DocumentosCandidato`.
+- `frontend/src/components/documentos-candidato.tsx` — `DocumentosCandidato` e `AcoesArquivo` (abrir, anexar e trocar o arquivo de cada tipo).
 - `frontend/src/components/abertura-conta.tsx` — `AberturaConta`: botão e janela da carta "Abertura de conta" (campos editáveis, gera o PDF); `lerValor` lê "1.234,56".
 - `ProcessosRelacionados` exportado de `frontend/src/pages/ProcessosPage.tsx` (também usado em `VagaDetailPage`).
 - `frontend/src/lib/triagem-geo.ts` — `enderecoDoCep` (ViaCEP), compartilhado com a Triagem.
@@ -52,6 +52,7 @@ Backend
 | PATCH | `/api/v1/candidatos/:id` | Atualiza campos permitidos | `routes/index.ts:166` → `CandidatoService.update` |
 | GET | `/api/v1/candidatos/:id/contratacoes` | Histórico de contratações (paginado) | `routes/index.ts:184` → `ContratacaoService.listByCandidato` |
 | GET | `/api/v1/candidatos/:id/documentos` | Documentos do candidato | `routes/index.ts:169` → `listarDocumentos` |
+| PUT | `/api/v1/candidatos/:id/documentos/:tipo/arquivo` | Anexa ou troca o arquivo do tipo (`cpf`, `rg`, `nascimento`, `endereco`, `matricula`, `responsavel`). Corpo `{ nome, base64 }`, até 8 MB no corpo e 5 MB no arquivo, 30 req/min. Devolve o documento | `routes/index.ts` → `prepararArquivoDocumento` + `gravarArquivoDoDocumento` |
 | GET | `/api/v1/candidatos/:id/documentos/:documento/arquivo` | Baixa/abre o arquivo do documento (inline, `no-store`) | `routes/index.ts:172` → `arquivoDoDocumento` |
 | GET | `/api/v1/candidatos/:id/abertura-conta` | Sugestão para a carta: nome, CPF, endereço e telefone da ficha; bolsa (`vaga.salario`) e empresa (CNPJ, razão social e, entre parênteses, a fantasia) da contratação ativa ou, sem ela, da mais recente; `contratacao` = `ativa`/`recente`/`nenhuma`. 404 se o candidato não existe | `routes/index.ts` → `sugestaoAberturaConta` |
 | POST | `/api/v1/candidatos/:id/abertura-conta` | Gera o PDF da carta com os campos conferidos (`aberturaContaSchema`: data, nome, cpf, endereco, telefone, bolsa, cnpj, empresa). Não grava nada | `routes/index.ts` → `buildAberturaContaPdf` |
@@ -69,7 +70,7 @@ Postgres (schema `dna_work`, cópia do Lightsail):
 - Currículo (leitura, só se a coluna existir — checado em `information_schema`): `dna_work.flex`, `instituicao`, `instituicao_convenio`, `exp_proficional`, `con_candidato`, `conhecimentos`, `resultado_disc`, `emcaminhamento`, `vaga`, `empresa`.
 
 Postgres (schema `public`):
-- `public.candidato_documentos` — só leitura aqui (quem grava é o gerador de TCE, `gravarDocumentosDoTce`). Um registro por (`id_candidato`, `tipo`); tipos `cpf`, `rg`, `nascimento`, `endereco`, `matricula`, `responsavel`; `arquivo` (bytea), `arquivo_nome`, `arquivo_tipo`, `origem`, `tce_id`.
+- `public.candidato_documentos` — lido aqui e gravado pelo envio de arquivo da ficha (`gravarArquivoDoDocumento`); o gerador de TCE grava o valor/dados (`gravarDocumentosDoTce`). Um registro por (`id_candidato`, `tipo`); tipos `cpf`, `rg`, `nascimento`, `endereco`, `matricula`, `responsavel`; `arquivo` (bytea), `arquivo_nome`, `arquivo_tipo`, `origem`, `tce_id`.
 
 Lightsail MySQL: não é acessado por esta seção (grava só no Postgres `dna_work`).
 
@@ -103,6 +104,11 @@ Variáveis de config que mudam a lista: `CONTRATACAO_STATUS_ATIVO` (padrão 1) e
   - nome, empresa e bolsa maior que zero são obrigatórios (front e `aberturaContaSchema`);
   - nome, endereço e empresa saem em maiúsculas; CPF, CNPJ e telefone são formatados quando têm o número certo de dígitos; campo vazio sai "—";
   - nada é gravado: nem a carta nem os campos editados.
+- **Arquivo dos documentos** (botões "Anexar arquivo" / "Trocar arquivo" em cada linha de "Documentos do candidato"):
+  - aceita PDF, PNG, JPG e WEBP até 5 MB; o tipo é conferido pelos bytes (`detectarTipo` de `lib/curriculo/arquivo.ts`), não pela extensão. Outro tipo → 415 `TIPO_NAO_ACEITO`; maior → 413 `ARQUIVO_GRANDE`; candidato inexistente → 404;
+  - trocar pede confirmação (`window.confirm`) e **substitui** o arquivo anterior, que não fica guardado;
+  - grava `arquivo`, `arquivo_nome`, `arquivo_tipo`, `origem = 'ficha'` ("Enviado na ficha") e `atualizado_em`; o valor e os dados vindos do TCE continuam;
+  - só no Postgres: o arquivo do sistema antigo (Lightsail) não é tocado.
 - **Permissão**: todas as rotas `/api/v1/candidatos*` (inclusive `acesso-lms`) exigem a página `candidatos` ou admin (`lib/paginas.ts:32`). A seção "Processos seletivos" da ficha chama `/api/v1/processos`, que exige a página `processos`.
 
 ## Cuidados ao mudar
@@ -124,8 +130,9 @@ Variáveis de config que mudam a lista: `CONTRATACAO_STATUS_ATIVO` (padrão 1) e
 - Manual: abrir `/candidatos`, filtrar por nome/CPF/telefone e pelos "Mais filtros"; passar o mouse numa linha (preview); abrir uma ficha; criar candidato em `/candidatos/novo` (testar CPF repetido → mensagem de duplicado); editar e conferir que só o alterado é enviado; em "Outra empresa", pesquisar empresa com 2+ letras. Na ficha, "Criar acesso no LMS" só funciona com `LMS_ACCESS_TOKEN` configurado — não use com e-mail real em ambiente de teste sem querer criar a conta.
 - Testes backend:
   - `backend/test/escopo.test.ts` (Postgres embutido): "cadastra candidato e bloqueia CPF duplicado", "pesquisa candidatos e empresas com filtro e paginação".
+  - `backend/test/candidato-documento-arquivo.test.ts`: tipos aceitos pelo conteúdo, recusa de outro tipo, vazio, grande ou base64 inválido, nome limpo.
   - `backend/test/abertura-conta.test.ts`: valor por extenso, data, linhas da carta, schema e geração do PDF.
   - `backend/test/lms-acesso.test.ts`: token ausente, corpo enviado, senha devolvida, fallback de host, tradução de erros, senha curta.
-  - Não encontrado teste para `/candidatos/:id/documentos`, para a ficha (`fichaDoCandidato`) nem para vagas sugeridas.
+  - Não encontrado teste de rota para `/candidatos/:id/documentos`, para a ficha (`fichaDoCandidato`) nem para vagas sugeridas.
 - Frontend: não há teste específico desta seção (só `frontend/test/triagem-matching.test.ts`).
 - Comandos: `npm run lint -w frontend`, `npm run lint -w backend`, `npm test -w backend`.
