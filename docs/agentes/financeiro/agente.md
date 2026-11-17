@@ -1,6 +1,6 @@
 # Agente — Financeiro
 
-> Última revisão: 2026-11-16 (pesquisa inteligente nas buscas)
+> Última revisão: 2026-11-17 (relatório: adicionar linha e salvar sem enviar; contratação ativa fatura mesmo com a vaga aberta ou cancelada)
 
 ## Para que serve
 
@@ -17,7 +17,7 @@
 | `/financeiro/holerite` | `GerarHoleritePage` | `frontend/src/pages/FinanceiroPage.tsx` | Filtros (empresa, mês, ano), total e "Limpar filtros", e tabela por empresa: empresa, CNPJ, contratados ativos, estagiários e o botão "Lançar folha" (abre a folha do mês; empresa só com CLT mostra "Só CLT"). Não fica no grupo Financeiro: link solto "Holerite" na barra lateral, permissão `holerite`. |
 | `/financeiro/holerite/:id?competencia=AAAA-MM` | `HoleriteFolhaPage` | `frontend/src/pages/HoleriteFolhaPage.tsx` | Folha de holerite de estágio da empresa no mês: um estagiário por linha (dias no mês, bolsa proporcional, faltas, auxílio-transporte, outros acréscimos e descontos com descrição, líquido recalculado ao digitar), linha alterada em amarelo, barra fixa com líquido total e "Salvar folha", PDF por estagiário e "Gerar PDF de todos" (salvam antes o que estiver alterado). Aviso de quantos CLT ficaram de fora. Mesma permissão `holerite`. |
 
-Componente compartilhado: `RelatorioEmpresaPainel` (`frontend/src/components/relatorio-empresa.tsx`). É o painel "Relatório" de Faturamento e de Contas a receber. Mostra os candidatos que entram na cobrança, deixa editar ou tirar linhas e envia o relatório com as linhas da tela.
+Componente compartilhado: `RelatorioEmpresaPainel` (`frontend/src/components/relatorio-empresa.tsx`). É o painel "Relatório" de Faturamento e de Contas a receber. Mostra os candidatos que entram na cobrança, deixa editar ou tirar linhas e envia o relatório com as linhas da tela. Em "Editar relatório" dá para **adicionar linha** (em branco, situação "Retroativo", para cobrança retroativa; só a linha nova tem a lixeira) e **Salvar sem enviar**: as linhas ficam guardadas para a empresa e o mês, e o painel mostra o aviso "Relatório editado e salvo em …, ainda não enviado" com o valor calculado. "Voltar ao calculado" (pede confirmação) apaga o salvo. O editor abre mesmo quando nenhum candidato entra no mês.
 
 ## Arquivos
 
@@ -48,7 +48,9 @@ Backend
 | --- | --- | --- | --- |
 | GET | `/api/v1/faturamento?empresa&mes&ano&status&page&pageSize` | Empresas a faturar no mês, a matriz agrupada e `meta.totalReceber`, `meta.asaas` e `meta.conferencia` | `routes/index.ts:623` → `LegadoService.faturamento`, `faturasAbertas` e `AsaasService.aReceber` |
 | POST | `/api/v1/faturamento/boletos` `{mes, ano}` | Cria no Asaas um boleto para cada fatura antiga em aberto do mês que ainda não tem `id_asaas` | `routes/index.ts:634` → `AsaasService.boletosDoMes` |
-| GET | `/api/v1/faturamento/relatorio?empresa&mes&ano` | Candidatos e valores da empresa no mês | `routes/index.ts:645` → `LegadoService.relatorioEmpresa` |
+| GET | `/api/v1/faturamento/relatorio?empresa&mes&ano` | Candidatos e valores da empresa no mês. `itens`/`total` já são os salvos, se houver; `calculado` traz o do sistema e `editado` a data do salvo (ou null) | `routes/index.ts` → `LegadoService.relatorioComEdicao` |
+| PUT | `/api/v1/faturamento/relatorio` `{empresa, mes, ano, itens[]}` | Salva o relatório editado sem enviar (substitui o salvo anterior) | `LegadoService.salvarRelatorio` |
+| DELETE | `/api/v1/faturamento/relatorio?empresa&mes&ano` | Descarta o salvo (volta ao calculado) | `LegadoService.descartarRelatorio` |
 | POST | `/api/v1/faturamento/relatorios` `{empresas[], mes, ano, itens?}` | Para cada empresa: monta o relatório, garante o boleto e envia o e-mail com relatório e boleto | `routes/index.ts:648` → `LegadoService.enviarRelatorios` e `AsaasService.boletoDoFaturamento` |
 | GET | `/api/v1/asaas/cobrancas?de&ate&situacao&id_empresa` | Lista as cobranças (até 200) com as notas e a data do e-mail enviado | `routes/index.ts:530` → `AsaasService.listar` |
 | POST | `/api/v1/asaas/cobrancas` | Cria uma cobrança avulsa e envia a fatura por e-mail | `routes/index.ts:512` → `AsaasService.criar` |
@@ -94,6 +96,7 @@ Gravados:
 - `dna_work.nota_asaas`: INSERT ao emitir a nota e UPDATE de `status` e `pdf_url`
 - `dna_work.empresa.id_asaas`: gravado quando o cliente é criado no Asaas (`asaas.service.ts:417`)
 - `dna_work.fatura.id_asaas`: gravado em "Gerar boletos do mês" (`asaas.service.ts:154`)
+- `dna_work.faturamento_relatorio_editado` (criada em tempo de execução por `garantirEditados`, `CREATE TABLE IF NOT EXISTS`; só no Postgres do sistema, nada no Lightsail): `id_empresa`, `mes`, `ano` (chave), `itens` (jsonb com nome, cargo, modalidade, inicio, situacao, valor) e `atualizado_em`. O salvo vale na frente do calculado na lista do Faturamento (valor e itens, com a marca "relatório editado"), no envio individual e em lote e na sugestão de nota. Não é apagado depois do envio.
 - `dna_work.cobranca_email`: INSERT com `id = max(id)+1` depois que o e-mail de relatório e boleto sai (`legado.service.ts:416`)
 - `dna_work.fatura_regua`, `dna_work.fatura_envio` e `dna_work.fatura_regua_log`: régua
 - `dna_work.holerite_estagio` (gravada): folha de holerite de estágio por contratação e mês
@@ -116,7 +119,8 @@ Permissões (`backend/src/lib/paginas.ts:28-56`; o hook fica em `app.ts:163`). O
 - A pesquisa de empresa em Contas a receber chama `/api/v1/empresas`, que exige `empresas`.
 
 Faturamento (`legado.service.ts:98`)
-- Entram só empresas com `sede = '10'`, `usa_asaas` igual a 1 ou 2 e vaga com `status` fora de 0, 3, 4, 5 e 6. A empresa precisa de valor maior que 0.
+- Entram só empresas com `sede = '10'` e `usa_asaas` igual a 1 ou 2. A empresa precisa de valor maior que 0.
+- Situação da vaga (`VAGA_FATURAVEL`, `legado.service.ts`): contratação **ativa** (`conratacaovaga.status = 1`) entra sempre, qualquer que seja o `status` da vaga. As outras só entram com a vaga fora de 0, 3, 4, 5 e 6 (regra do sistema antigo). Motivo: contratação feita no sistema antigo deixa a vaga "aberta" (0), e vaga cancelada (6) depois da contratação tirava da cobrança quem continuava trabalhando (casos 2499, 2500, 2501, 2504 e 2514, out/2026). Vale para a lista e para o Relatório.
 - O período depende de `datafechamento` (dia 10, 20 ou 30) e é montado por `periodo()`. As datas são texto `AAAA/MM/DD` comparado como string.
 - Valor por contratação (`VALOR_CONTRATO`, linha 61): se `public.valor_empresas` estiver conferido (`est_status`/`clt_status = 'ok'`), estágio = mensal + taxa de R&S no mês da contratação, e CLT = percentual do salário ou valor fixo, só no mês da contratação. Sem preço conferido, vale o cálculo antigo (`VALOR_LEGADO`, linha 42) com `vaga_valores` e `faturamento_empresa`.
 - Filtro de status: "3" = tudo que não está faturado (padrão da tela), "0" = aberta, "1" = faturado e "2" = parcial. O status vem de `max(status_fatura)` em `dna_work.fatura` do mês.
@@ -125,7 +129,7 @@ Faturamento (`legado.service.ts:98`)
 - "Selecionar todas" busca as páginas 1 e 2 com 100 itens cada. Passando de 200 empresas, o resto fica de fora (o mesmo vale para `todas: true` no backend).
 - O envio vai uma empresa por requisição e mostra uma barra de progresso.
 - `enviarRelatorios` (linha 301), para cada empresa: pega o primeiro e-mail de `email_financeiro`/`email` (sem e-mail é falha). Total menor ou igual a 0 é falha. Se já existe linha em `cobranca_email` naquele mês/ano, a empresa é pulada antes de gerar o boleto. O boleto vem de `boletoDoFaturamento`, que reaproveita a cobrança aberta com a descrição `Faturamento M/AAAA` ou cria uma (forma BOLETO, sem e-mail do Asaas). O vencimento é o dia 10 do mês seguinte (`vencimentoDia10`). Sem as chaves do Mailjet, o boleto é criado e a resposta volta como falha. Depois do e-mail, grava `cobranca_email`.
-- Com `itens` e uma empresa só, as linhas editadas no painel substituem as calculadas (o total é recalculado).
+- Com `itens` e uma empresa só, as linhas editadas no painel substituem as calculadas (o total é recalculado). Sem `itens` (envio em lote), vale o relatório salvo sem enviar, se houver.
 
 Contas a receber (`ContasReceberPage.tsx`)
 - A lista traz no máximo 200 cobranças por vencimento entre De e Até (`asaas.service.ts:86`). O padrão é o mês atual.

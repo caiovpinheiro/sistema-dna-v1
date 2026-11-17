@@ -188,7 +188,7 @@ export function GerarFaturamentoPage() {
   const result = useQuery({
     // "rodada" muda a cada Pesquisar: a mesma busca repetida também recarrega.
     queryKey: ["faturamento", busca, pagina, rodada],
-    queryFn: () => api<{ matriz: Array<{ razao_social: string | null; nome_fantasia: string | null; cnpj: string | null; datafechamento: string | null; status: string }>; itens: Array<{ id_empresa: string; razao_social: string | null; nome_fantasia: string | null; cnpj: string | null; tipo: string | null; datafechamento: string | null; itens: number; valor: number | null; status: string; envio: string | null }> }>(`/api/v1/faturamento?${new URLSearchParams({ ...busca, page: String(pagina), pageSize: String(TAMANHO) })}`),
+    queryFn: () => api<{ matriz: Array<{ razao_social: string | null; nome_fantasia: string | null; cnpj: string | null; datafechamento: string | null; status: string }>; itens: Array<{ id_empresa: string; razao_social: string | null; nome_fantasia: string | null; cnpj: string | null; tipo: string | null; datafechamento: string | null; itens: number; valor: number | null; status: string; envio: string | null; editado?: boolean }> }>(`/api/v1/faturamento?${new URLSearchParams({ ...busca, page: String(pagina), pageSize: String(TAMANHO) })}`),
   });
   const boletos = useMutation({
     mutationFn: () => api<{ gerados: number; falhas: Array<{ empresa: string | null; motivo: string }> }>("/api/v1/faturamento/boletos", {
@@ -379,7 +379,10 @@ export function GerarFaturamentoPage() {
                     <td className="text-slate-600">{item.tipo || "—"}</td>
                     <td className="whitespace-nowrap text-slate-600">{fechamento(item.datafechamento)}</td>
                     <td className="text-right tabular-nums">{item.itens}</td>
-                    <td className="whitespace-nowrap text-right font-semibold tabular-nums text-navy-900">{item.valor == null ? "—" : money(item.valor)}</td>
+                    <td className="whitespace-nowrap text-right font-semibold tabular-nums text-navy-900">
+                      {item.valor == null ? "—" : money(item.valor)}
+                      {item.editado ? <span className="block text-[11px] font-medium text-amber-800" title="O relatório deste mês foi editado e salvo sem enviar.">relatório editado</span> : null}
+                    </td>
                     <td><SeloStatus status={item.status} /></td>
                     <td className="whitespace-nowrap tabular-nums text-slate-600">{item.envio ? dateBr(item.envio) : <span className="text-slate-400">Não enviado</span>}</td>
                     <td className="w-px whitespace-nowrap text-right">

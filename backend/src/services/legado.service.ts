@@ -10,6 +10,20 @@ import { classifyRegime, primeiroEmail } from "../lib/normalize.js";
 
 type Pagina = { page: number; pageSize: number };
 
+/** Linha do relatório de faturamento (calculada ou editada na tela). */
+export type ItemRelatorio = {
+  nome: string | null;
+  cargo: string | null;
+  modalidade: string | null;
+  inicio: string | null;
+  situacao: string;
+  valor: number;
+};
+
+function totalDe(itens: Array<{ valor: number }>) {
+  return Math.round(itens.reduce((soma, item) => soma + (Number(item.valor) || 0), 0) * 100) / 100;
+}
+
 function corte(page: number, pageSize: number) {
   const pagina = Number.isFinite(page) && page > 0 ? page : 1;
   const tamanho = Number.isFinite(pageSize) && pageSize > 0 ? Math.min(pageSize, 100) : 50;
@@ -72,6 +86,13 @@ const VALOR_CONTRATO = `
     (${VALOR_LEGADO})
   )
 `;
+
+/**
+ * Filtro da situação da vaga herdado do sistema antigo (vaga aberta, cancelada etc. não fatura).
+ * Contratação ativa (status 1) fatura sempre: a vaga pode ter ficado "aberta" (contratação feita no sistema antigo)
+ * ou ter sido cancelada depois, e a pessoa continua trabalhando.
+ */
+const VAGA_FATURAVEL = `(cv.status::text = '1' OR v.status::text NOT IN ('5', '4', '3', '0', '6'))`;
 
 function periodo(mes: string, ano: string) {
   const mesNum = Number(mes);
@@ -143,7 +164,7 @@ export class LegadoService {
         OR CASE WHEN e.datafechamento::text LIKE '30' THEN cv.datainicio <= $3
                 ELSE cv.datainicio <= ($4 || e.datafechamento::text) END
       )
-      AND v.status::text NOT IN ('5', '4', '3', '0', '6')
+      AND ${VAGA_FATURAVEL}
       AND (
         vv.comparador IS NOT NULL
         OR cv.datainicio IS NULL OR btrim(cv.datainicio) = ''
@@ -177,10 +198,17 @@ export class LegadoService {
     `, [ano, mes, ids]) : [];
     const faturaPorEmpresa = new Map(faturas.map((item) => [item.id_empresa, item]));
     const envioPorEmpresa = new Map(envios.map((item) => [item.id_empresa, item.data]));
+    // Relatório salvo sem enviar vale na frente do calculado (linhas e total).
+    const editados = await this.relatoriosEditados(ids, mes, ano);
+    for (const item of empresas) {
+      const salvo = editados.get(item.id_empresa);
+      if (salvo) { item.valor = String(salvo.total); item.itens = salvo.itens.length; }
+    }
     const filtro = texto(query.status);
     const itens = empresas.filter((item) => aceitaStatus(filtro, faturaPorEmpresa.get(item.id_empresa)?.status_fatura ?? null) && Number(item.valor) > 0).map((item) => {
       const fatura = faturaPorEmpresa.get(item.id_empresa);
       return {
+        editado: editados.has(item.id_empresa),
         id_empresa: item.id_empresa,
         razao_social: item.razao_social,
         nome_fantasia: item.nome_fantasia,
@@ -261,7 +289,7 @@ export class LegadoService {
           OR CASE WHEN e.datafechamento::text LIKE '30' THEN cv.datainicio <= $3
                   ELSE cv.datainicio <= ($4 || e.datafechamento::text) END
         )
-        AND v.status::text NOT IN ('5', '4', '3', '0', '6')
+        AND ${VAGA_FATURAVEL}
       AND (
         vv.comparador IS NOT NULL
         OR cv.datainicio IS NULL OR btrim(cv.datainicio) = ''
@@ -288,8 +316,74 @@ export class LegadoService {
     };
   }
 
+  /** Tabela do relatório editado e salvo sem enviar (uma linha por empresa e competência). Só no Postgres do sistema. */
+  private tabelaEditados: Promise<void> | null = null;
+  private garantirEditados() {
+    this.tabelaEditados ??= this.db.query(`
+      CREATE TABLE IF NOT EXISTS dna_work.faturamento_relatorio_editado (
+        id_empresa text NOT NULL,
+        mes smallint NOT NULL,
+        ano smallint NOT NULL,
+        itens jsonb NOT NULL,
+        atualizado_em timestamptz NOT NULL DEFAULT now(),
+        PRIMARY KEY (id_empresa, mes, ano)
+      )
+    `).then(() => undefined).catch((error: unknown) => { this.tabelaEditados = null; throw error; });
+    return this.tabelaEditados;
+  }
+
+  /** Relatórios salvos sem enviar no mês, por empresa. */
+  async relatoriosEditados(ids: string[], mes: string, ano: string) {
+    const mapa = new Map<string, { itens: ItemRelatorio[]; total: number; atualizado_em: string }>();
+    if (!ids.length || !/^\d{1,2}$/.test(mes) || !/^\d{4}$/.test(ano)) return mapa;
+    await this.garantirEditados();
+    const rows = await many<{ id_empresa: string; itens: ItemRelatorio[]; atualizado_em: string }>(this.db, `
+      SELECT id_empresa, itens, atualizado_em::text AS atualizado_em
+      FROM dna_work.faturamento_relatorio_editado
+      WHERE mes = $1 AND ano = $2 AND id_empresa = ANY($3::text[])
+    `, [Number(mes), Number(ano), ids]);
+    for (const row of rows) {
+      mapa.set(row.id_empresa, { itens: row.itens, total: totalDe(row.itens), atualizado_em: row.atualizado_em });
+    }
+    return mapa;
+  }
+
+  /** Relatório calculado + o salvo (se houver). `itens`/`total` já são os que valem (salvos na frente). */
+  async relatorioComEdicao(idEmpresa: string, mes: string, ano: string) {
+    const calculado = await this.relatorioEmpresa(idEmpresa, mes, ano);
+    const salvo = (await this.relatoriosEditados([idEmpresa], mes, ano)).get(idEmpresa) ?? null;
+    return {
+      ...calculado,
+      calculado: { itens: calculado.itens, total: calculado.total },
+      editado: salvo ? { atualizado_em: salvo.atualizado_em } : null,
+      itens: salvo ? salvo.itens : calculado.itens,
+      total: salvo ? salvo.total : calculado.total,
+    };
+  }
+
+  async salvarRelatorio(idEmpresa: string, mes: string, ano: string, itens: ItemRelatorio[]) {
+    if (!/^\d{1,2}$/.test(mes) || !/^\d{4}$/.test(ano)) throw new AppError(422, "COMPETENCIA_INVALIDA", "Mês ou ano inválido.");
+    const empresa = await one<{ id: string }>(this.db, `SELECT id_empresa::text AS id FROM dna_work.empresa WHERE id_empresa::text = $1`, [idEmpresa]);
+    if (!empresa) throw new AppError(404, "EMPRESA_NAO_ENCONTRADA", "Empresa não encontrada.");
+    await this.garantirEditados();
+    const row = await one<{ atualizado_em: string }>(this.db, `
+      INSERT INTO dna_work.faturamento_relatorio_editado (id_empresa, mes, ano, itens, atualizado_em)
+      VALUES ($1, $2, $3, $4::jsonb, now())
+      ON CONFLICT (id_empresa, mes, ano) DO UPDATE SET itens = EXCLUDED.itens, atualizado_em = now()
+      RETURNING atualizado_em::text AS atualizado_em
+    `, [idEmpresa, Number(mes), Number(ano), JSON.stringify(itens)]);
+    return { atualizado_em: row?.atualizado_em ?? null, total: totalDe(itens), linhas: itens.length };
+  }
+
+  async descartarRelatorio(idEmpresa: string, mes: string, ano: string) {
+    if (!/^\d{1,2}$/.test(mes) || !/^\d{4}$/.test(ano)) throw new AppError(422, "COMPETENCIA_INVALIDA", "Mês ou ano inválido.");
+    await this.garantirEditados();
+    await this.db.query(`DELETE FROM dna_work.faturamento_relatorio_editado WHERE id_empresa = $1 AND mes = $2 AND ano = $3`, [idEmpresa, Number(mes), Number(ano)]);
+    return { descartado: true };
+  }
+
   async sugerirNotas(idEmpresa: string, mes: string, ano: string, valor: number) {
-    const relatorio = await this.relatorioEmpresa(idEmpresa, mes, ano);
+    const relatorio = await this.relatorioComEdicao(idEmpresa, mes, ano);
     const partes = { estagio: 0, clt: 0 };
     for (const item of relatorio.itens) {
       const regime = classifyRegime(item.modalidade);
@@ -305,7 +399,7 @@ export class LegadoService {
     mes: string,
     ano: string,
     boleto: (input: { idEmpresa: string; valor: number; vencimento: string; descricao: string }) => Promise<{ url: string | null; vencimento: string }>,
-    ajuste?: { idEmpresa: string; itens: Array<{ nome: string | null; cargo: string | null; modalidade: string | null; situacao: string; valor: number }> } | null,
+    ajuste?: { idEmpresa: string; itens: Array<{ nome: string | null; cargo: string | null; modalidade: string | null; inicio?: string | null; situacao: string; valor: number }> } | null,
   ) {
     const enviados: string[] = [];
     const boletos: string[] = [];
@@ -316,7 +410,7 @@ export class LegadoService {
     const data = `${hoje.getFullYear()}/${String(hoje.getMonth() + 1).padStart(2, "0")}/${String(hoje.getDate()).padStart(2, "0")}`;
     const descricao = `Faturamento ${mes}/${ano}`;
     for (const id of ids) {
-      const relatorio = await this.relatorioEmpresa(id, mes, ano).catch((error: unknown) => {
+      const relatorio = await this.relatorioComEdicao(id, mes, ano).catch((error: unknown) => {
         falhas.push({ empresa: id, motivo: error instanceof Error ? error.message : "Não foi possível montar o relatório." });
         return null;
       });
@@ -326,7 +420,7 @@ export class LegadoService {
           nome: item.nome,
           cargo: item.cargo,
           modalidade: item.modalidade,
-          inicio: null,
+          inicio: item.inicio ?? null,
           situacao: item.situacao,
           valor: item.valor,
         }));

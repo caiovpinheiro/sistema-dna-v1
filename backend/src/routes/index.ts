@@ -55,6 +55,15 @@ import { sessionCookie } from "../plugins/auth.js";
 
 const ok = <T>(data: T, meta: Record<string, unknown> = {}) => ({ success: true as const, data, meta });
 const pageQuery = z.object(pageSchema);
+/** Linha do relatório de faturamento editada na tela (envio e "Salvar sem enviar"). */
+const itemRelatorio = z.object({
+  nome: z.string().max(200).nullable().optional(),
+  cargo: z.string().max(200).nullable().optional(),
+  modalidade: z.string().max(80).nullable().optional(),
+  inicio: z.string().max(20).nullable().optional(),
+  situacao: z.string().trim().min(1).max(40),
+  valor: z.number().finite().nonnegative().max(1_000_000),
+});
 
 type Services = {
   candidatos: CandidatoService;
@@ -702,7 +711,16 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
   });
   api.get("/api/v1/faturamento/relatorio", {
     schema: { tags: ["faturamento"], querystring: z.object({ empresa: z.string().min(1), mes: z.string(), ano: z.string() }) },
-  }, async (request) => ok(await legado.relatorioEmpresa(request.query.empresa, request.query.mes, request.query.ano)));
+  }, async (request) => ok(await legado.relatorioComEdicao(request.query.empresa, request.query.mes, request.query.ano)));
+  // Salvar o relatório editado sem enviar (vale na lista, no envio e na sugestão de nota) e descartar a edição.
+  api.put("/api/v1/faturamento/relatorio", {
+    schema: { tags: ["faturamento"], body: z.object({ empresa: z.string().min(1), mes: z.string(), ano: z.string(), itens: z.array(itemRelatorio).max(400) }) },
+  }, async (request) => ok(await legado.salvarRelatorio(request.body.empresa, request.body.mes, request.body.ano, request.body.itens.map((item) => ({
+    nome: item.nome ?? null, cargo: item.cargo ?? null, modalidade: item.modalidade ?? null, inicio: item.inicio ?? null, situacao: item.situacao, valor: item.valor,
+  })))));
+  api.delete("/api/v1/faturamento/relatorio", {
+    schema: { tags: ["faturamento"], querystring: z.object({ empresa: z.string().min(1), mes: z.string(), ano: z.string() }) },
+  }, async (request) => ok(await legado.descartarRelatorio(request.query.empresa, request.query.mes, request.query.ano)));
   api.post("/api/v1/faturamento/relatorios", {
     schema: { tags: ["faturamento"], body: z.object({
       empresas: z.array(z.string().min(1)).max(200).optional(),
@@ -711,13 +729,7 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
       ano: z.string(),
       status: z.string().optional(),
       empresa: z.string().optional(),
-      itens: z.array(z.object({
-        nome: z.string().max(200).nullable().optional(),
-        cargo: z.string().max(200).nullable().optional(),
-        modalidade: z.string().max(80).nullable().optional(),
-        situacao: z.string().trim().min(1).max(40),
-        valor: z.number().finite().nonnegative().max(1_000_000),
-      })).max(400).optional(),
+      itens: z.array(itemRelatorio).max(400).optional(),
     }) },
   }, async (request) => {
     let ids = request.body.empresas ?? [];
@@ -737,6 +749,7 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
             nome: item.nome ?? null,
             cargo: item.cargo ?? null,
             modalidade: item.modalidade ?? null,
+            inicio: item.inicio ?? null,
             situacao: item.situacao,
             valor: item.valor,
           })),
