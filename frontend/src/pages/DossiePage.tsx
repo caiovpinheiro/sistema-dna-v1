@@ -4,6 +4,7 @@ import { useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "rea
 import { Alerta, CabecalhoPagina } from "@/components/pagina";
 import { Button, Card, Field, Input, Select, Textarea, cn } from "@/components/ui";
 import { api } from "@/lib/api";
+import { combinaBusca } from "@/components/busca-opcao";
 
 type Vaga = { id: string; cargo: string; empresa: string; tipo: "CLT" | "Estágio"; local: string };
 
@@ -144,7 +145,7 @@ export function DossiePage() {
   const vagasFiltradas = useMemo(() => {
     const termo = semAcento(filtroVaga.trim());
     if (!termo) return listaVagas;
-    return listaVagas.filter((vaga) => semAcento(`${vaga.cargo} ${vaga.empresa} ${vaga.local} ${vaga.tipo}`).includes(termo) || vaga.id === vagaId);
+    return listaVagas.filter((vaga) => combinaBusca(`${vaga.cargo} ${vaga.empresa} ${vaga.local} ${vaga.tipo}`, termo) || vaga.id === vagaId);
   }, [listaVagas, filtroVaga, vagaId]);
   const vagaEscolhida = listaVagas.find((vaga) => vaga.id === vagaId) ?? null;
 
@@ -288,7 +289,7 @@ export function DossiePage() {
             </Passo>
 
             <Passo numero={2} titulo="Vaga escolhida" texto="Vagas abertas no sistema. Vaga de estágio usa o modelo de dossiê de estágio; as demais, o de CLT.">
-              <Input placeholder="Filtrar por cargo, empresa ou bairro" value={filtroVaga} onChange={(event) => setFiltroVaga(event.target.value)} />
+              <Input autoComplete="off" placeholder="Filtrar por cargo, empresa ou bairro" value={filtroVaga} onChange={(event) => setFiltroVaga(event.target.value)} />
               <Select value={vagaId} onChange={(event) => setVagaId(event.target.value)} disabled={vagas.isLoading}>
                 <option value="">{vagas.isLoading ? "Carregando vagas…" : `Selecione (${vagasFiltradas.length} ${vagasFiltradas.length === 1 ? "vaga" : "vagas"})`}</option>
                 {vagasFiltradas.map((vaga) => (

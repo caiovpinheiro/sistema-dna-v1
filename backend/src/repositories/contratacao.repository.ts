@@ -1,6 +1,7 @@
 import { isoToLegacy } from "../lib/dates.js";
 import type { ContratacaoListQuery } from "../schemas/contratacao.js";
 import { many, one, REGIME_SQL, sortClause, type Db } from "./sql.js";
+import { condicaoPorPalavras, palavrasDaBusca } from "../lib/busca-texto.js";
 
 export type ContratacaoRow = {
   id_contratacao: number;
@@ -360,15 +361,9 @@ export class ContratacaoRepository {
       where.push(sql.replaceAll("$#", `$${params.length}`));
     };
     if (query.q) {
-      params.push(`%${query.q}%`);
-      const like = `$${params.length}`;
-      const digits = query.q.replace(/\D/g, "");
-      const parts = [`c.nome ILIKE ${like}`, `e.razao_social ILIKE ${like}`, `v.cargo ILIKE ${like}`];
-      if (digits.length >= 3) {
-        params.push(digits);
-        parts.push(`regexp_replace(coalesce(c.cpf, ''), '\\D', '', 'g') = $${params.length}`);
-      }
-      where.push(`(${parts.join(" OR ")})`);
+      // Pesquisa inteligente: cada palavra em candidato, empresa (razão ou fantasia) ou cargo, sem acento;
+      // número acha pedaço do CPF.
+      add(condicaoPorPalavras(["c.nome", "e.razao_social", "e.nome_fantasia", "v.cargo"], "$#", ["c.cpf"]), palavrasDaBusca(query.q));
     }
     if (query.id_empresa) add("cv.id_empresa = $#", query.id_empresa);
     if (query.id_vaga) add("cv.id_vaga = $#", query.id_vaga);

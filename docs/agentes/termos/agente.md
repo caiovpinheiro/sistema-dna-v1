@@ -1,6 +1,6 @@
 # Agente — Termos e documentos
 
-> Última revisão: 2026-11-13 (commit "TCE lista todas as empresas cadastradas")
+> Última revisão: 2026-11-16 (pesquisa inteligente nas buscas)
 
 ## Para que serve
 
@@ -83,6 +83,7 @@ Serviços externos:
 
 ## Regras e comportamentos importantes
 
+- **Pesquisa inteligente**: Gerar documento (empresa) usa a busca de Empresas, que aceita palavras em qualquer ordem e sem acento; a rescisão de ensino médio (`/api/v1/termos/rescisao-medio?q=`) e as buscas do gerador de TCE (vaga de estágio e candidato) também passaram a procurar cada palavra em qualquer ordem e sem acento, e número acha pedaço do CPF. No servidor, cada palavra digitada precisa aparecer, em qualquer ordem e sem diferenciar acento e maiúscula; uma palavra só de números (ou um documento com pontuação) vale contra os dígitos do documento (`condicaoPorPalavras`/`palavrasDaBusca` em `backend/src/lib/busca-texto.ts`, sem a extensão unaccent). A lista de empresas do TCE filtra no navegador com `combinaBusca`. Os campos têm o histórico do navegador desligado.
 TCE (`tce.service.ts`):
 - Cidade e data de emissão (`emissao_cidade_data`): a tela pede só a cidade ("Cidade de emissão"); o backend (`montar` → `emissaoComData` em `lib/tce-fields.ts`) tira qualquer data que venha no fim e põe sempre a data do dia em que o PDF é gerado ou salvo, por extenso e no fuso de São Paulo ("São Paulo, 12 de novembro de 2026"). Termos antigos com a data no texto mostram só a cidade ao editar; salvar de novo troca a data para o dia da edição.
 - Carga horária é fixa: 6 horas por dia e 30 por semana (`CARGA_HORARIA_DIARIA`/`CARGA_HORARIA_SEMANAL` em `lib/tce-fields.ts`, repetidas em `FIXOS` no `gerador-tce.tsx`). Os campos são só leitura na tela; o backend sobrescreve ao gerar/salvar e o pré-preenchimento por candidato/contratação também usa esses valores.

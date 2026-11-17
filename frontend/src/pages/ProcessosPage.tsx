@@ -1,12 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
-import { ChevronRight, Plus, Search } from "lucide-react";
+import { ChevronRight, Plus } from "lucide-react";
 import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Paginacao, numeroPagina } from "@/components/paginacao";
 import { Alerta, CabecalhoPagina, CampoFiltro, ResumoResultados } from "@/components/pagina";
-import { Badge, Button, Card, Empty, Input, Select, Skeleton } from "@/components/ui";
+import { Badge, Button, Card, Empty, Select, Skeleton } from "@/components/ui";
 import { api } from "@/lib/api";
 import { dateBr, etapaLabel, origemLabel, textoPlano } from "@/lib/format";
+import { BuscaInteligente } from "@/components/busca-inteligente";
+import { sugerirProcessos } from "@/lib/sugestoes";
 
 type Row = {
   id: string;
@@ -55,17 +57,14 @@ export function ProcessosPage() {
       />
       <Card key={limpeza} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)]">
         <CampoFiltro rotulo="Candidato" className="sm:col-span-2 lg:col-span-1">
-          <div className="relative">
-            <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <Input
-              aria-label="Nome do candidato"
-              placeholder="Nome do candidato"
-              defaultValue={params.get("nome") ?? ""}
-              className="pl-9"
-              onBlur={(event) => { if (event.target.value.trim() !== (params.get("nome") ?? "")) update("nome", event.target.value.trim()); }}
-              onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }}
-            />
-          </div>
+          <BuscaInteligente
+            ariaLabel="Nome do candidato"
+            placeholder="Nome do candidato"
+            defaultValue={params.get("nome") ?? ""}
+            sugerir={sugerirProcessos}
+            onBuscar={(texto) => update("nome", texto.trim())}
+            aoSair={(texto) => { if (texto.trim() !== (params.get("nome") ?? "")) update("nome", texto.trim()); }}
+          />
         </CampoFiltro>
         <CampoFiltro rotulo="Origem">
           <Select aria-label="Origem" defaultValue={params.get("origem") ?? ""} onChange={(event) => update("origem", event.target.value)}>

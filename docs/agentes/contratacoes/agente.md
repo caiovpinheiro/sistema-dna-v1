@@ -1,6 +1,6 @@
 # Agente — Contratações
 
-> Última revisão: 2026-11-13 (commit "Cadastro de candidato sem e-mail e empresa escolhida pelo CNPJ")
+> Última revisão: 2026-11-16 (pesquisa inteligente nas buscas)
 
 ## Para que serve
 
@@ -72,6 +72,7 @@ Serviço externo: **ZapSign** (`lib/zapsign.ts`), variáveis `ZAPSIGN_API_URL`, 
 
 ## Regras e comportamentos importantes
 
+- **Pesquisa inteligente** (Contratações e Rescisão, campo Buscar, `q`): cada palavra em candidato, empresa (razão ou fantasia) ou cargo; número acha pedaço do CPF. No servidor, cada palavra digitada precisa aparecer, em qualquer ordem e sem diferenciar acento e maiúscula; uma palavra só de números (ou um documento com pontuação) vale contra os dígitos do documento (`condicaoPorPalavras`/`palavrasDaBusca` em `backend/src/lib/busca-texto.ts`, sem a extensão unaccent). Na tela, o campo é o `BuscaInteligente` (`frontend/src/components/busca-inteligente.tsx`): a partir de 2 letras mostra até 6 sugestões do próprio sistema (`frontend/src/lib/sugestoes.ts`), navegáveis com ↑/↓ e Enter; Enter sem sugestão marcada (ou "Pesquisar … na lista") faz a busca normal. O histórico do navegador fica desligado (`autoComplete="off"` no campo e no formulário). A sugestão abre a ficha (`/contratacoes/:id`; na Rescisão, `/contratacoes/rescisao/:id`, só vínculos ativos). A busca continua acontecendo também ao sair do campo (`aoSair`).
 - **Cadastro rápido de candidato na Nova contratação:** e-mail opcional e a caixa "Candidato da própria empresa (…), não da DNA Work", que grava o candidato com a empresa do passo 1 (`id_empresa`). Erro de validação mostra a mensagem do campo.
 Criação (`contratacao.service.ts:93-207`, tudo numa transação):
 - Idempotência: mesma chave + mesmo corpo devolve a resposta gravada; mesma chave com corpo diferente → 409 `IDEMPOTENCIA_DIVERGENTE`. O frontend gera uma chave nova a cada clique (`crypto.randomUUID()`).

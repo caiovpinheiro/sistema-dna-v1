@@ -1,5 +1,6 @@
 import type { Db } from "../repositories/sql.js";
 import { many, one, REGIME_SQL } from "../repositories/sql.js";
+import { condicaoPorPalavras, palavrasDaBusca } from "../lib/busca-texto.js";
 import type { AppConfig } from "../config.js";
 import { textoHtml } from "../lib/email-modelo.js";
 import { enviarEmailMailjet } from "../lib/mailjet.js";
@@ -151,10 +152,10 @@ export class LegadoService {
       AND e.sede::text = '10'
       AND e.usa_asaas::text IN ('1', '2')
       AND ($5 = '' OR trim(e.datafechamento::text) = $5 OR ltrim(trim(e.datafechamento::text), '0') = ltrim($5, '0'))
-      AND ($6 = '' OR e.razao_social ILIKE $6 OR e.nome_fantasia ILIKE $6 OR e.razao_sem_acento ILIKE $6 OR e.fantasia_sem_acento ILIKE $6 OR e.cnpj ILIKE $6)
+      AND ${condicaoPorPalavras(["e.razao_social", "e.nome_fantasia"], "$6", ["e.cnpj"])}
       GROUP BY e.id_empresa, e.razao_social, e.nome_fantasia, e.cnpj, e.datafechamento, e.tipo_empresa, e.matriz, e.usa_asaas
       ORDER BY e.razao_social
-    `, [datas.dataInicio30, datas.dataInicio10e20, datas.data30, datas.data10e20, fechamento, empresa ? `%${empresa}%` : ""]);
+    `, [datas.dataInicio30, datas.dataInicio10e20, datas.data30, datas.data10e20, fechamento, palavrasDaBusca(empresa)]);
 
     const ids = empresas.map((item) => item.id_empresa);
     const matrizesFora = [...new Set(empresas.filter((item) => item.usa_asaas === "2" && item.matriz && !ids.includes(item.matriz)).map((item) => item.matriz as string))];
@@ -598,13 +599,13 @@ export class LegadoService {
     const ano = texto(query.ano);
     const status = texto(query.status);
     const where = `
-      WHERE ($1 = '' OR p.nome_fantasia ILIKE $1 OR p.razao_social ILIKE $1 OR p.cnpj ILIKE $1)
+      WHERE ${condicaoPorPalavras(["p.nome_fantasia", "p.razao_social"], "$1", ["p.cnpj"])}
         AND ($2 = '' OR p.usuario::text ILIKE $2 OR p."VendedorBase"::text ILIKE $2 OR p.treinamento::text ILIKE $2)
         AND ($3 = '' OR ltrim(p.mes::text, '0') = ltrim($3, '0'))
         AND ($4 = '' OR p.ano::text = $4)
         AND ($5 = '' OR ($5 = '1' AND coalesce(p.data_pg_comissao, '') <> '') OR ($5 = '0' AND coalesce(p.data_pg_comissao, '') = ''))
     `;
-    const params = [empresa ? `%${empresa}%` : "", consultor && consultor !== "todos" ? `%${consultor}%` : "", mes, ano, status];
+    const params = [palavrasDaBusca(empresa), consultor && consultor !== "todos" ? `%${consultor}%` : "", mes, ano, status];
     const total = await one<{ total: number; valor: string }>(this.db, `
       SELECT count(*)::int AS total,
              coalesce(sum(CASE WHEN replace(p."ValorFinalComissao"::text, ',', '.') ~ '^[0-9]+(\\.[0-9]+)?$'
@@ -652,12 +653,12 @@ export class LegadoService {
     const status = texto(query.status);
     const where = `
       WHERE coalesce(e.forma_comissao, '') <> ''
-        AND ($1 = '' OR e.nome_fantasia ILIKE $1 OR e.razao_social ILIKE $1 OR e.cnpj ILIKE $1)
+        AND ${condicaoPorPalavras(["e.nome_fantasia", "e.razao_social"], "$1", ["e.cnpj"])}
         AND ($2 = '' OR u.u_nome ILIKE $2)
         AND ($3 = '' OR e.data_adicao::text LIKE $4 || '/' || lpad($3, 2, '0') || '%' OR e.data_adicao::text LIKE $4 || '-' || lpad($3, 2, '0') || '%')
         AND ($5 = '' OR ($5 = '1' AND pg.id IS NOT NULL) OR ($5 = '0' AND pg.id IS NULL))
     `;
-    const params = [empresa ? `%${empresa}%` : "", consultor && consultor !== "todos" ? `%${consultor}%` : "", mes, ano || String(new Date().getFullYear()), status];
+    const params = [palavrasDaBusca(empresa), consultor && consultor !== "todos" ? `%${consultor}%` : "", mes, ano || String(new Date().getFullYear()), status];
     const total = await one<{ total: number; valor: string }>(this.db, `
       SELECT count(*)::int AS total,
              coalesce(sum(CASE WHEN replace(coalesce(e.valor_comisao_empresa::text, ''), ',', '.') ~ '^[0-9]+(\\.[0-9]+)?$'
@@ -717,9 +718,9 @@ export class LegadoService {
     const where = `
       WHERE cv.datainicio < $2
         AND (cv.data_demicao IS NULL OR cv.data_demicao = '' OR cv.data_demicao >= $1)
-        AND ($3 = '' OR e.razao_social ILIKE $3 OR e.nome_fantasia ILIKE $3 OR e.cnpj ILIKE $3)
+        AND ${condicaoPorPalavras(["e.razao_social", "e.nome_fantasia"], "$3", ["e.cnpj"])}
     `;
-    const params = [inicio, fim, empresa ? `%${empresa}%` : ""];
+    const params = [inicio, fim, palavrasDaBusca(empresa)];
     const total = await one<{ total: number }>(this.db, `
       SELECT count(*)::int AS total FROM (
         SELECT e.id_empresa
@@ -759,17 +760,17 @@ export class LegadoService {
         AND cd.devolucao::text = '1'
         AND (cg.devolvido::text = '0' OR cg.devolvido IS NULL)
         AND ($1 = '' OR $1 = 'Todos' OR mv.descricao ILIKE $1)
-        AND ($2 = '' OR e.razao_social ILIKE $2 OR e.nome_fantasia ILIKE $2)
+        AND ${condicaoPorPalavras(["e.razao_social", "e.nome_fantasia"], "$2", ["e.cnpj"])}
         AND ($3 = '' OR $3 = 'Todos' OR cd.nome ILIKE $3)
-        AND ($4 = '' OR c.nome ILIKE $4)
+        AND ${condicaoPorPalavras(["c.nome"], "$4", ["c.cpf"])}
         AND ($5 = '' OR vencimento >= $5)
         AND ($6 = '' OR vencimento <= $6)
     `;
     const params = [
       modalidade && modalidade !== "Todos" ? modalidade : "",
-      empresa ? `%${empresa}%` : "",
+      palavrasDaBusca(empresa),
       documento && documento !== "Todos" ? `%${documento}%` : "",
-      candidato ? `%${candidato}%` : "",
+      palavrasDaBusca(candidato),
       de,
       ate,
     ];
@@ -883,13 +884,13 @@ export class LegadoService {
     const cidade = texto(query.cidade);
     const uf = texto(query.uf);
     const where = `
-      WHERE ($1 = '' OR i.razao_social ILIKE $1 OR i.nome_fantasia ILIKE $1 OR i.cnpj ILIKE $1 OR i.telefone ILIKE $1 OR i.email ILIKE $1)
+      WHERE ${condicaoPorPalavras(["i.razao_social", "i.nome_fantasia", "i.email"], "$1", ["i.cnpj", "i.telefone"])}
         AND ($2 = '' OR $2 = 'Todos' OR i.tipo_encino = $2)
         AND ($3 = '' OR $3 = 'Todas' OR ($3 = 'Sim' AND c.convenio::text = '1') OR ($3 IN ('Não', 'Nao') AND (c.convenio::text = '0' OR c.convenio IS NULL)))
         AND ($4 = '' OR i.cidade ILIKE $4)
         AND ($5 = '' OR i.uf ILIKE $5)
     `;
-    const params = [q ? `%${q}%` : "", ensino, conveniada, cidade ? `%${cidade}%` : "", uf ? `%${uf}%` : ""];
+    const params = [palavrasDaBusca(q), ensino, conveniada, cidade ? `%${cidade}%` : "", uf ? `%${uf}%` : ""];
     const joins = `
       FROM dna_work.instituicao i
       LEFT JOIN LATERAL (

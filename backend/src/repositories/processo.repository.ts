@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Etapa, Origem } from "../lib/processo.js";
 import type { ProcessoListQuery } from "../schemas/processo.js";
 import { many, one, type Db } from "./sql.js";
+import { condicaoPorPalavras, palavrasDaBusca } from "../lib/busca-texto.js";
 
 export type ProcessoRow = {
   id: string;
@@ -105,7 +106,7 @@ export class ProcessoRepository {
     if (query.id_empresa) add("p.id_empresa = $#", query.id_empresa);
     if (query.id_vaga) add("p.id_vaga = $#", query.id_vaga);
     if (query.id_candidato) add("p.id_candidato = $#", query.id_candidato);
-    if (query.nome) add("c.nome ILIKE $#", `%${query.nome}%`);
+    if (query.nome) add(condicaoPorPalavras(["c.nome"], "$#"), palavrasDaBusca(query.nome));
     const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
     const total = await one<{ total: number }>(db, `SELECT count(*)::int AS total ${SELECT.slice(SELECT.indexOf("FROM"))} ${clause}`, params);
     params.push(query.pageSize, (query.page - 1) * query.pageSize);

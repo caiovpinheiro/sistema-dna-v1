@@ -1,6 +1,6 @@
 # Agente — Grupos (Grupos, Empresas e Vagas)
 
-> Última revisão: 2026-11-16 (vagas do grupo por situação)
+> Última revisão: 2026-11-16 (pesquisa inteligente nas buscas)
 
 ## Para que serve
 
@@ -89,6 +89,7 @@ Serviços externos:
 
 ## Regras e comportamentos importantes
 
+- **Busca de grupos** (lista da aba Grupo): usa `combinaBusca` (cada palavra em nome, e-mail ou telefone, em qualquer ordem e sem acento).
 - Cadastro de empresa (`empresaCadastroSchema`): razão social e nome fantasia perdem entidades HTML (`&amp;` → `&`) antes de gravar, com mensagens de tamanho em português.
 
 - **Grupo**: nome 2–180 caracteres e pelo menos e-mail **ou** telefone (`exigeContato`, `schemas/cadastro.ts:7`).

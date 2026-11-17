@@ -6,6 +6,7 @@ import { RelatorioEmpresaPainel } from "@/components/relatorio-empresa";
 import { Badge, Button, Card, Empty, Field, Input, Select, Skeleton } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 import { dateBr, formatCnpj, money, textoPlano } from "@/lib/format";
+import { combinaBusca } from "@/components/busca-opcao";
 
 type Nota = { id: string; tipo: string; valor: number; status: string; pdf_url: string | null };
 type ItemNota = { tipo: string; codigo: string; iss: string; descricao: string; valor: string };
@@ -98,8 +99,8 @@ export function ContasReceberPage() {
   const rows = (query.data?.data ?? []).filter((row) => {
     if (empresaId) return row.id_empresa === empresaId;
     if (termo.length < 2) return true;
-    const nomes = semEntidades(`${row.empresa_fantasia ?? ""} ${row.empresa_razao ?? ""}`).toLowerCase();
-    return nomes.includes(termo) || (termoCnpj.length >= 3 && (row.empresa_cnpj ?? "").replace(/\D/g, "").includes(termoCnpj));
+    const nomes = semEntidades(`${row.empresa_fantasia ?? ""} ${row.empresa_razao ?? ""}`);
+    return combinaBusca(nomes, termo) || (termoCnpj.length >= 3 && (row.empresa_cnpj ?? "").replace(/\D/g, "").includes(termoCnpj));
   });
   const soma = (lista: Cobranca[]) => lista.reduce((sum, row) => sum + Number(row.valor || 0), 0);
   const pagas = rows.filter((row) => row.situacao === "paga");
@@ -344,7 +345,7 @@ export function ContasReceberPage() {
             <Field label="Empresa">
               <div className="relative">
                 <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <Input value={busca} placeholder="Razão social, fantasia ou CNPJ" className="pl-9" onChange={(event) => { setBusca(event.target.value); setEmpresaId(""); }} />
+                <Input value={busca} autoComplete="off" placeholder="Razão social, fantasia ou CNPJ" className="pl-9" onChange={(event) => { setBusca(event.target.value); setEmpresaId(""); }} />
               </div>
             </Field>
             {/* Depois de escolher, a lista fecha: aberta, ela cobria o botão "Gerar cobrança". */}

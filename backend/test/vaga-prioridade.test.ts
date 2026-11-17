@@ -133,3 +133,26 @@ test("vagas do grupo: vagas e posições disponíveis por situação somando as 
   const zero = { aberta: 0, pausada: 0, contratada: 0, fechada: 0, total: 0 };
   assert.deepEqual(await repo.contarPorSituacao(db, "33333333-3333-3333-3333-333333333333"), { vagas: zero, disponiveis: zero });
 });
+
+test("pesquisa inteligente: palavras em qualquer ordem, sem acento, e número contra os dígitos", async () => {
+  const { condicaoPorPalavras, palavrasDaBusca } = await import("../src/lib/busca-texto.js");
+  assert.deepEqual(palavrasDaBusca("  Paraná   ITACO "), ["parana", "itaco"]);
+  assert.deepEqual(palavrasDaBusca("17.580.852/0001-06"), ["17580852000106"]);
+  assert.deepEqual(palavrasDaBusca("50%_off"), [String.raw`50\%\_off`]); // % e _ escapados para o LIKE
+  assert.deepEqual(palavrasDaBusca(""), []);
+  const empresas = `(VALUES ('Paraná Supermercados - Jardim Itacolomi', '17.580.852/0001-06'), ('AMIGÃO SAÚDE', '38.483.839/0001-09'), ('Padaria 50%_off', NULL)) AS e(nome, cnpj)`;
+  const achar = async (texto: string) => (await db.query(
+    `SELECT nome FROM ${empresas} WHERE ${condicaoPorPalavras(["e.nome"], "$1", ["e.cnpj"])} ORDER BY nome`, [palavrasDaBusca(texto)],
+  )).rows.map((row: { nome: string }) => row.nome);
+  assert.deepEqual(await achar("itaco parana"), ["Paraná Supermercados - Jardim Itacolomi"]);
+  assert.deepEqual(await achar("amigao saude"), ["AMIGÃO SAÚDE"]);
+  assert.deepEqual(await achar("SUPERMERCADOS jardim"), ["Paraná Supermercados - Jardim Itacolomi"]);
+  assert.deepEqual(await achar("17580852"), ["Paraná Supermercados - Jardim Itacolomi"]);
+  assert.deepEqual(await achar("38.483.839/0001-09"), ["AMIGÃO SAÚDE"]);
+  assert.deepEqual(await achar("parana saude"), []);
+  assert.deepEqual(await achar("50%"), ["Padaria 50%_off"]);
+  assert.deepEqual(await achar("50%_off"), ["Padaria 50%_off"]);
+  // % e _ no meio da palavra são texto, não curinga: sem o escape, "5%0" acharia "50".
+  assert.deepEqual(await achar("5%0"), []);
+  assert.equal((await achar("")).length, 3);
+});

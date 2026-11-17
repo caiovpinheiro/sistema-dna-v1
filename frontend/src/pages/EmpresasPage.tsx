@@ -8,6 +8,8 @@ import { CabecalhoPagina, CampoFiltro, ResumoResultados } from "@/components/pag
 import { Button, Badge, Card, Empty, Input, Select, Skeleton, cn } from "@/components/ui";
 import { api } from "@/lib/api";
 import { dataHoraBr, formatCnpj, formatPhone } from "@/lib/format";
+import { BuscaInteligente } from "@/components/busca-inteligente";
+import { sugerirEmpresas } from "@/lib/sugestoes";
 
 type UsoPortal = { ultimo_login: string | null; ultimo_uso: string | null; logins: number; email: string | null };
 type Row = { id_empresa: string; razao_social: string; nome_fantasia: string | null; cnpj: string; cidade: string | null; uf: string | null; status: number | null; acesso_portal?: boolean; uso_portal?: UsoPortal | null };
@@ -75,12 +77,9 @@ export function EmpresasPage() {
       />
       <Card>
         {/* key: ao limpar os filtros, os campos voltam ao vazio. */}
-        <form key={params.toString()} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_minmax(0,1.2fr)_5rem_minmax(0,1fr)_minmax(0,1.2fr)_auto] lg:items-end" onSubmit={pesquisar}>
+        <form key={params.toString()} autoComplete="off" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_minmax(0,1.2fr)_5rem_minmax(0,1fr)_minmax(0,1.2fr)_auto] lg:items-end" onSubmit={pesquisar}>
           <CampoFiltro rotulo="Buscar" className="sm:col-span-2 lg:col-span-1">
-            <div className="relative">
-              <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <Input name="q" aria-label="Busca" placeholder="CNPJ, razão social ou nome fantasia" defaultValue={params.get("q") ?? ""} className="pl-9" />
-            </div>
+            <BuscaInteligente name="q" ariaLabel="Busca" placeholder="CNPJ, razão social ou nome fantasia" defaultValue={params.get("q") ?? ""} sugerir={(texto, sinal) => sugerirEmpresas(texto, sinal)} />
           </CampoFiltro>
           <CampoFiltro rotulo="Cidade">
             <Input name="cidade" aria-label="Cidade" placeholder="Todas" defaultValue={params.get("cidade") ?? ""} />

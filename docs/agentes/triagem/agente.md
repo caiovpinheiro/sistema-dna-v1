@@ -1,6 +1,6 @@
 # Agente — Triagem
 
-> Última revisão: 2026-11-13 (CEP localizado no servidor, Google primeiro)
+> Última revisão: 2026-11-16 (pesquisa inteligente nas buscas)
 
 ## Para que serve
 
@@ -82,6 +82,7 @@ O menu fica em `frontend/src/components/shell.tsx` (`triagemLinks`, linhas 16-19
 
 ## Regras e comportamentos importantes
 
+- **Filtro de vagas do Dossiê**: usa `combinaBusca` (cada palavra em cargo, empresa, local ou tipo, em qualquer ordem e sem acento), com o histórico do navegador desligado.
 - **Filtros da busca** (triagem.service.ts:136-165):
   - distância em linha reta menor ou igual a `raioKm` (1 a 100, padrão 10; a tela oferece 5/10/15/20/30/50);
   - sexo: só exclui quando a vaga tem sexo definido diferente de `I` e diferente do pedido;

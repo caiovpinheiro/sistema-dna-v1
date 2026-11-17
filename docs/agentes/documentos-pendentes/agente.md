@@ -1,6 +1,6 @@
 # Agente — Documentos pendentes
 
-> Última revisão: 2026-11-13 (commit "Botões com retorno de clique e Pesquisar sempre recarrega")
+> Última revisão: 2026-11-16 (pesquisa inteligente nas buscas)
 
 ## Para que serve
 
@@ -45,6 +45,7 @@ Nada é gravado. Nenhum serviço externo.
 
 ## Regras e comportamentos importantes
 
+- **Pesquisa inteligente** (campos Empresa e Candidato): cada palavra em razão social/fantasia ou no nome do candidato; número acha pedaço do CNPJ ou do CPF. No servidor, cada palavra digitada precisa aparecer, em qualquer ordem e sem diferenciar acento e maiúscula; uma palavra só de números (ou um documento com pontuação) vale contra os dígitos do documento (`condicaoPorPalavras`/`palavrasDaBusca` em `backend/src/lib/busca-texto.ts`, sem a extensão unaccent). Na tela, o campo é o `BuscaInteligente` (`frontend/src/components/busca-inteligente.tsx`): a partir de 2 letras mostra até 6 sugestões do próprio sistema (`frontend/src/lib/sugestoes.ts`), navegáveis com ↑/↓ e Enter; Enter sem sugestão marcada (ou "Pesquisar … na lista") faz a busca normal. O histórico do navegador fica desligado (`autoComplete="off"` no campo e no formulário). No campo Candidato, as sugestões são os nomes com pendência (sem repetir); escolher pesquisa por esse nome.
 - **Pesquisar sempre tem efeito:** com os mesmos filtros, recarrega a lista (`refetch`, ou a chave `rodada` no Financeiro); o botão mostra "Pesquisando…" com ícone girando enquanto carrega. Todo botão do sistema afunda e muda o tom ao ser pressionado (`index.css`, `.app-canvas button:active`).
 - Vencimento (`legado.service.ts:773-781`): documento de rescisão com vínculo encerrado → `data_demicao`; outro de rescisão → `cg.datafim`; se `cg.data` estiver em `AAAA/MM/DD` e `cd.dias` for número → `data + dias`; senão `cg.datafim`.
 - Dias de atraso são calculados em JavaScript (`:819-829`): diferença entre hoje (UTC) e o vencimento, só quando o vencimento é anterior a hoje; senão 0.

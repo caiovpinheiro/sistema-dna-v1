@@ -7,6 +7,8 @@ import { Alerta, CabecalhoPagina, CampoFiltro, ResumoResultados } from "@/compon
 import { Badge, Button, Card, Empty, Field, Input, Select, Skeleton, Textarea } from "@/components/ui";
 import { api } from "@/lib/api";
 import { dateBr, formatCnpj, money, textoPlano } from "@/lib/format";
+import { BuscaInteligente } from "@/components/busca-inteligente";
+import { sugerirCandidatosComPendencia, sugerirInstituicoes } from "@/lib/sugestoes";
 
 /** Moldura das telas antigas que ainda não têm ação no cabeçalho (só o formulário estático de modelo). */
 function Screen({ title, subtitle, children }: { title: string; subtitle?: string; children: ReactNode }) {
@@ -135,7 +137,7 @@ export function DocumentosPendentesPage() {
         descricao="Documentos gerados para candidatos que ainda não voltaram assinados, do vencimento mais antigo para o mais novo."
       />
       <Card>
-        <form
+        <form autoComplete="off"
           key={versao}
           className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_minmax(0,1.6fr)_minmax(0,1.3fr)_9.5rem_9.5rem_auto] xl:items-end"
           onSubmit={(event) => { event.preventDefault(); repetirOuBuscar(lerFiltros(event, ["modalidade", "empresa", "documento", "candidato", "de", "ate"]), busca, pagina, () => void result.refetch(), (novo) => { setBusca(novo); setPagina(1); }); }}
@@ -158,7 +160,7 @@ export function DocumentosPendentesPage() {
             </Select>
           </CampoFiltro>
           <CampoFiltro rotulo="Candidato">
-            <BuscaComIcone><Input name="candidato" aria-label="Candidato" placeholder="Nome do candidato" className="pl-9" /></BuscaComIcone>
+            <BuscaInteligente name="candidato" ariaLabel="Candidato" placeholder="Nome do candidato" sugerir={sugerirCandidatosComPendencia} />
           </CampoFiltro>
           <CampoFiltro rotulo="Vencimento de">
             <Input name="de" aria-label="Vencimento de" type="date" />
@@ -386,7 +388,7 @@ export function ConsultarModelosPage() {
       />
       <Card>
         {/* key: ao limpar os filtros, a modalidade volta para "Todas". */}
-        <form
+        <form autoComplete="off"
           key={params.toString()}
           className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_auto] lg:items-end"
           onSubmit={(event) => { event.preventDefault(); pesquisar(new FormData(event.currentTarget)); }}
@@ -592,15 +594,13 @@ export function ConsultarInstituicoesPage() {
         descricao="Escolas e faculdades cadastradas no sistema antigo, com a situação do convênio, o tipo de ensino e a cidade."
       />
       <Card>
-        <form
+        <form autoComplete="off"
           key={versao}
           className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,2.2fr)_minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1.2fr)_5rem_auto] lg:items-end"
           onSubmit={(event) => { event.preventDefault(); repetirOuBuscar(lerFiltros(event, ["q", "ensino", "conveniada", "cidade", "uf"]), busca, pagina, () => void result.refetch(), (novo) => { setBusca(novo); setPagina(1); }); }}
         >
           <CampoFiltro rotulo="Buscar" className="sm:col-span-2 lg:col-span-1">
-            <BuscaComIcone>
-              <Input name="q" aria-label="Buscar" placeholder="Nome, CNPJ, telefone ou e-mail" title="Pesquisa por razão social, nome fantasia, CNPJ, telefone e e-mail" className="pl-9" />
-            </BuscaComIcone>
+            <BuscaInteligente name="q" ariaLabel="Buscar" placeholder="Nome, CNPJ, telefone ou e-mail" sugerir={sugerirInstituicoes} />
           </CampoFiltro>
           <CampoFiltro rotulo="Tipo de ensino">
             <Select name="ensino" aria-label="Tipo de ensino" defaultValue="Todos">

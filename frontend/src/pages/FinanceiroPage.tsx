@@ -8,6 +8,8 @@ import { Badge, Button, Card, Empty, Field, Input, Select, Skeleton, cn } from "
 import { RelatorioEmpresaPainel } from "@/components/relatorio-empresa";
 import { api } from "@/lib/api";
 import { dateBr, formatCnpj, money, textoPlano } from "@/lib/format";
+import { BuscaInteligente } from "@/components/busca-inteligente";
+import { sugerirEmpresas } from "@/lib/sugestoes";
 
 const months = ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12"];
 const nomesMes = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
@@ -35,10 +37,8 @@ function useLimpeza<T extends Record<string, string>>(inicial: T, busca: Record<
 function EmpresaField() {
   return (
     <CampoFiltro rotulo="Empresa">
-      <div className="relative">
-        <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-        <Input name="empresa" aria-label="Empresa" placeholder="Nome ou razão social" className="pl-9" />
-      </div>
+      {/* Sugestões vêm da lista de Empresas; sem permissão nela, fica só a busca normal. */}
+      <BuscaInteligente name="empresa" ariaLabel="Empresa" placeholder="Nome, razão social ou CNPJ" sugerir={(texto, sinal) => sugerirEmpresas(texto, sinal, false)} />
     </CampoFiltro>
   );
 }
@@ -281,7 +281,7 @@ export function GerarFaturamentoPage() {
         <Resumo rotulo="Em aberto no Asaas" valor={meta?.asaas ? reais(meta.asaas.valor) : "—"} detalhe={meta?.asaas ? `${meta.asaas.quantidade} cobranças em aberto no Asaas` : "Asaas indisponível neste momento"} destaque />
       </dl>
       <Card>
-        <form key={limpeza.versao} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_7rem_minmax(0,1.2fr)_auto] lg:items-end" onSubmit={(event) => {
+        <form autoComplete="off" key={limpeza.versao} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_7rem_minmax(0,1.2fr)_auto] lg:items-end" onSubmit={(event) => {
           event.preventDefault();
           // "Todas" tem valor vazio: precisa ir explícito, senão vale o "3" (aberta e parcial) do estado inicial.
           const status = String(new FormData(event.currentTarget).get("status") ?? "");
@@ -496,7 +496,7 @@ export function RelatorioProcfyPage() {
         descricao="Faturas do sistema antigo (contas a receber DNA + DISC), com os candidatos de cada fatura e exportação para Excel."
       />
       <Card>
-        <form key={limpeza.versao} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-end" onSubmit={(event) => {
+        <form autoComplete="off" key={limpeza.versao} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-end" onSubmit={(event) => {
           event.preventDefault();
           const filtros = lerFiltros(event, ["tipoData", "de", "ate", "status", "sistema"]);
           const status = String(new FormData(event.currentTarget).get("status") ?? "");
@@ -643,7 +643,7 @@ function Dado({ rotulo, children }: { rotulo: string; children: ReactNode }) {
 function ComissaoFilters({ versao, onSubmit, carregando }: { versao: number; onSubmit: (event: FormEvent<HTMLFormElement>) => void; carregando?: boolean }) {
   return (
     <Card>
-      <form key={versao} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_minmax(0,1.3fr)_minmax(0,1fr)_6rem_minmax(0,1fr)_auto] lg:items-end" onSubmit={onSubmit}>
+      <form autoComplete="off" key={versao} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_minmax(0,1.3fr)_minmax(0,1fr)_6rem_minmax(0,1fr)_auto] lg:items-end" onSubmit={onSubmit}>
         <EmpresaField />
         <CampoFiltro rotulo="Consultor">
           <Select name="consultor" aria-label="Consultor" defaultValue="todos">
@@ -828,7 +828,7 @@ export function GerarHoleritePage() {
         descricao="Empresas com contratados ativos no mês. Clique em “Lançar folha” para lançar faltas e valores e gerar os holerites de estágio em PDF."
       />
       <Card>
-        <form key={limpeza.versao} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_7rem_auto] lg:items-end" onSubmit={(event) => { event.preventDefault(); setBusca({ ...inicial, ...lerFiltros(event, ["empresa", "mes", "ano"]) }); setPagina(1); setRodada((atual) => atual + 1); }}>
+        <form autoComplete="off" key={limpeza.versao} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_7rem_auto] lg:items-end" onSubmit={(event) => { event.preventDefault(); setBusca({ ...inicial, ...lerFiltros(event, ["empresa", "mes", "ano"]) }); setPagina(1); setRodada((atual) => atual + 1); }}>
           <EmpresaField />
           <MonthField />
           <YearField />

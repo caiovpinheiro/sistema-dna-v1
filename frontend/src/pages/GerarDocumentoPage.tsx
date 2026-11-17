@@ -92,7 +92,7 @@ function BuscaEmpresa({ rotulo, onEscolher }: { rotulo: string; onEscolher: (emp
       <span className="text-sm font-semibold text-slate-700">{rotulo}</span>
       <div className="relative">
         <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-        <Input aria-label={rotulo} placeholder="Nome, razão social ou CNPJ" value={busca} onChange={(event) => setBusca(event.target.value)} className="pl-9" />
+        <Input aria-label={rotulo} autoComplete="off" placeholder="Nome, razão social ou CNPJ" value={busca} onChange={(event) => setBusca(event.target.value)} className="pl-9" />
       </div>
       {lista.length ? (
         <div className="max-h-44 overflow-auto rounded-lg border border-slate-200 bg-white">

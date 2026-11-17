@@ -1,6 +1,7 @@
 import { onlyDigits } from "../lib/normalize.js";
 import type { EmpresaCreate, EmpresaListQuery, EmpresaPatch } from "../schemas/empresa.js";
 import { many, one, sortClause, type Db } from "./sql.js";
+import { condicaoPorPalavras, palavrasDaBusca } from "../lib/busca-texto.js";
 
 export type EmpresaRow = {
   id_empresa: string;
@@ -113,16 +114,12 @@ export class EmpresaRepository {
       where.push(sql.replaceAll("$#", `$${params.length}`));
     };
     if (query.q) {
-      const digits = onlyDigits(query.q);
-      params.push(`%${query.q}%`, query.q);
-      const like = `$${params.length - 1}`;
+      // Pesquisa inteligente: palavras em qualquer ordem e sem acento em razão social e fantasia;
+      // número acha pedaço do CNPJ. O id exato continua valendo.
+      params.push(palavrasDaBusca(query.q), query.q.trim());
+      const palavras = `$${params.length - 1}`;
       const exact = `$${params.length}`;
-      const parts = [`razao_social ILIKE ${like}`, `nome_fantasia ILIKE ${like}`, `id_empresa = ${exact}`];
-      if (digits) {
-        params.push(digits);
-        parts.push(`regexp_replace(coalesce(cnpj, ''), '\\D', '', 'g') = $${params.length}`);
-      }
-      where.push(`(${parts.join(" OR ")})`);
+      where.push(`(${condicaoPorPalavras(["razao_social", "nome_fantasia"], palavras, ["cnpj"])} OR id_empresa = ${exact})`);
     }
     if (query.razao_social) add("razao_social ILIKE $#", `%${query.razao_social}%`);
     if (query.nome_fantasia) add("nome_fantasia ILIKE $#", `%${query.nome_fantasia}%`);

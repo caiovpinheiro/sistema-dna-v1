@@ -8,6 +8,8 @@ import { Paginacao, numeroPagina } from "@/components/paginacao";
 import { Badge, Button, Card, Empty, Input, Select, Skeleton, cn } from "@/components/ui";
 import { api } from "@/lib/api";
 import { dateBr, formatCpf, formatPhone } from "@/lib/format";
+import { BuscaInteligente } from "@/components/busca-inteligente";
+import { sugerirCandidatos } from "@/lib/sugestoes";
 
 type Contrato = { ativo: boolean; cargo: string | null; empresa: string | null; regime: "clt" | "estagio" | "outro"; inicio: string | null };
 type Row = {
@@ -134,13 +136,10 @@ export function CandidatosPage() {
 
       <Card>
         {/* key: ao limpar os filtros, os campos voltam ao vazio. */}
-        <form key={params.toString()} className="grid gap-3" onSubmit={pesquisar}>
+        <form key={params.toString()} autoComplete="off" className="grid gap-3" onSubmit={pesquisar}>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-end">
             <CampoFiltro rotulo="Nome" className="sm:col-span-2 lg:col-span-1">
-              <div className="relative">
-                <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <Input name="nome" aria-label="Nome" placeholder="Nome do candidato" defaultValue={params.get("nome") ?? ""} className="pl-9" />
-              </div>
+              <BuscaInteligente name="nome" ariaLabel="Nome" placeholder="Nome do candidato" defaultValue={params.get("nome") ?? ""} sugerir={sugerirCandidatos} />
             </CampoFiltro>
             <CampoFiltro rotulo="CPF">
               <Input name="cpf" aria-label="CPF" inputMode="numeric" placeholder="000.000.000-00" defaultValue={params.get("cpf") ?? ""} />

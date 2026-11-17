@@ -1,6 +1,6 @@
 # Agente — Candidatos
 
-> Última revisão: 2026-11-13 (CEP preenche o endereço no formulário)
+> Última revisão: 2026-11-16 (pesquisa inteligente nas buscas)
 
 ## Para que serve
 
@@ -83,6 +83,7 @@ Variáveis de config que mudam a lista: `CONTRATACAO_STATUS_ATIVO` (padrão 1) e
 
 ## Regras e comportamentos importantes
 
+- **Pesquisa inteligente** (campo Nome, `nome`): palavras do nome em qualquer ordem e sem acento ("silva maria" acha "Maria … da Silva"). No servidor, cada palavra digitada precisa aparecer, em qualquer ordem e sem diferenciar acento e maiúscula; uma palavra só de números (ou um documento com pontuação) vale contra os dígitos do documento (`condicaoPorPalavras`/`palavrasDaBusca` em `backend/src/lib/busca-texto.ts`, sem a extensão unaccent). Na tela, o campo é o `BuscaInteligente` (`frontend/src/components/busca-inteligente.tsx`): a partir de 2 letras mostra até 6 sugestões do próprio sistema (`frontend/src/lib/sugestoes.ts`), navegáveis com ↑/↓ e Enter; Enter sem sugestão marcada (ou "Pesquisar … na lista") faz a busca normal. O histórico do navegador fica desligado (`autoComplete="off"` no campo e no formulário). A sugestão abre a ficha (`/candidatos/:id`). CPF e e-mail continuam como antes.
 - **Cadastro (novo candidato):** só nome e CPF são obrigatórios também no servidor — o e-mail ficou opcional em `candidatoCreateSchema` (antes o cadastro sem e-mail era recusado com mensagem genérica e "não avançava"); grava e-mail vazio quando não vem. Mensagens de nome, CPF, e-mail e UF em português. Em "Cadastrado por: Outra empresa", a busca mostra cada empresa com CNPJ, razão social e cidade (e tudo no `title` ao passar o mouse), para separar unidades com o mesmo nome (ex.: Lumi); escolhida, a lista fecha e aparece a empresa com o CNPJ e "Trocar".
 - **CEP preenche o endereço** (formulário de criar/editar): o campo CEP ganha máscara `00000-000`; ao chegar a 8 dígitos, `enderecoDoCep` (`frontend/src/lib/triagem-geo.ts`, o mesmo ViaCEP da triagem, chamado do navegador) preenche Logradouro, Bairro, Cidade e UF e põe o foco em Número. Só sobrescreve os campos que o ViaCEP devolveu preenchidos; mostra "Buscando endereço…" e, se o CEP não existir ou o serviço falhar, "CEP não encontrado; preencha o endereço.". Ao abrir a edição não busca nada (só reage à digitação).
 - **Pesquisar sempre tem efeito:** com os mesmos filtros, recarrega a lista (`refetch`, ou a chave `rodada` no Financeiro); o botão mostra "Pesquisando…" com ícone girando enquanto carrega. Todo botão do sistema afunda e muda o tom ao ser pressionado (`index.css`, `.app-canvas button:active`).

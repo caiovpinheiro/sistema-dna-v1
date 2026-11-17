@@ -1,6 +1,6 @@
 # Agente — Processos
 
-> Última revisão: 2026-11-13 (commit "Repagina as telas restantes no padrão novo")
+> Última revisão: 2026-11-16 (pesquisa inteligente nas buscas)
 
 ## Para que serve
 
@@ -68,6 +68,7 @@ Tudo no **Postgres, schema `dna_work`**. As duas tabelas de processo existem só
 
 ## Regras e comportamentos importantes
 
+- **Pesquisa inteligente** (campo Candidato, `nome`): palavras do nome em qualquer ordem e sem acento. No servidor, cada palavra digitada precisa aparecer, em qualquer ordem e sem diferenciar acento e maiúscula; uma palavra só de números (ou um documento com pontuação) vale contra os dígitos do documento (`condicaoPorPalavras`/`palavrasDaBusca` em `backend/src/lib/busca-texto.ts`, sem a extensão unaccent). Na tela, o campo é o `BuscaInteligente` (`frontend/src/components/busca-inteligente.tsx`): a partir de 2 letras mostra até 6 sugestões do próprio sistema (`frontend/src/lib/sugestoes.ts`), navegáveis com ↑/↓ e Enter; Enter sem sugestão marcada (ou "Pesquisar … na lista") faz a busca normal. O histórico do navegador fica desligado (`autoComplete="off"` no campo e no formulário). A sugestão abre o processo (`/processos/:id`). A busca continua acontecendo também ao sair do campo.
 - **Etapa inicial** (`etapaInicial`, lib/processo.ts:17): origem `dnawork` começa em `encaminhado`. Origem `empresa` começa em `recebido`, ou em `encaminhado` se já veio com data de encaminhamento.
 - **Validações ao criar** (schemas/processo.ts):
   - `dnawork` exige `data_encaminhamento`;

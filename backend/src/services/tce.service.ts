@@ -16,6 +16,7 @@ import { enviarModelo, textoHtml } from "../lib/email-modelo.js";
 import { criarDocumentoZapSign } from "../lib/zapsign.js";
 import { enviarEmailMailjet } from "../lib/mailjet.js";
 import type { TermoService } from "./termo.service.js";
+import { condicaoPorPalavras, palavrasDaBusca } from "../lib/busca-texto.js";
 
 export type GerarTceInput = {
   empresaId: string;
@@ -53,26 +54,25 @@ export class TceService {
       FROM public.vaga v
       LEFT JOIN public.empresa e ON e.id = v.empresa_id
       WHERE v.tipo_vaga = 1
-        AND ($1 = '' OR v.cargo ILIKE '%' || $1 || '%' OR e.razao_social ILIKE '%' || $1 || '%' OR e.nome_fantasia ILIKE '%' || $1 || '%')
+        AND ${condicaoPorPalavras(["v.cargo", "e.razao_social", "e.nome_fantasia"], "$1")}
       ORDER BY e.nome_fantasia NULLS LAST, e.razao_social, v.cargo
       LIMIT 30
-    `, [consulta]);
+    `, [palavrasDaBusca(consulta)]);
     return rows.map(vagaParaTce);
   }
 
   async buscarCandidatos(termo: string): Promise<CandidatoTce[]> {
     const consulta = termo.trim();
     if (consulta.length < 2) return [];
-    const like = `%${consulta.replace(/[%_]/g, "")}%`;
     const rows = await this.db.query<CandidatoTce>(`
       SELECT c.id_candidato AS id, c.nome, coalesce(c.cpf, '') AS cpf,
              coalesce(e.nome_fantasia, e.razao_social, '') AS empresa
       FROM dna_work.candidato c
       LEFT JOIN dna_work.empresa e ON e.id_empresa = c.id_empresa
-      WHERE c.nome ILIKE $1 OR coalesce(c.cpf, '') ILIKE $1 OR coalesce(e.nome_fantasia, '') ILIKE $1 OR coalesce(e.razao_social, '') ILIKE $1
+      WHERE ${condicaoPorPalavras(["c.nome", "e.nome_fantasia", "e.razao_social"], "$1", ["c.cpf"])}
       ORDER BY c.nome
       LIMIT 20
-    `, [like]);
+    `, [palavrasDaBusca(consulta)]);
     return rows.rows.map((row) => ({ id: row.id, nome: (row.nome ?? "").trim(), cpf: (row.cpf ?? "").trim(), empresa: (row.empresa ?? "").trim() }));
   }
 

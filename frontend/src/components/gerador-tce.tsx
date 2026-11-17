@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button, Field, Input, Textarea, cn } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
+import { combinaBusca } from "@/components/busca-opcao";
 
 type Empresa = {
   id: string;
@@ -194,7 +195,7 @@ export function GeradorTce({ editarId }: { editarId?: string }) {
   const visiveis = termo.length < 1 ? [] : lista.filter((empresa) => {
     const texto = normalizar(`${empresa.razao_social} ${empresa.nome_fantasia} ${empresa.cnpj}`);
     // CNPJ digitado com ou sem pontuação acha a empresa.
-    return texto.includes(normalizar(termo)) || (termoDigitos.length >= 5 && empresa.cnpj.replace(/\D/g, "").includes(termoDigitos));
+    return combinaBusca(texto, termo) || (termoDigitos.length >= 5 && empresa.cnpj.replace(/\D/g, "").includes(termoDigitos));
   }).slice(0, 15);
 
   async function procurarCandidato(valor: string) {

@@ -209,7 +209,7 @@ export function GerarRescisaoMedio() {
           <span className="text-sm font-semibold text-slate-700">Buscar pessoa</span>
           <div className="relative">
             <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <Input aria-label="Buscar estagiário" placeholder="Nome, empresa ou cargo" value={busca} onChange={(event) => { setBusca(event.target.value); setAberta(true); }} className="pl-9" />
+            <Input aria-label="Buscar estagiário" autoComplete="off" placeholder="Nome, empresa ou cargo" value={busca} onChange={(event) => { setBusca(event.target.value); setAberta(true); }} className="pl-9" />
           </div>
           {aberta && busca.trim().length >= 2 && lista.length ? (
             <div className="max-h-56 overflow-auto rounded-lg border border-slate-200 bg-white">

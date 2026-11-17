@@ -1,6 +1,6 @@
 # Agente — Financeiro
 
-> Última revisão: 2026-11-13 (commit "Holerite de estágio: lançar a folha e gerar os PDFs")
+> Última revisão: 2026-11-16 (pesquisa inteligente nas buscas)
 
 ## Para que serve
 
@@ -106,6 +106,7 @@ Serviços externos:
 
 ## Regras e comportamentos importantes
 
+- **Pesquisa inteligente**: o campo Empresa (Faturamento e Holerite, `EmpresaField`) aceita palavras em qualquer ordem, sem acento, e pedaço do CNPJ. No servidor, cada palavra digitada precisa aparecer, em qualquer ordem e sem diferenciar acento e maiúscula; uma palavra só de números (ou um documento com pontuação) vale contra os dígitos do documento (`condicaoPorPalavras`/`palavrasDaBusca` em `backend/src/lib/busca-texto.ts`, sem a extensão unaccent). Na tela, o campo é o `BuscaInteligente` (`frontend/src/components/busca-inteligente.tsx`): a partir de 2 letras mostra até 6 sugestões do próprio sistema (`frontend/src/lib/sugestoes.ts`), navegáveis com ↑/↓ e Enter; Enter sem sugestão marcada (ou "Pesquisar … na lista") faz a busca normal. O histórico do navegador fica desligado (`autoComplete="off"` no campo e no formulário). As sugestões vêm da lista de Empresas (`sugerirEmpresas` sem link): sem a página `empresas`, ficam vazias e vale só a busca normal. Contas a receber e Régua filtram a lista já carregada com `combinaBusca` (cada palavra, qualquer ordem, sem acento; a Régua acha também o CNPJ só com dígitos), sem histórico do navegador.
 - **Contas a receber — totais e lote:** cartões Recebido (cobranças pagas), A receber (abertas) e Total do período (sem canceladas, com % recebido), calculados na tela sobre a lista filtrada; o rodapé da tabela repete recebido e em aberto. Toda linha tem caixa de seleção e o cabeçalho marca todas as visíveis ("Selecionar todas (N)"). Com seleção, "Escolher ação" abre uma janela com três ações em lote, cada uma mostrando quantas selecionadas alcança: **Enviar relatório e boleto** (só a pagar sem envio, mesmo fluxo de antes, `POST /api/v1/faturamento/relatorios`), **Emitir nota fiscal** (pede confirmação; para cada cobrança sem nota, `GET …/cobrancas/:id/nota` e emite as notas sugeridas com `POST …/cobrancas/:id/nota`; sugestão "padrao" — sem contrato no mês — é pulada e listada para emitir pela linha) e **Verificar no Asaas** (`POST …/cobrancas/:id/sincronizar` em todas não canceladas). Barra de progresso e resumo no fim.
 - **Pesquisar sempre tem efeito:** com os mesmos filtros, recarrega a lista (`refetch`, ou a chave `rodada` no Financeiro); o botão mostra "Pesquisando…" com ícone girando enquanto carrega. Todo botão do sistema afunda e muda o tom ao ser pressionado (`index.css`, `.app-canvas button:active`).
 Permissões (`backend/src/lib/paginas.ts:28-56`; o hook fica em `app.ts:163`). O administrador passa em tudo. Os outros usuários precisam do id da página:

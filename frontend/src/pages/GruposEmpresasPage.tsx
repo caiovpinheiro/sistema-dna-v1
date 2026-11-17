@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, ChevronDown, ChevronRight, Save, Search } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { BuscaOpcao, normalizarBusca } from "@/components/busca-opcao";
+import { BuscaOpcao, combinaBusca, normalizarBusca } from "@/components/busca-opcao";
 import { CobrancaEmpresa, type ValorEmpresa } from "@/components/cobranca-empresa";
 import { Alerta, CabecalhoPagina, FiltroChips } from "@/components/pagina";
 import { Button, Card, Empty, Field, Input, Select, Skeleton, Textarea, cn } from "@/components/ui";
@@ -260,8 +260,7 @@ function AbaGrupo({ selecionado, onSelect }: { selecionado: string; onSelect: (i
   });
   const [busca, setBusca] = useState("");
   const grupo = detalhe.data?.data;
-  const termo = normalizarBusca(busca.trim());
-  const lista = (grupos.data?.data ?? []).filter((item) => normalizarBusca(`${item.nome} ${item.email ?? ""} ${item.telefone ?? ""}`).includes(termo));
+  const lista = (grupos.data?.data ?? []).filter((item) => combinaBusca(`${item.nome} ${item.email ?? ""} ${item.telefone ?? ""}`, busca.trim()));
   if (selecionado) {
     return (
       <div className="grid gap-4">

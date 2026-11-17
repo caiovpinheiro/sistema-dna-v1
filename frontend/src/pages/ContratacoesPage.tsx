@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { ChevronRight, Plus, Search } from "lucide-react";
+import { ChevronRight, Plus } from "lucide-react";
 import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Paginacao, numeroPagina } from "@/components/paginacao";
@@ -7,6 +7,8 @@ import { CabecalhoPagina, CampoFiltro, ResumoResultados } from "@/components/pag
 import { Badge, Button, Card, Empty, Input, Select, Skeleton } from "@/components/ui";
 import { api } from "@/lib/api";
 import { dateBr, formatCpf, regimeLabel, situacaoLabel, textoPlano } from "@/lib/format";
+import { BuscaInteligente } from "@/components/busca-inteligente";
+import { sugerirContratacoes } from "@/lib/sugestoes";
 
 type Row = {
   id_contratacao: number;
@@ -56,17 +58,14 @@ export function ContratacoesPage() {
       />
       <Card key={limpeza} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)]">
         <CampoFiltro rotulo="Buscar" className="sm:col-span-2 lg:col-span-1">
-          <div className="relative">
-            <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <Input
-              aria-label="Busca"
-              placeholder="Candidato, CPF, empresa ou cargo"
-              defaultValue={params.get("q") ?? ""}
-              className="pl-9"
-              onBlur={(event) => { if (event.target.value.trim() !== (params.get("q") ?? "")) update("q", event.target.value.trim()); }}
-              onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }}
-            />
-          </div>
+          <BuscaInteligente
+            ariaLabel="Busca"
+            placeholder="Candidato, CPF, empresa ou cargo"
+            defaultValue={params.get("q") ?? ""}
+            sugerir={(texto, sinal) => sugerirContratacoes(texto, sinal)}
+            onBuscar={(texto) => update("q", texto.trim())}
+            aoSair={(texto) => { if (texto.trim() !== (params.get("q") ?? "")) update("q", texto.trim()); }}
+          />
         </CampoFiltro>
         <CampoFiltro rotulo="Regime">
           <Select aria-label="Regime" defaultValue={params.get("regime") ?? ""} onChange={(event) => update("regime", event.target.value)}>

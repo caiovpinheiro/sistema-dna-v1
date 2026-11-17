@@ -1,6 +1,6 @@
 # Agente — Instituições
 
-> Última revisão: 2026-11-13 (commit "Botões com retorno de clique e Pesquisar sempre recarrega")
+> Última revisão: 2026-11-16 (pesquisa inteligente nas buscas)
 
 ## Para que serve
 
@@ -46,6 +46,7 @@ Gravação (só em "Cadastrar"): `INSERT` em `dna_work.instituicao` (`backend/sr
 
 ## Regras e comportamentos importantes
 
+- **Pesquisa inteligente** (campo Buscar, `q`): cada palavra em razão social, nome fantasia ou e-mail; número acha pedaço do CNPJ ou do telefone. No servidor, cada palavra digitada precisa aparecer, em qualquer ordem e sem diferenciar acento e maiúscula; uma palavra só de números (ou um documento com pontuação) vale contra os dígitos do documento (`condicaoPorPalavras`/`palavrasDaBusca` em `backend/src/lib/busca-texto.ts`, sem a extensão unaccent). Na tela, o campo é o `BuscaInteligente` (`frontend/src/components/busca-inteligente.tsx`): a partir de 2 letras mostra até 6 sugestões do próprio sistema (`frontend/src/lib/sugestoes.ts`), navegáveis com ↑/↓ e Enter; Enter sem sugestão marcada (ou "Pesquisar … na lista") faz a busca normal. O histórico do navegador fica desligado (`autoComplete="off"` no campo e no formulário). Instituição não tem ficha: escolher a sugestão pesquisa pelo nome dela.
 - **Pesquisar sempre tem efeito:** com os mesmos filtros, recarrega a lista (`refetch`, ou a chave `rodada` no Financeiro); o botão mostra "Pesquisando…" com ícone girando enquanto carrega. Todo botão do sistema afunda e muda o tom ao ser pressionado (`index.css`, `.app-canvas button:active`).
 - Filtros (`legado.service.ts:882-889`): `q` com `%texto%` em razão social, fantasia, CNPJ, telefone e e-mail; Tipo Ensino por **igualdade exata** com `tipo_encino` ("Todos" ignora); Conveniada "Sim" → `convenio = '1'`, "Não"/"Nao" → `'0'` ou sem convênio ("Todas" ignora); Cidade e UF com `%texto%`.
 - Ordem: `nome_fantasia` (nulos no fim), depois `razao_social`.

@@ -4,6 +4,7 @@ import { AppError } from "../lib/errors.js";
 import { type ZapDoc, type ZapSignerResult } from "../lib/zapsign.js";
 import { legacyToIso } from "../lib/dates.js";
 import { one, many } from "../repositories/sql.js";
+import { condicaoPorPalavras, palavrasDaBusca } from "../lib/busca-texto.js";
 
 export type Signatario = { nome: string; email: string; status: string; url: string | null };
 
@@ -110,10 +111,10 @@ export class TermoService {
       JOIN dna_work.vaga v ON v.id_vaga = cv.id_vaga
       ${flex}
       WHERE v.tipo_vaga = 1 AND ${nivel}
-        AND (c.nome ILIKE $1 OR e.razao_social ILIKE $1 OR coalesce(e.nome_fantasia, '') ILIKE $1 OR coalesce(v.cargo, '') ILIKE $1)
+        AND ${condicaoPorPalavras(["c.nome", "e.razao_social", "e.nome_fantasia", "v.cargo"], "$1", ["c.cpf"])}
       ORDER BY CASE WHEN cv.status = $2 THEN 0 ELSE 1 END, cv.id_contratacao DESC
       LIMIT 20
-    `, [`%${termo}%`, this.config.CONTRATACAO_STATUS_ATIVO]);
+    `, [palavrasDaBusca(termo), this.config.CONTRATACAO_STATUS_ATIVO]);
   }
 
   async estagiarioMedio(id: number) {

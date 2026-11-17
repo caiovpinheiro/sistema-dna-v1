@@ -1,6 +1,6 @@
 # Agente — Comissão
 
-> Última revisão: 2026-11-13 (commit "Botões com retorno de clique e Pesquisar sempre recarrega")
+> Última revisão: 2026-11-16 (pesquisa inteligente nas buscas)
 
 ## Para que serve
 
@@ -53,6 +53,7 @@ Empresas (`comissaoEmpresas`)
 
 ## Regras e comportamentos importantes
 
+- **Pesquisa inteligente** (campo Empresa das duas telas): palavras em qualquer ordem, sem acento, em nome fantasia e razão social; número acha pedaço do CNPJ. No servidor, cada palavra digitada precisa aparecer, em qualquer ordem e sem diferenciar acento e maiúscula; uma palavra só de números (ou um documento com pontuação) vale contra os dígitos do documento (`condicaoPorPalavras`/`palavrasDaBusca` em `backend/src/lib/busca-texto.ts`, sem a extensão unaccent). Na tela, o campo é o `BuscaInteligente` (`frontend/src/components/busca-inteligente.tsx`): a partir de 2 letras mostra até 6 sugestões do próprio sistema (`frontend/src/lib/sugestoes.ts`), navegáveis com ↑/↓ e Enter; Enter sem sugestão marcada (ou "Pesquisar … na lista") faz a busca normal. O histórico do navegador fica desligado (`autoComplete="off"` no campo e no formulário). As sugestões vêm da lista de Empresas (sem link); sem a página `empresas`, fica só a busca normal.
 - **Pesquisar sempre tem efeito:** com os mesmos filtros, recarrega a lista (`refetch`, ou a chave `rodada` no Financeiro); o botão mostra "Pesquisando…" com ícone girando enquanto carrega. Todo botão do sistema afunda e muda o tom ao ser pressionado (`index.css`, `.app-canvas button:active`).
 - Permissão (`paginas.ts`): `/api/v1/comissao/empresas` exige `comissao-empresas` e `/api/v1/comissao` exige `comissao`. A regra de `/empresas` vem antes na lista, então quem tem só `comissao` recebe 403 na aba Empresas. O administrador passa em tudo.
 - Filtros iniciais: só `ano` = ano atual (`inicial = { ano: nowYear() }`). O mês começa em "Todos" (`MonthField todos`). `lerFiltros` descarta campos vazios.

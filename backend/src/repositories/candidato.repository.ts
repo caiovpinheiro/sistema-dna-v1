@@ -2,6 +2,7 @@ import { isoToLegacy, legacyToday } from "../lib/dates.js";
 import { onlyDigits } from "../lib/normalize.js";
 import type { CandidatoCreate, CandidatoListQuery, CandidatoPatch } from "../schemas/candidato.js";
 import { many, one, REGIME_SQL, sortClause, type Db } from "./sql.js";
+import { condicaoPorPalavras, palavrasDaBusca } from "../lib/busca-texto.js";
 
 export type CandidatoRow = {
   id_candidato: string;
@@ -148,7 +149,7 @@ export class CandidatoRepository {
       params.push(value);
       where.push(sql.replaceAll("$#", `$${params.length}`));
     };
-    if (query.nome) add("c.nome ILIKE $#", `%${query.nome}%`);
+    if (query.nome) add(condicaoPorPalavras(["c.nome"], "$#"), palavrasDaBusca(query.nome));
     if (query.cpf) add("regexp_replace(coalesce(c.cpf, ''), '\\D', '', 'g') = $#", onlyDigits(query.cpf));
     if (query.email) add("c.email ILIKE $#", `%${query.email}%`);
     if (query.telefone) {

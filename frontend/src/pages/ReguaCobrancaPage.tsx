@@ -5,6 +5,7 @@ import { CabecalhoPagina, CampoFiltro } from "@/components/pagina";
 import { Badge, Button, Card, Empty, Input, Skeleton, cn } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 import { dataHoraBr, money } from "@/lib/format";
+import { combinaBusca } from "@/components/busca-opcao";
 
 type Envio = {
   id: string;
@@ -139,7 +140,7 @@ export function ReguaCobrancaPage() {
   const visiveis = useMemo(() => {
     const termo = semAcento(busca.trim());
     return grupos.filter((grupo) => (!filtro || grupo.status === filtro)
-      && (!termo || semAcento(`${grupo.empresa} ${grupo.cnpj ?? ""} ${grupo.unidades.map((unidade) => unidade.empresa).join(" ")}`).includes(termo)));
+      && (!termo || combinaBusca(`${grupo.empresa} ${grupo.cnpj ?? ""} ${(grupo.cnpj ?? "").replace(/\D/g, "")} ${grupo.unidades.map((unidade) => unidade.empresa).join(" ")}`, termo)));
   }, [grupos, filtro, busca]);
   const contagem = (id: string) => (id ? grupos.filter((grupo) => grupo.status === id).length : grupos.length);
   const ocupado = envio.isPending || relatorioEmail.isPending || comprovante.isPending || validar.isPending;
@@ -230,7 +231,7 @@ export function ReguaCobrancaPage() {
           <CampoFiltro rotulo="Buscar empresa" className="w-full sm:w-72">
             <div className="relative">
               <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <Input value={busca} onChange={(event) => setBusca(event.target.value)} placeholder="Nome, filial ou CNPJ" className="pl-9" />
+              <Input value={busca} autoComplete="off" onChange={(event) => setBusca(event.target.value)} placeholder="Nome, filial ou CNPJ" className="pl-9" />
             </div>
           </CampoFiltro>
         </div>
