@@ -1,4 +1,4 @@
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
 import type { AppConfig } from "../config.js";
 import { AppError } from "../lib/errors.js";
 import { DATA_LEGADO, VAGA_ABERTA, intervaloDe } from "../lib/dashboard-periodo.js";
@@ -15,6 +15,84 @@ const CADASTRO_CANDIDATO = "c.data_adicao::date";
 const CADASTRO_VAGA = `COALESCE(${DATA_LEGADO("v.dataabertura")}, v.data_adicao::date)`;
 const ENCAMINHAMENTO = DATA_LEGADO("e.data");
 
+/** Telefone no formato de public.tracker_* (55 + DDD + número), igual a origem/phone.ts normalizePhone; inválido vira NULL. */
+const TELEFONE = (coluna: string) => {
+  const digitos = `regexp_replace(regexp_replace(coalesce(${coluna}, ''), '\\D', '', 'g'), '^0', '')`;
+  return `CASE WHEN length(${digitos}) IN (10, 11) THEN '55' || ${digitos}
+               WHEN length(${digitos}) IN (12, 13) AND ${digitos} LIKE '55%' THEN ${digitos} END`;
+};
+
+export type OrigemDasContratacoes = {
+  dnawork: number;
+  empresa: number;
+  nao_identificado: number;
+  por_criterio: { processo_da_contratacao: number; processo_do_candidato: number; atendimento: number; campanha: number };
+};
+
+/**
+ * Origem de cada contratação do período, nesta ordem:
+ * 1. processo seletivo ligado à contratação (id_contratacao);
+ * 2. o processo seletivo mais recente do mesmo candidato, em qualquer vaga (contratação feita fora do processo,
+ *    em outra vaga/unidade, ou vinda do sistema antigo);
+ * 3. atendimento do candidato marcado "captado_por: dnawork" (candidato que entrou pelo CRM da DNA);
+ * 4. telefone do candidato em public.tracker_leads ou public.tracker_ganhos (campanhas e CRM da DNA).
+ * Os casos 3 e 4 contam como "Captado pela DNAWORK". Sem nenhum deles, "Não identificado".
+ * candidato.id_empresa não serve: a contratação grava nele a empresa contratante.
+ */
+export async function contratacoesPorOrigem(
+  db: Pool | PoolClient,
+  inicio: string,
+  fim: string,
+  esquemas: { dnaWork: string; publico: string } = { dnaWork: "dna_work", publico: "public" },
+): Promise<OrigemDasContratacoes> {
+  const d = esquemas.dnaWork;
+  const p = esquemas.publico;
+  const { rows } = await db.query<OrigemDasContratacoes["por_criterio"] & { dnawork: number; empresa: number; nao_identificado: number }>(`
+    WITH contratos AS (
+      SELECT cv.id_contratacao, cv.id_candidato::text AS id_candidato, c.atendimento->>'captado_por' AS captado,
+             ${TELEFONE("c.celular")} AS tel1, ${TELEFONE("c.telefonefixo")} AS tel2
+      FROM ${d}.conratacaovaga cv
+      LEFT JOIN ${d}.candidato c ON c.id_candidato::text = cv.id_candidato::text
+      WHERE ${CONTRATACAO} >= $1::date AND ${CONTRATACAO} < $2::date
+    ), classe AS (
+      SELECT k.*,
+        (SELECT ps.origem FROM ${d}.processo_seletivo ps
+          WHERE ps.id_contratacao = k.id_contratacao AND ps.origem IN ('dnawork', 'empresa')
+          ORDER BY ps.criado_em DESC LIMIT 1) AS pela_contratacao,
+        (SELECT ps.origem FROM ${d}.processo_seletivo ps
+          WHERE ps.id_candidato::text = k.id_candidato AND ps.origem IN ('dnawork', 'empresa')
+          ORDER BY ps.criado_em DESC LIMIT 1) AS pelo_candidato,
+        (EXISTS (SELECT 1 FROM ${p}.tracker_leads t WHERE t.telefone_normalizado IN (k.tel1, k.tel2))
+          OR EXISTS (SELECT 1 FROM ${p}.tracker_ganhos t WHERE t.telefone_normalizado IN (k.tel1, k.tel2))) AS campanha
+      FROM contratos k
+    ), final AS (
+      SELECT *,
+        CASE WHEN pela_contratacao IS NOT NULL THEN 'processo_da_contratacao'
+             WHEN pelo_candidato IS NOT NULL THEN 'processo_do_candidato'
+             WHEN captado = 'dnawork' THEN 'atendimento'
+             WHEN campanha THEN 'campanha' END AS criterio,
+        COALESCE(pela_contratacao, pelo_candidato, CASE WHEN captado = 'dnawork' OR campanha THEN 'dnawork' END) AS origem
+      FROM classe
+    )
+    SELECT
+      count(*) FILTER (WHERE origem = 'dnawork')::int AS dnawork,
+      count(*) FILTER (WHERE origem = 'empresa')::int AS empresa,
+      count(*) FILTER (WHERE origem IS NULL)::int AS nao_identificado,
+      count(*) FILTER (WHERE criterio = 'processo_da_contratacao')::int AS processo_da_contratacao,
+      count(*) FILTER (WHERE criterio = 'processo_do_candidato')::int AS processo_do_candidato,
+      count(*) FILTER (WHERE criterio = 'atendimento')::int AS atendimento,
+      count(*) FILTER (WHERE criterio = 'campanha')::int AS campanha
+    FROM final
+  `, [inicio, fim]);
+  const r = rows[0] ?? { dnawork: 0, empresa: 0, nao_identificado: 0, processo_da_contratacao: 0, processo_do_candidato: 0, atendimento: 0, campanha: 0 };
+  return {
+    dnawork: r.dnawork,
+    empresa: r.empresa,
+    nao_identificado: r.nao_identificado,
+    por_criterio: { processo_da_contratacao: r.processo_da_contratacao, processo_do_candidato: r.processo_do_candidato, atendimento: r.atendimento, campanha: r.campanha },
+  };
+}
+
 export class DashboardService {
   constructor(
     private readonly db: Pool,
@@ -30,7 +108,7 @@ export class DashboardService {
       throw new AppError(422, "INTERVALO_INVALIDO", "Informe 1 a 366 dias ou um intervalo de datas válido.");
     }
     const ativo = this.config.CONTRATACAO_STATUS_ATIVO;
-    const [base, fluxo, anterior, serie, regimes, ranking, recentes, posicoes, origemAtual, origemAnterior, serieOrigem] = await Promise.all([
+    const [base, fluxo, anterior, serie, regimes, ranking, recentes, posicoes, origemAtual, origemAnterior, serieOrigem, porOrigem] = await Promise.all([
       this.base(ativo),
       this.fluxo(periodo.inicio, periodo.fim),
       this.fluxo(periodo.anteriorInicio, periodo.anteriorFim),
@@ -42,6 +120,7 @@ export class DashboardService {
       this.origem(periodo.inicio, periodo.fim),
       this.origem(periodo.anteriorInicio, periodo.anteriorFim),
       this.serieOrigem(periodo.inicio, periodo.fim),
+      contratacoesPorOrigem(this.db, periodo.inicio, periodo.fim),
     ]);
     const semCapacidade = posicoes.abertas - posicoes.com_capacidade;
     return {
@@ -64,11 +143,14 @@ export class DashboardService {
         encaminhados_dnawork: par(origemAtual.encaminhados, origemAnterior.encaminhados),
         recebidos_empresa: par(origemAtual.recebidos, origemAnterior.recebidos),
         entrevistas: par(origemAtual.entrevistas, origemAnterior.entrevistas),
+        // Gráfico: origem achada pelo processo, pelo atendimento ou pelas campanhas (contratacoesPorOrigem).
         contratacoes: [
-          { origem: "dnawork", total: origemAtual.contratados_dnawork },
-          { origem: "empresa", total: origemAtual.contratados_empresa },
-          { origem: "nao_identificado", total: origemAtual.contratados_sem_origem },
+          { origem: "dnawork", total: porOrigem.dnawork },
+          { origem: "empresa", total: porOrigem.empresa },
+          { origem: "nao_identificado", total: porOrigem.nao_identificado },
         ],
+        contratacoes_criterio: porOrigem.por_criterio,
+        // Conversão continua só com contratações ligadas ao processo (id_contratacao): é contratados ÷ entradas do processo.
         conversao_dnawork: taxaConversao(origemAtual.contratados_dnawork, origemAtual.encaminhados),
         conversao_empresa: taxaConversao(origemAtual.contratados_empresa, origemAtual.recebidos),
       },

@@ -1,6 +1,6 @@
 # Agente — Painel
 
-> Última revisão: 2026-11-13 (commit "Repagina as telas restantes no padrão novo")
+> Última revisão: 2026-11-17 (commit "Painel: origem das contratações além do processo seletivo")
 
 ## Para que serve
 
@@ -67,7 +67,14 @@ Serviço externo: **CRM DNA** (`backend/src/origem/crm-dna.ts`), chamadas `GET /
 - "Empresas com movimentação" = união de empresas com vaga cadastrada, contratação ou encaminhamento no período (`dashboard.service.ts:113-119`).
 - Comparação: diferença absoluta e % (`variacao`); % some quando o anterior é 0.
 - Conversão = contratados da origem ÷ entradas da origem, 1 casa decimal; `null` quando não há entradas → "Dados indisponíveis" (`lib/processo.ts:28-31`).
-- Contratações por origem: `dnawork`/`empresa` pelo `processo_seletivo` ligado à contratação; sem processo = "Não identificado".
+- Contratações por origem (`contratacoesPorOrigem` em `dashboard.service.ts`), nesta ordem:
+  1. `processo_seletivo` ligado à contratação (`id_contratacao`);
+  2. o `processo_seletivo` mais recente do mesmo candidato, em qualquer vaga (contratação feita fora do processo, em outra vaga/unidade ou vinda do sistema antigo);
+  3. `candidato.atendimento->>'captado_por' = 'dnawork'` (candidato que entrou pelo CRM da DNA) → Captado pela DNAWORK;
+  4. celular ou telefone fixo do candidato (normalizado como `origem/phone.ts`) em `public.tracker_leads` ou `public.tracker_ganhos` → Captado pela DNAWORK.
+  Sem nenhum deles = "Não identificado". Embaixo do gráfico aparece quantas foram achadas por cada critério (`origem.contratacoes_criterio`). `candidato.id_empresa` não serve para isso: a contratação grava nele a empresa contratante.
+  Até 2026-11-17 só o critério 1 valia, e quase tudo caía em "Não identificado".
+- Conversão DNAWORK/empresa continua só com as contratações ligadas ao processo (critério 1): é contratados ÷ entradas do processo.
 - Posições disponíveis: soma de `quantidade_posicoes - contratações ativas` (mínimo 0) só das vagas abertas com quantidade preenchida; se nenhuma tiver quantidade, mostra "Dados indisponíveis" com o motivo.
 - Ranking: top 8 empresas por contratações no período. Contratações recentes: as 8 mais recentes da base inteira (fora do período), ordenadas por `data_contratacao`, depois `datainicio`.
 - Origem dos candidatos: período limitado a 3 meses e no máximo até hoje (`origem/date-range.ts` `clampOrigemRange`); sem datas usa 7 dias. Resposta guardada em memória por 10 minutos por período; erro não fica guardado (`origem/cache.ts`). A leitura do CRM tem limite de chamadas e pode demorar minutos.
@@ -88,5 +95,5 @@ Serviço externo: **CRM DNA** (`backend/src/origem/crm-dna.ts`), chamadas `GET /
 
 - Abrir `/`, trocar 7/30/90 dias e um intervalo de datas; conferir o subtítulo e o tooltip da comparação.
 - Rolar até "Origem dos candidatos" e trocar o período (precisa das variáveis do CRM; sem elas aparece erro).
-- Testes: `backend/test/dashboard-periodo.test.ts` (cálculo do intervalo). Não encontrei teste do `DashboardService` nem do módulo `origem`.
+- Testes: `backend/test/dashboard-periodo.test.ts` (cálculo do intervalo) e `backend/test/dashboard-origem.test.ts` (os quatro critérios da origem das contratações; precisa de `DASHBOARD_PG_URL` apontando para um PostgreSQL local, senão é pulado). Não encontrei teste do `DashboardService` nem do módulo `origem`.
 - Comandos: `npm test -w backend`, `npm run lint -w backend`, `npm run lint -w frontend`.

@@ -23,6 +23,7 @@ type Dashboard = {
     recebidos_empresa: Contagem;
     entrevistas: Contagem;
     contratacoes: Array<{ origem: string; total: number }>;
+    contratacoes_criterio?: { processo_da_contratacao: number; processo_do_candidato: number; atendimento: number; campanha: number };
     conversao_dnawork: number | null;
     conversao_empresa: number | null;
   };
@@ -236,6 +237,16 @@ export function DashboardPage() {
                     </ResponsiveContainer>
                   </div>
                 )}
+                {data.origem.contratacoes_criterio ? (
+                  <p className="mt-1 text-xs text-slate-500">
+                    {[
+                      [data.origem.contratacoes_criterio.processo_da_contratacao, "pelo processo da contratação"],
+                      [data.origem.contratacoes_criterio.processo_do_candidato, "por outro processo do candidato"],
+                      [data.origem.contratacoes_criterio.atendimento, "pelo atendimento da DNA"],
+                      [data.origem.contratacoes_criterio.campanha, "por campanha ou CRM (telefone)"],
+                    ].filter(([total]) => Number(total) > 0).map(([total, como]) => `${Number(total).toLocaleString("pt-BR")} ${como}`).join(" · ") || "Nenhuma origem achada no período."}
+                  </p>
+                ) : null}
               </div>
             </div>
             <p className="border-t border-white/10 px-4 py-2 text-xs text-slate-500">
