@@ -73,7 +73,10 @@ export async function buildApp(context: AppContext): Promise<FastifyInstance> {
   app.setValidatorCompiler(validatorCompiler);
   app.setErrorHandler((error: unknown, request, reply) => {
     if (error instanceof AppError) {
-      return reply.code(error.statusCode).send({
+      // O Easypanel troca qualquer resposta 502 pela página "Service is not reachable" e a mensagem se perde.
+      // Falha de serviço externo (OpenAI, CRM, Asaas…) sai como 500, com o código e a mensagem do erro.
+      const status = error.statusCode === 502 ? 500 : error.statusCode;
+      return reply.code(status).send({
         success: false,
         error: { code: error.code, message: error.message, details: error.details },
       });

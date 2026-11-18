@@ -1,6 +1,6 @@
 # Agente — Grupos (Grupos, Empresas e Vagas)
 
-> Última revisão: 2026-11-18 (sistema desligado do Lightsail; sync agendado parado; triagem só com vagas abertas no cadastro)
+> Última revisão: 2026-11-18 (abrir vaga com e-mail longo não falha mais: autor cortado em 40 no log; número até 10 e bairro até 50; sistema desligado do Lightsail; sync agendado parado; triagem só com vagas abertas no cadastro)
 
 ## Para que serve
 
@@ -87,6 +87,8 @@ Serviços externos:
 
 ## Regras e comportamentos importantes
 
+- **Tamanho dos campos** (2026-11-18): `dna_work.log_diversos.usuario` e `.acao` são `varchar(40)`. O `criarVaga` grava `usuario.slice(0, 40)` e `acao.slice(0, 40)`. Antes gravava até 120 e, com e-mail longo (portal: `Portal empresa: <e-mail>` passa de 40 com e-mail de mais de 24 letras), o Postgres recusava, a transação inteira era desfeita e a vaga não abria. No cadastro de empresa, `numero` vai até 10 e `bairro` até 50 (`schemas/cadastro.ts`), o tamanho das colunas de `dna_work.empresa` e `dna_work.vaga_endereco`; texto maior dá 422 com mensagem, em vez de falhar na gravação.
+- **Erro 502 vira 500** (`app.ts`, `setErrorHandler`): o Easypanel troca toda resposta 502 pela página "Service is not reachable" e a mensagem real se perde. Os `AppError(502, …)` (gravação, OpenAI, CRM, Asaas, ZapSign…) saem como 500, com o mesmo código e mensagem.
 - **Busca de grupos** (lista da aba Grupo): usa `combinaBusca` (cada palavra em nome, e-mail ou telefone, em qualquer ordem e sem acento).
 - Cadastro de empresa (`empresaCadastroSchema`): razão social e nome fantasia perdem entidades HTML (`&amp;` → `&`) antes de gravar, com mensagens de tamanho em português.
 

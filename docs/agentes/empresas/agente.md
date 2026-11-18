@@ -1,6 +1,6 @@
 # Agente — Empresas
 
-> Última revisão: 2026-11-16 (pesquisa inteligente nas buscas)
+> Última revisão: 2026-11-18 (limites do formulário iguais às colunas: número 10, bairro 50, IE 20, responsável 150; pesquisa inteligente nas buscas)
 
 ## Para que serve
 
@@ -70,6 +70,7 @@ Serviços externos: nenhum.
 
 ## Regras e comportamentos importantes
 
+- **Tamanho dos campos** (`schemas/empresa.ts`, 2026-11-18): `numero` até 10, `bairro` até 50, `ie` até 20 e `responsavel` até 150, o tamanho das colunas de `dna_work.empresa`. Antes o formulário aceitava mais e a gravação falhava no banco; agora volta 422 com a mensagem do campo.
 - **Pesquisa inteligente** (campo Buscar, `q`): procura em razão social e nome fantasia; número acha pedaço do CNPJ; o `id_empresa` exato continua valendo. No servidor, cada palavra digitada precisa aparecer, em qualquer ordem e sem diferenciar acento e maiúscula; uma palavra só de números (ou um documento com pontuação) vale contra os dígitos do documento (`condicaoPorPalavras`/`palavrasDaBusca` em `backend/src/lib/busca-texto.ts`, sem a extensão unaccent). Na tela, o campo é o `BuscaInteligente` (`frontend/src/components/busca-inteligente.tsx`): a partir de 2 letras mostra até 6 sugestões do próprio sistema (`frontend/src/lib/sugestoes.ts`), navegáveis com ↑/↓ e Enter; Enter sem sugestão marcada (ou "Pesquisar … na lista") faz a busca normal. O histórico do navegador fica desligado (`autoComplete="off"` no campo e no formulário). A sugestão abre a ficha (`/empresas/:id`).
 - **Pesquisar sempre tem efeito:** com os mesmos filtros, recarrega a lista (`refetch`, ou a chave `rodada` no Financeiro); o botão mostra "Pesquisando…" com ícone girando enquanto carrega. Todo botão do sistema afunda e muda o tom ao ser pressionado (`index.css`, `.app-canvas button:active`).
 - **Nomes com entidades HTML** (`&amp;`, `&quot;`… gravados pelo sistema antigo): os schemas de empresa e do cadastro em Grupos limpam razão social, nome fantasia e responsável ao gravar (`semEntidades` em `lib/normalize.ts`). O formulário de edição mostra os nomes já limpos e compara com o valor do banco, então salvar grava a versão limpa. Mensagens de tamanho da razão social/nome fantasia em português (antes vinha o texto padrão do zod, em inglês).

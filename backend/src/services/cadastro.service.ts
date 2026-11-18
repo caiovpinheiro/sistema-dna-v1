@@ -705,7 +705,8 @@ export class CadastroService {
           );
           await pg.query(
             "INSERT INTO dna_work.log_diversos (usuario, id_empresa, id_vaga, acao, data) VALUES ($1,$2,$3,$4, now())",
-            [usuario.slice(0, 120), empresa.id, id, acao],
+            // log_diversos.usuario e .acao são varchar(40): texto maior derrubava a abertura da vaga inteira.
+            [usuario.slice(0, 40), empresa.id, id, acao.slice(0, 40)],
           );
         }
         await pg.query(
