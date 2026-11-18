@@ -89,13 +89,27 @@ const SORTS: Record<string, string> = {
   status: "v.status",
 };
 
+/**
+ * Nomes diferentes que são o mesmo cargo no filtro (chave → chave do cargo principal).
+ * Sem isso o filtro mostrava "Operadora de Caixa", "Operador de Caixa/loja" e "Operador de Caixa (com Delivery)"
+ * como opções à parte, e elas não achavam as vagas de Operador de Caixa.
+ */
+const MESMO_CARGO: Record<string, string> = {
+  "operadora de caixa": "operador de caixa",
+  "operador de caixa loja": "operador de caixa",
+  "operador de caixa com delivery": "operador de caixa",
+};
+
 /** Cargos que já tiveram vaga, juntando as grafias diferentes pela mesma chave ("Operador De Loja" e "Operador de Loja"). */
 export function cargosDistintos(nomes: string[]) {
   const porChave = new Map<string, { chave: string; nome: string; variantes: string[] }>();
   for (const bruto of nomes) {
-    const chave = chaveCargo(bruto);
-    if (!chave) continue;
+    const propria = chaveCargo(bruto);
+    if (!propria) continue;
+    const chave = MESMO_CARGO[propria] ?? propria;
     const item = porChave.get(chave) ?? { chave, nome: nomePadronizado(bruto), variantes: [] };
+    // O nome mostrado é o do cargo principal, não o da variante que apareceu primeiro.
+    if (propria === chave && chaveCargo(item.nome) !== chave) item.nome = nomePadronizado(bruto);
     item.variantes.push(bruto);
     porChave.set(chave, item);
   }

@@ -1,6 +1,6 @@
 # Agente — Vagas
 
-> Última revisão: 2026-11-18 (sistema desligado do Lightsail; sync agendado parado; triagem só com vagas abertas no cadastro)
+> Última revisão: 2026-11-18 (filtro de cargo junta Operadora de Caixa, Operador de Caixa/loja e com Delivery em Operador de Caixa; sistema desligado do Lightsail)
 
 ## Para que serve
 
@@ -102,7 +102,7 @@ Menu: `vagaLinks` em `frontend/src/components/shell.tsx` (linhas 36-39). Para li
 - Leitura: `horarioDoEspelho` (triagem.service.ts:68) usa o `texto=` quando existe; senão monta o texto pela grade com `textoDoHorario` ("Segunda a sexta, 08:00 às 17:00; sábado por escala, 08:00 às 14:00").
 - Os modelos (`vaga_repetida.horario`) guardam o texto de `textoDoModelo`. A consulta de modelos sempre remonta o texto pelos dias, porque o valor guardado pode estar no formato do sync.
 
-**Lightsail (MySQL antigo): desligado desde 18/11/2026.** O sistema não lê nem grava mais nada lá; `db/mysql.ts` foi removido. As variáveis `DNA_WORK_DB_*` continuam no `config.ts` só para scripts de conferência. A fonte de tudo é o Postgres (`dna_work.*` e `public.*`).
+**Lightsail (MySQL antigo): desligado desde 18/11/2026.** O sistema não lê nem grava mais nada lá; `db/mysql.ts` foi removido. O pacote `mysql2` e as variáveis `DNA_WORK_DB_*` também foram removidos. A fonte de tudo é o Postgres (`dna_work.*` e `public.*`).
 
 **Alinhamento de `public.vaga`** (`VagasAbertasSyncService.alinhar`, só Postgres, um por vez)
 - Roda quando a situação de uma vaga muda (`VagaService.update`) e no começo de cada busca da Triagem. Não tem mais agenda.
@@ -133,7 +133,7 @@ Menu: `vagaLinks` em `frontend/src/components/shell.tsx` (linhas 36-39). Para li
 - **Quantidade**: não pode ficar abaixo das posições ocupadas (409 `QUANTIDADE_INSUFICIENTE`). Vaga sem quantidade conta como 1 posição livre (`posicoesLivres`). Patch vazio dá 400 `NADA_PARA_ATUALIZAR`.
 - **Modalidade**: precisa existir em `dna_work.modalidade_vaga` (422 `MODALIDADE_INVALIDA`).
 - **Migration**: listar, ver e editar exigem a coluna `quantidade_posicoes` (`ensureCapacityColumn`). Sem ela, erro de migration, e a lista mostra o aviso da linha 94.
-- **Lista**: ordenada por `dataabertura desc`. Vagas "teste…" com status bloqueado vão para o fim. O filtro de cargo por `cargo_chave` pega todas as grafias do mesmo cargo. Trocar de grupo limpa a empresa que é de outro grupo.
+- **Lista**: ordenada por `dataabertura desc`. Vagas "teste…" com status bloqueado vão para o fim. O filtro de cargo por `cargo_chave` pega todas as grafias do mesmo cargo. Nomes diferentes que são o mesmo cargo ficam em `MESMO_CARGO` (`vaga.repository.ts`): hoje "Operadora de Caixa", "Operador de Caixa/loja" e "Operador de Caixa (com Delivery)" entram na opção "Operador de Caixa". Antes eram opções à parte e, com um grupo escolhido, não achavam vaga. Cargo novo com esse problema: acrescente a chave (`chaveCargo`) ali. Trocar de grupo limpa a empresa que é de outro grupo.
 - **Prioridade**: Alta, Média ou Baixa, mostrada na primeira coluna da lista (e nos cartões). Trocar no seletor grava na hora, sem confirmação, só em `dna_work.vaga.prioridade` (`UPDATE`). A lista e `GET /vagas/:id` devolvem `prioridade`. O filtro "Prioridade" (`?prioridade=`) mostra só as vagas daquela prioridade e não muda a ordem da lista. Na Triagem, alta vai para o topo e baixa para o fim (ver agente da Triagem).
 - **Tempo em aberto**: só para vagas abertas; âmbar a partir de 30 dias, vermelho a partir de 60.
 - **`vaga_id`** (`lib/vaga-id.ts`): vagas em `public.vaga` com **mesma empresa e todos os campos de `CAMPOS_ASSINATURA` iguais** dividem o mesmo `vaga_id`. Cada grupo fica com o `vaga_id` que a maioria já tinha, para mudar o mínimo possível os ids já enviados a candidatos. A Triagem mostra só uma vaga por `vaga_id`.

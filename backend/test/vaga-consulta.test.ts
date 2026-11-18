@@ -51,3 +51,10 @@ test("cargos já abertos juntam as grafias diferentes", () => {
   const cargos = cargosDistintos(["Operador De Loja", "Operador de Loja", "operador de loja ", "Açougueiro:", "  "]);
   assert.deepEqual(cargos.map((item) => [item.nome, item.variantes.length]), [["Açougueiro", 1], ["Operador de Loja", 3]]);
 });
+
+test("Operador de Caixa junta operadora, /loja e com delivery numa opção só", () => {
+  const cargos = cargosDistintos([
+    "Operador de Caixa (com Delivery)", "Operadora de Caixa ", "Operador de caixa/loja", "Operador de Caixa", "Operador de caixa", "Fiscal de Caixa",
+  ]);
+  assert.deepEqual(cargos.map((item) => [item.nome, item.variantes.length]), [["Fiscal de Caixa", 1], ["Operador de Caixa", 5]]);
+});
