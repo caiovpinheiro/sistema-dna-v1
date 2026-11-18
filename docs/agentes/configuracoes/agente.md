@@ -1,6 +1,6 @@
 # Agente — Configurações
 
-> Última revisão: 2026-11-13 (commit "Disparador pelo CRM: conferir telefones, criar deals e disparar template.")
+> Última revisão: 2026-11-18 (sistema desligado do Lightsail; sync agendado parado; triagem só com vagas abertas no cadastro)
 
 ## Para que serve
 
@@ -40,7 +40,7 @@ Backend
 | POST | `/api/v1/configuracoes/usuarios` | Cria usuário ativo com senha e páginas; devolve o painel + `criado` (id) | `AcessoService.criar` |
 | PATCH | `/api/v1/configuracoes/usuarios/:id` | Salva `ativo`, `paginas` e `senha` opcional | `AcessoService.salvar` |
 | DELETE | `/api/v1/configuracoes/usuarios/:id` | Apaga o usuário e as páginas | `AcessoService.apagar` |
-| POST | `/api/v1/configuracoes/sync?dry=1` | Dispara o sync de vagas abertas, cargos e Notion manualmente | `SyncCicloService.executar` — **não é usado por esta tela** (não encontrei chamada no frontend) |
+| POST | `/api/v1/configuracoes/sync?dry=1` | Dispara o sync de vagas abertas (só Postgres), cargos e Notion manualmente. O agendado está desligado (só com `NOTION_SYNC_AGENDA=1`) | `SyncCicloService.executar` — **não é usado por esta tela** (não encontrei chamada no frontend) |
 
 Todas as respostas de escrita devolvem o painel inteiro (mesmo formato do GET).
 

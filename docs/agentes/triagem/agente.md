@@ -1,6 +1,6 @@
 # Agente — Triagem
 
-> Última revisão: 2026-11-16 (pesquisa inteligente nas buscas)
+> Última revisão: 2026-11-18 (sistema desligado do Lightsail; sync agendado parado; triagem só com vagas abertas no cadastro)
 
 ## Para que serve
 
@@ -48,7 +48,7 @@ O menu fica em `frontend/src/components/shell.tsx` (`triagemLinks`, linhas 16-19
 | Método | Caminho | O que faz | Onde está no backend |
 |---|---|---|---|
 | POST | `/api/v1/triagem/vagas` | Busca rápida: vagas no raio, filtradas por tipo, sexo e idade. | routes/index.ts:772 → `TriagemService.buscar` |
-| GET | `/api/v1/triagem/empresas-pendentes` | Empresas do agente com vaga aberta no Lightsail que ainda não estão em `public.empresa`. | routes/index.ts:786 → `TriagemService.empresasPendentes` |
+| GET | `/api/v1/triagem/empresas-pendentes` | Empresas do agente com vaga aberta no cadastro (`dna_work`) que ainda não estão em `public.empresa`. | routes/index.ts:786 → `TriagemService.empresasPendentes` |
 | GET | `/api/v1/triagem/ia/status` | Diz se a Luna está configurada (o modelo só é conferido na OpenAI com `?verificar=1`) e o estado do JEV (pronto, motivo, escala, lote). | routes/index.ts:789 |
 | POST | `/api/v1/triagem/curriculo` | Envia o currículo (arquivo base64 **ou** texto) para a Luna e recebe o perfil e o CEP. Limite de 8 MB no corpo, 20 req/min. | routes/index.ts:799 → `prepararCurriculo` + `CurriculoService.analisar` |
 | POST | `/api/v1/triagem/compatibilidade` | Score do JEV para até 30 vagas (`vagaIds`), 30 req/min. | routes/index.ts:814 → `TriagemMatchingService.avaliar` |
@@ -68,8 +68,8 @@ O menu fica em `frontend/src/components/shell.tsx` (`triagemLinks`, linhas 16-19
 - `dna_work.flex`: `id_flex` → `valor`, que traduz o código de escolaridade da vaga antes de mandar ao JEV.
 - `public.candidatos_dados`: lida pelo dossiê, nunca gravada aqui. Campos: `dealId`, `telefone`, `resumo_cv`, `nome`, `idade`, `escolaridade`, `turno`, `sexo`, `"teste comportamental"`, `info_conducoes`, `resumo_entrevista`, `id_vaga_escolhida`, `id_empresa`, entre outros. A consulta fica em `SQL_CANDIDATO` (dossie.service.ts:74).
 
-**MySQL Lightsail (legado)**
-- `empresa` + `vaga`: em `empresasPendentes`, empresas com `sede = 10` e `vaga.status = 0`. Sem conexão MySQL, a lista volta vazia.
+**Lightsail: não é mais usado** (desligado em 18/11/2026). `empresasPendentes` lê `dna_work.empresa` + `dna_work.vaga` (`sede = 10`, `status = 0`).
+- Antes de cada busca, `buscar` chama o alinhamento de `public.vaga` com as vagas abertas do cadastro (`VagasAbertasSyncService.alinhar`) e a consulta só traz vaga com `dna_work.vaga.status = 0` (contratada, pausada ou fechada não aparece).
 
 **Serviços externos**
 - **OpenAI (Responses API)**: análise do currículo (Luna) e geração do dossiê. Variáveis `OPENAI_API_KEY`, `OPENAI_API_URL`, `LUNA_MODEL` e `LUNA_TIMEOUT_MS`. As chamadas usam `store: false`.

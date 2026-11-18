@@ -1,10 +1,10 @@
 # Agente — Grupos (Grupos, Empresas e Vagas)
 
-> Última revisão: 2026-11-16 (pesquisa inteligente nas buscas)
+> Última revisão: 2026-11-18 (sistema desligado do Lightsail; sync agendado parado; triagem só com vagas abertas no cadastro)
 
 ## Para que serve
 
-Tela de cadastro em cascata: primeiro o grupo, depois a empresa do grupo, depois a vaga da empresa. É aqui que se cria empresa nova (gravando no Lightsail e no Postgres, com geocodificação) e que se abrem vagas (uma ou várias posições de uma vez, opcionalmente a partir de um modelo global). O mesmo formulário de vaga, sem empresa e sem quantidade, é usado para criar/editar modelos globais (`ModeloFormPage`).
+Tela de cadastro em cascata: primeiro o grupo, depois a empresa do grupo, depois a vaga da empresa. É aqui que se cria empresa nova (gravando só no Postgres, com geocodificação) e que se abrem vagas (uma ou várias posições de uma vez, opcionalmente a partir de um modelo global). O mesmo formulário de vaga, sem empresa e sem quantidade, é usado para criar/editar modelos globais (`ModeloFormPage`).
 
 ## Rotas e abas
 
@@ -41,7 +41,7 @@ Backend
 - Vagas do grupo: `VagaService.doGrupo` (`backend/src/services/vaga.service.ts`) usa `VagaRepository.contarPorSituacao` e `VagaRepository.vagasJuntasDoGrupo`, que partilham o SQL `sqlGruposDoGrupo` (`backend/src/repositories/vaga.repository.ts`). Não usa a `list` de Consultar Vagas, porque junta as vagas repetidas.
 - Schemas: `backend/src/schemas/cadastro.ts` (`grupoCreateSchema`, `empresaCadastroSchema`, `vagaCadastroSchema`, `modeloVagaSchema`), `backend/src/schemas/common.ts`.
 - Libs usadas na vaga: `backend/src/lib/horario-escala.ts`, `backend/src/lib/money.ts`, `backend/src/lib/dates.ts` (`legacyToday`), `backend/src/lib/vaga-id.ts` (`reagruparVagaIds`), `backend/src/services/vagas-abertas-sync.service.ts` (`horarioDe`, `faixaDaSemana`).
-- MySQL: `backend/src/db/mysql.ts`.
+- MySQL: não é mais usado (o `db/mysql.ts` foi removido em 18/11/2026).
 
 ## API usada
 
@@ -53,7 +53,7 @@ Backend
 | GET | `/api/v1/grupos/:id/vagas?situacao&page&pageSize` | `{ contagem, disponiveis, vagas }` + `meta.total` (total de vagas já juntas). Cada item de `vagas` traz também `linhas` (quantas aberturas juntou) e `codigos`. `contagem` e `disponiveis` têm `aberta`, `pausada`, `contratada`, `fechada` e `total` (vagas e posições livres). As duas somam todas as empresas do grupo e não depende do filtro; `vagas` é a página da lista na `situacao` pedida (sem `situacao`, todas). | `routes/index.ts` → `VagaService.doGrupo` |
 | POST | `/api/v1/grupos` | Cria grupo | `routes/index.ts:754` → `criarGrupo` |
 | GET | `/api/v1/grupos-empresas/empresas` | Empresas de `public.empresa` (até 500) para o seletor da vaga | `routes/index.ts:758` → `listarEmpresas` |
-| POST | `/api/v1/grupos-empresas/empresas` | Cria (ou reativa) empresa no Lightsail e no Postgres | `routes/index.ts:759` → `criarEmpresa` |
+| POST | `/api/v1/grupos-empresas/empresas` | Cria (ou reativa) empresa no Postgres | `routes/index.ts:759` → `criarEmpresa` |
 | GET | `/api/v1/grupos-empresas/vagas` | Lista de modelos globais para o campo "Modelo" (resposta tem `modelos` e `data`) | `routes/index.ts:762` → `listarModelos` |
 | POST | `/api/v1/grupos-empresas/vagas` | Abre a(s) vaga(s) | `routes/index.ts:768` → `criarVaga(body, request.user.email)` |
 | POST | `/api/v1/servico/vagas` | Portal das empresas abre vaga (header `x-service-token` = `SERVICE_TOKEN`, sem login; corpo = `vagaCadastroSchema` + `usuario`) | `app.ts` → `criarVaga(body, "Portal empresa: <usuario>", "Abertura de vaga Portal empresa")` |
@@ -75,13 +75,11 @@ Postgres, schema `public` (tabelas criadas/ajustadas por `MIRROR_SQL` em `cadast
 - `public.cargo` — `id`, `nome` (padronizado), `chave` (única), `descricao`, `requisitos`. Lido sempre; gravado quando a vaga/modelo vem com `novo_cargo` e a chave ainda não existe.
 - `public.valor_empresas` — só leitura (cobrança por empresa do grupo).
 
-Postgres, schema `dna_work` (espelho do Lightsail, gravado junto):
+Postgres, schema `dna_work` (cadastro do sistema; o Lightsail foi desligado em 18/11/2026 e não é mais lido nem gravado):
 - Empresa: `dna_work.empresa` (insert ou update com `status=1`, `sede=10`, `matriz=id`, `lat`/`lng`, `razao_sem_acento`/`fantasia_sem_acento`), `dna_work.assinaturas_empresa` (linhas `TCE` e `Convenio`, só em empresa nova).
 - Vaga: `dna_work.codigo_vaga`, `dna_work.vaga` (uma por posição, `status=0`, `publicar=1`, `sede=10`, `faturar='S'`, `quantidade_posicoes=1`, `remoto=0`, `beneficios_texto`), `dna_work.etapa_vaga`, `dna_work.log_diversos` (ação "Abertura de vaga ADM" com o e-mail do usuário, ou "Abertura de vaga Portal empresa" quando vem do portal), `dna_work.vaga_valores` (por `comparador`, valores zerados), `dna_work.vaga_endereco`.
 
-Lightsail MySQL (variáveis `DNA_WORK_DB_HOST`, `DNA_WORK_DB_PORT`, `DNA_WORK_DB_USER`, `DNA_WORK_DB_PASS`, `DNA_WORK_DB_NAME`; sem pool configurado → 503 `MYSQL_NAO_CONFIGURADO`):
-- Empresa: lê `empresa` pelo CNPJ (dígitos); grava `empresa` (insert ou update de reativação) e `assinaturas_empresa` (só nova).
-- Vaga: lê `empresa` (endereço), `codigo_vaga` e `vaga.comparador` (unicidade); grava `codigo_vaga`, `vaga`, `etapa_vaga`, `log_diversos`, `vaga_valores`, `vaga_endereco`.
+Leituras de apoio, também no Postgres: `dna_work.empresa` pelo CNPJ (reativação) e pelo id (endereço da vaga), `dna_work.codigo_vaga` e `dna_work.vaga.comparador` (unicidade).
 
 Serviços externos:
 - Google Geocoding (`https://maps.googleapis.com/maps/api/geocode/json`) com `GOOGLE_MAPS_API_KEY` — obrigatório para criar empresa (sem a chave → 503 `GOOGLE_NAO_CONFIGURADO`; sem resultado → 502 `GEOCODE_FALHOU`). Tenta endereço completo e depois só o CEP.
@@ -98,9 +96,9 @@ Serviços externos:
   - **CNPJ opcional** (`optionalCnpj` em `schemas/common.ts`): em branco vira "sem CNPJ"; preenchido tem que ser válido. Sem CNPJ não há checagem de duplicidade nem reativação: é sempre empresa nova (UUID novo), gravada com `cnpj` `NULL` no Postgres (`public.empresa` e `dna_work.empresa`) e `''` no Lightsail (a coluna do legado pode não aceitar `NULL`).
   - **Trava da empresa sem CNPJ** (`barrarEmpresaSemCnpjRepetida` + `empresaParecida`): recusa com 409 `EMPRESA_JA_CADASTRADA` (`details.id_empresa`) quando já existe empresa com o **mesmo CEP** e a razão social ou o nome fantasia iguais (qualquer combinação entre os dois lados, ignorando acento, caixa, espaço e pontuação; `chaveDoNome`). Procura em `public.empresa` e nas ativas (`status = 1`) de `dna_work.empresa`. Mesmo nome em CEP diferente (filial) passa.
   - Com CNPJ: se já estiver em `public.empresa` → 409 `CNPJ_JA_CADASTRADO`.
-  - No Lightsail (só com CNPJ): mais de uma empresa com o CNPJ → 409 `CNPJ_AMBIGUO`; exatamente uma → **reativa** (reusa o `id_empresa`, atualiza dados, `status=1`) e responde `reativada: true`; nenhuma → cria com UUID novo.
+  - Em `dna_work.empresa` (só com CNPJ): mais de uma empresa com o CNPJ → 409 `CNPJ_AMBIGUO`; exatamente uma → **reativa** (reusa o `id_empresa`, atualiza dados, `status=1`) e responde `reativada: true`; nenhuma → cria com UUID novo.
   - CEP, logradouro, bairro, cidade e UF obrigatórios; número e complemento opcionais; e-mail ou telefone.
-  - Gravação "dupla": abre transação no MySQL, grava no Postgres (`public.empresa` + `dna_work.empresa`) em outra transação, faz commit no Postgres e só então no MySQL. Se o MySQL falhar depois do Postgres, `reverterEmpresaPostgres` apaga `public.empresa` e desfaz/restaura `dna_work.empresa` com a prévia lida antes. Não é atômico de verdade (sem 2PC).
+  - Gravação numa transação só do Postgres (`public.empresa` + `dna_work.empresa` via `gravarEmpresaNoCadastro`): se algo falhar, nada fica gravado.
 - **Vaga** (`criarVaga`, `cadastro.service.ts:594`):
   - A empresa tem que estar em `public.empresa` (422 `EMPRESA_FORA_DA_TELA`), ou seja, cadastrada por esta tela (ou sincronizada para lá).
   - Cargo: exatamente um entre `cargo_id` (da lista) e `novo_cargo` (`regrasDaVaga`). `novo_cargo` com chave já existente reaproveita o cargo existente e seus textos (`reaproveitado: true`, a tela avisa). A vaga sempre recebe nome, descrição e requisitos do cargo.
@@ -124,7 +122,7 @@ Serviços externos:
 ## Cuidados ao mudar
 
 - `ensureMirror` roda `CREATE TABLE/INDEX IF NOT EXISTS` e `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` em produção na primeira chamada. Mudanças em `MIRROR_SQL` alteram o schema do Postgres real.
-- A gravação em dois bancos depende da ordem: transação MySQL aberta → Postgres commit → MySQL commit → compensação manual. Ao adicionar uma tabela, inclua o insert nos dois lados **e** no rollback manual (`reverterEmpresaPostgres` / `apagarVagaPostgres`).
+- Empresa e vaga gravam numa transação do Postgres cada. Ao adicionar uma tabela, inclua o insert dentro dessa transação.
 - As colunas e valores fixos do legado (`sede=10`, `tipo_empresa=1`, `usa_agente=1`, `etapa_vaga` padrão, `vaga_valores` zerado, `km=30`) imitam o sistema antigo; outras telas e o portal leem esses valores.
 - `public.vaga.vaga_id` é recalculado por `reagruparVagaIds` (assinatura em `lib/vaga-id.ts`); triagem e sync de vagas abertas dependem desse agrupamento.
 - `formularioDaLinha` entende dois formatos de `horario` (texto por dia e grade do sync `;turno;...;1=HH:MM-HH:MM`); mantenha os dois.
@@ -136,7 +134,7 @@ Serviços externos:
 
 ## Como testar
 
-- Manual (só em base de teste: empresa e vaga gravam no Lightsail real e no Postgres, e a empresa chama o Google): criar grupo sem e-mail e sem telefone (deve recusar); criar empresa com CNPJ já existente; criar empresa com o CNPJ em branco e abrir vaga para ela; abrir vaga escolhendo modelo, trocando tipo/carga/horários e marcando escala/folga; abrir vaga com "+ Novo cargo" com nome igual a um cargo existente (aviso de reaproveitamento); em `/vagas/modelos/novo`, criar um modelo e tentar criar outro com o mesmo cargo e tipo (409).
+- Manual (só em base de teste: empresa e vaga gravam no Postgres, e a empresa chama o Google): criar grupo sem e-mail e sem telefone (deve recusar); criar empresa com CNPJ já existente; criar empresa com o CNPJ em branco e abrir vaga para ela; abrir vaga escolhendo modelo, trocando tipo/carga/horários e marcando escala/folga; abrir vaga com "+ Novo cargo" com nome igual a um cargo existente (aviso de reaproveitamento); em `/vagas/modelos/novo`, criar um modelo e tentar criar outro com o mesmo cargo e tipo (409).
 - Testes backend:
   - `backend/test/cadastro-validacao.test.ts`: regras de grupo, empresa (inclusive CNPJ opcional) e vaga nos schemas (inclusive "aceita ensino médio" obrigatório no estágio).
   - `backend/test/cargo.test.ts`: chave/nome padronizado, criação e reaproveitamento de cargo, cargo da lista vs. novo, cargo de modelo antigo.

@@ -1,8 +1,6 @@
 import { randomUUID } from "node:crypto";
-import type { RowDataPacket } from "mysql2";
 import type { Pool } from "pg";
 import type { AppConfig } from "../config.js";
-import type { MysqlPool } from "../db/mysql.js";
 import { moneyToNumber } from "../lib/money.js";
 import { reagruparVagaIds, type MudancaVagaId } from "../lib/vaga-id.js";
 import { sincronizarEnderecoEmpresas, type EnderecoAtualizado } from "../lib/empresa-endereco.js";
@@ -14,7 +12,8 @@ const TIPO_BENEFICIO: Record<string, string> = { M: "Mensal", D: "Diário", S: "
 const JORNADA: Record<number, string> = { 0: "fixa", 1: "escala" };
 const TIPO_TRABALHO: Record<number, string> = { 0: "presencial", 1: "remoto", 2: "hibrido" };
 
-type VagaLightsail = RowDataPacket & Record<string, unknown> & {
+/** Vaga aberta do cadastro (dna_work.vaga, mesmas colunas do sistema antigo) com o nome da empresa. */
+type VagaLightsail = Record<string, unknown> & {
   id_vaga: string;
   id_empresa: string;
   comparador: string | null;
@@ -160,7 +159,12 @@ export function horarioAlinhado(espelho: string | null, doLightsail: string): st
 /** Campos do espelho que diferem do Lightsail. Benefícios, idade e salário só mudam quando o Lightsail tem valor. */
 export function diferencasEspelho(atual: CamposEspelho, linha: LinhaVaga): Record<string, unknown> {
   const mudar: Record<string, unknown> = {};
-  const horario = horarioAlinhado(atual.horario, linha.horario);
+  // O texto do horário em public.vaga vem do Notion ou da edição da vaga: o alinhamento só corrige a grade e mantém o texto.
+  const textoAtual = (atual.horario ?? "").split(";texto=").slice(1).join(";texto=");
+  const gradeNova = linha.horario.split(";texto=")[0];
+  const horario = textoAtual
+    ? (`${gradeNova};texto=${textoAtual}` === atual.horario ? null : `${gradeNova};texto=${textoAtual}`)
+    : horarioAlinhado(atual.horario, linha.horario);
   if (horario !== null) mudar.horario = horario;
   if ((atual.turno ?? null) !== (linha.turno ?? null)) mudar.turno = linha.turno;
   if (linha.idade != null && Number(atual.idade) !== linha.idade) mudar.idade = linha.idade;
@@ -173,18 +177,25 @@ export function diferencasEspelho(atual: CamposEspelho, linha: LinhaVaga): Recor
 export class VagasAbertasSyncService {
   constructor(
     private readonly db: Pool,
-    private readonly mysql: MysqlPool | null,
     private readonly config: AppConfig,
     private readonly log: Logger,
   ) {}
 
+  private alinhando: Promise<ResultadoAbertas> | null = null;
+
+  /**
+   * Deixa public.vaga (triagem, n8n) igual às vagas abertas do cadastro: entra a que abriu, sai a que fechou.
+   * Só Postgres. Chamado quando a situação de uma vaga muda e antes da busca da triagem. Um por vez.
+   */
+  alinhar(origem: string): Promise<ResultadoAbertas> {
+    this.alinhando ??= this.executar(false, origem).finally(() => {
+      this.alinhando = null;
+    });
+    return this.alinhando;
+  }
+
   async executar(dry: boolean, slot: string): Promise<ResultadoAbertas> {
     const resultado: ResultadoAbertas = { dry, lidas: 0, novas: 0, jaExistiam: 0, fora: 0, erros: 0, pendentes: [], inseridas: [], apagadas: [], atualizadas: [], reagrupadas: [], enderecos: [] };
-    if (!this.mysql) {
-      this.log.error({ slot }, "sync vagas: MySQL não configurado");
-      return resultado;
-    }
-
     // 0) Endereço da ficha que mudou volta para public.empresa e public.vaga, antes de copiar vagas novas com a coordenada da empresa.
     try {
       resultado.enderecos = await sincronizarEnderecoEmpresas(this.db, this.config.GOOGLE_MAPS_API_KEY, this.log, { dry });
@@ -204,11 +215,12 @@ export class VagasAbertasSyncService {
     const empresaPorId = new Map(empresas.map((empresa) => [empresa.id, empresa]));
 
     // 1) Copiar as novas.
-    const [abertas] = await this.mysql.query<VagaLightsail[]>(`
+    // Fonte: o cadastro do sistema novo (dna_work.vaga). O Lightsail não é mais lido.
+    const { rows: abertas } = await this.db.query<VagaLightsail>(`
       SELECT v.*, e.nome_fantasia, e.razao_social, e.cnpj
-      FROM vaga v
-      INNER JOIN empresa e ON e.id_empresa = v.id_empresa
-      WHERE e.sede = 10 AND v.status = 0 AND v.tipo_vaga IN (1, 2, 4)
+      FROM dna_work.vaga v
+      INNER JOIN dna_work.empresa e ON e.id_empresa = v.id_empresa
+      WHERE e.sede::text = '10' AND v.status::text = '0' AND v.tipo_vaga::text IN ('1', '2', '4')
     `);
     resultado.lidas = abertas.length;
     const pendentes = new Map<string, EmpresaPendenteSync>();
@@ -253,7 +265,7 @@ export class VagasAbertasSyncService {
       }
     }
 
-    // 1b) Alinhar public.vaga das abertas que já estavam no sistema (o cadastro ou a grade podem ter mudado no Lightsail).
+    // 1b) Alinhar public.vaga das abertas que já estavam no sistema (o cadastro ou a grade podem ter mudado).
     try {
       await this.alinharEspelho(abertas, empresaPorId, dry, slot, resultado);
     } catch (error) {
@@ -264,10 +276,13 @@ export class VagasAbertasSyncService {
     // 2) Apagar as fechadas (só a linha de public.vaga).
     const ids = [...noSistema.keys()];
     if (ids.length) {
-      const [status] = await this.mysql.query<RowDataPacket[]>("SELECT id_vaga, status FROM vaga WHERE id_vaga IN (?)", [ids]);
+      const { rows: status } = await this.db.query<{ id_vaga: string; status: unknown }>(
+        "SELECT id_vaga::text AS id_vaga, status FROM dna_work.vaga WHERE id_vaga::text = ANY($1)",
+        [ids],
+      );
       for (const row of status) {
-        const valor = row.status;
-        if (typeof valor !== "number" || !Number.isInteger(valor) || valor === 0) continue;
+        const valor = row.status == null || String(row.status).trim() === "" ? Number.NaN : Number(row.status);
+        if (!Number.isInteger(valor) || valor === 0) continue;
         resultado.fora += 1;
         this.log.info({ dry, slot, id_vaga: row.id_vaga, status: valor }, "sync vagas: fechada, sai do sistema");
         if (dry) {
@@ -316,7 +331,7 @@ export class VagasAbertasSyncService {
     if (!presentes.length) return;
     const beneficios = await this.beneficios(presentes.map((vaga) => vaga.id_vaga));
     // Referência do cadastro: dna_work.vaga (o que o sistema mostra e a tela Editar vaga grava).
-    // Sem a linha lá, vale o Lightsail. O id da empresa e o status sempre vêm do Lightsail.
+    // É a mesma fonte das abertas; a consulta fica para o caso de a linha ter mudado no meio do ciclo.
     const { rows: doCadastro } = await this.db.query<Record<string, unknown>>(
       "SELECT * FROM dna_work.vaga WHERE id_vaga = ANY($1)",
       [presentes.map((vaga) => vaga.id_vaga)],
@@ -346,10 +361,10 @@ export class VagasAbertasSyncService {
   }
 
   private async beneficios(ids: string[]) {
-    const [rows] = await this.mysql!.query<RowDataPacket[]>(
-      `SELECT bv.id_vaga, bv.valor, bv.tipo, b.beneficios AS nome
-       FROM beneficio_vaga bv JOIN beneficio b ON b.id = bv.id_beneficio
-       WHERE bv.id_vaga IN (?)`,
+    const { rows } = await this.db.query<Record<string, unknown>>(
+      `SELECT bv.id_vaga::text AS id_vaga, bv.valor, bv.tipo, b.beneficios AS nome
+       FROM dna_work.beneficio_vaga bv JOIN dna_work.beneficio b ON b.id::text = bv.id_beneficio::text
+       WHERE bv.id_vaga::text = ANY($1)`,
       [ids],
     );
     const porVaga = new Map<string, Array<{ nome: string; valor: string; tipo: string }>>();

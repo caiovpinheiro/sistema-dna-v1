@@ -1,7 +1,5 @@
-import type { RowDataPacket } from "mysql2";
 import type { Pool } from "pg";
 import type { AppConfig } from "../config.js";
-import type { MysqlPool } from "../db/mysql.js";
 import { formatarLocal, lerNotion, normalizarUf, turnosDe, type LocalPartes, type Turnos, type VagaNotion } from "../lib/triagem-notion.js";
 
 export type Logger = {
@@ -14,7 +12,8 @@ export type Logger = {
 const COLUNAS_DIA: Record<number, string> = { 1: "domindo", 2: "segunda", 3: "terca", 4: "quarta", 5: "quinta", 6: "sexta", 7: "sab" };
 const CAMPOS_GRADE = Object.values(COLUNAS_DIA).flatMap((dia) => [`${dia}_entrada`, `${dia}_saida`]);
 
-type VagaLightsail = RowDataPacket & {
+/** Vaga aberta do cadastro (dna_work.vaga, colunas do sistema antigo). */
+type VagaLightsail = Record<string, unknown> & {
   id_vaga: string;
   codigo: string | null;
   id_empresa: string;
@@ -128,7 +127,6 @@ export class NotionSyncService {
 
   constructor(
     private readonly db: Pool,
-    private readonly mysql: MysqlPool | null,
     private readonly config: AppConfig,
     private readonly log: Logger,
   ) {}
@@ -152,12 +150,6 @@ export class NotionSyncService {
       this.log.warn({ notion: "sem-token" }, "sync notion: sem NOTION_TOKEN, nada gravado");
       return resultado;
     }
-    if (!this.mysql) {
-      resultado.notion = "falhou";
-      this.log.error({ notion: "falhou" }, "sync notion: MySQL não configurado");
-      return resultado;
-    }
-
     let notion: Map<string, VagaNotion>;
     try {
       notion = await lerNotion(this.config.NOTION_TOKEN);
@@ -171,11 +163,12 @@ export class NotionSyncService {
     const ids = [...postgres.keys()];
     if (!ids.length) return this.fim(resultado);
 
-    const [linhas] = await this.mysql.query<VagaLightsail[]>(
-      `SELECT v.id_vaga, v.codigo, v.id_empresa, v.texto_carga, v.horabase, v.hora_saida_base, v.semanas_inicio, v.semanas_fim,
+    // Cadastro do sistema novo (dna_work); o Lightsail não é mais lido nem gravado.
+    const { rows: linhas } = await this.db.query<VagaLightsail>(
+      `SELECT v.id_vaga::text AS id_vaga, v.codigo, v.id_empresa::text AS id_empresa, v.texto_carga, v.horabase, v.hora_saida_base, v.semanas_inicio, v.semanas_fim,
               v.tempo_refeicao, ${CAMPOS_GRADE.map((campo) => `v.${campo}`).join(", ")}, e.bairro, e.cidade, e.uf
-       FROM vaga v JOIN empresa e ON e.id_empresa = v.id_empresa
-       WHERE v.status = 0 AND e.sede = 10 AND v.id_vaga IN (?)`,
+       FROM dna_work.vaga v JOIN dna_work.empresa e ON e.id_empresa = v.id_empresa
+       WHERE v.status::text = '0' AND e.sede::text = '10' AND v.id_vaga::text = ANY($1)`,
       [ids],
     );
 
@@ -249,11 +242,7 @@ export class NotionSyncService {
 
     if (!lightsailIgual) {
       const campos = Object.keys(depois);
-      await this.mysql!.query(
-        `UPDATE vaga SET ${campos.map((campo) => `${campo} = ?`).join(", ")} WHERE id_vaga = ? AND status = 0`,
-        [...campos.map((campo) => depois[campo]), vaga.id_vaga],
-      );
-      // dna_work.vaga é a referência de public.vaga no sync de vagas abertas: recebe o mesmo horário.
+      // dna_work.vaga é o cadastro e a referência de public.vaga.
       await this.db.query(
         `UPDATE dna_work.vaga SET ${campos.map((campo, indice) => `${campo} = $${indice + 2}`).join(", ")} WHERE id_vaga = $1`,
         [vaga.id_vaga, ...campos.map((campo) => depois[campo])],
@@ -280,7 +269,7 @@ export class NotionSyncService {
     resultado.locais += 1;
     this.log.info({ dry, codigo, id_vaga: vaga.id_vaga, id_empresa: vaga.id_empresa, antes, depois }, "sync notion: bairro da empresa");
     if (dry) return;
-    await this.mysql!.query("UPDATE empresa SET bairro = ?, cidade = ?, uf = ? WHERE id_empresa = ?", [depois.bairro, depois.cidade, depois.uf, vaga.id_empresa]);
+    await this.db.query("UPDATE dna_work.empresa SET bairro = $1, cidade = $2, uf = $3 WHERE id_empresa::text = $4", [depois.bairro, depois.cidade, depois.uf, vaga.id_empresa]);
     await this.db.query("UPDATE public.empresa SET local = $1 WHERE id = $2", [local, vaga.id_empresa])
       .catch((error: unknown) => this.log.error({ codigo, id_empresa: vaga.id_empresa, erro: error instanceof Error ? error.message : String(error) }, "sync notion: falha no local do Postgres"));
   }

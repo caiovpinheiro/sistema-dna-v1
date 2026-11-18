@@ -1,9 +1,7 @@
 import { DIAS_ESCALA, diasDoTexto, textoDoHorario, type DiaEscala } from "../lib/horario-escala.js";
 import { randomUUID, randomInt } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
-import type { RowDataPacket } from "mysql2";
 import type { AppConfig } from "../config.js";
-import type { MysqlPool } from "../db/mysql.js";
 import { legacyToday } from "../lib/dates.js";
 import { AppError } from "../lib/errors.js";
 import { faixaDaSemana, horarioDe } from "./vagas-abertas-sync.service.js";
@@ -377,15 +375,9 @@ export class CadastroService {
 
   constructor(
     private readonly db: Pool,
-    private readonly mysql: MysqlPool | null,
     private readonly config: AppConfig,
     private readonly cargos: CargoService,
   ) {}
-
-  private mysqlPool() {
-    if (!this.mysql) throw new AppError(503, "MYSQL_NAO_CONFIGURADO", "Defina as credenciais DNA_WORK_DB.");
-    return this.mysql;
-  }
 
   private ensureMirror() {
     if (!this.mirror) {
@@ -503,16 +495,16 @@ export class CadastroService {
       await this.barrarEmpresaSemCnpjRepetida(input);
     }
 
-    const mysql = this.mysqlPool();
-    const [existentes] = digits
-      ? await mysql.query<RowDataPacket[]>(
-        `SELECT id_empresa FROM empresa
-         WHERE REPLACE(REPLACE(REPLACE(REPLACE(IFNULL(cnpj, ''), '.', ''), '/', ''), '-', ''), ' ', '') = ?`,
+    // Empresa antiga (inativa) com o mesmo CNPJ é reativada com o mesmo id, como antes no Lightsail.
+    const existentes = digits
+      ? (await this.db.query<{ id_empresa: string }>(
+        `SELECT id_empresa::text AS id_empresa FROM dna_work.empresa
+         WHERE regexp_replace(coalesce(cnpj, ''), '\\D', '', 'g') = $1`,
         [digits],
-      )
-      : [[] as RowDataPacket[]];
+      )).rows
+      : [];
     if (existentes.length > 1) {
-      throw new AppError(409, "CNPJ_AMBIGUO", "Há mais de uma empresa no Lightsail com este CNPJ. Nada foi gravado.");
+      throw new AppError(409, "CNPJ_AMBIGUO", "Há mais de uma empresa antiga com este CNPJ. Nada foi gravado.");
     }
 
     const reativar = existentes.length === 1;
@@ -541,75 +533,26 @@ export class CadastroService {
       longitude: geo.lng,
     };
 
-    const previa = await this.db.query(
-      `SELECT razao_social, nome_fantasia, email, telefone, cep, logradouro, numero, complemento, bairro, cidade, uf, status, sede, matriz, lat, lng
-       FROM dna_work.empresa WHERE id_empresa = $1`,
-      [id],
-    );
-    const conn = await mysql.getConnection();
-    let postgresOk = false;
+    const pg = await this.db.connect();
     try {
-      await conn.beginTransaction();
-      if (reativar) {
-        await conn.query(
-          `UPDATE empresa SET razao_social=?, nome_fantasia=?, email=?, telefone=?, cep=?, logradouro=?, numero=?,
-            complemento=?, bairro=?, cidade=?, uf=?, status=1, sede=10, matriz=?, lat=?, lng=?,
-            razao_sem_acento=?, fantasia_sem_acento=? WHERE id_empresa=?`,
-          [
-            payload.razao_social, payload.nome_fantasia, payload.email, payload.telefone, payload.cep, payload.logradouro,
-            payload.numero, payload.complemento, payload.bairro, payload.cidade, payload.uf, id,
-            String(payload.latitude), String(payload.longitude), semAcento(payload.razao_social), semAcento(payload.nome_fantasia), id,
-          ],
-        );
-      } else {
-        await conn.query(
-          `INSERT INTO empresa (
-            id_empresa, razao_social, nome_fantasia, cnpj, email, telefone, cep, logradouro, numero, complemento,
-            bairro, cidade, uf, status, sede, tipo_empresa, matriz, usa_agente, lat, lng, razao_sem_acento, fantasia_sem_acento
-          ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,1,10,1,?,1,?,?,?,?)`,
-          [
-            id, payload.razao_social, payload.nome_fantasia, masked ?? "", payload.email, payload.telefone, payload.cep,
-            payload.logradouro, payload.numero, payload.complemento, payload.bairro, payload.cidade, payload.uf, id,
-            String(payload.latitude), String(payload.longitude), semAcento(payload.razao_social), semAcento(payload.nome_fantasia),
-          ],
-        );
-        await conn.query(
-          `INSERT INTO assinaturas_empresa (id_empresa, tipo, responsavel, administrativo, rh, financeiro, supervisor)
-           VALUES (?, 'TCE', 0, 0, 0, 0, 0), (?, 'Convenio', 0, 0, 0, 0, 0)`,
-          [id, id],
-        );
-      }
-
-      const pg = await this.db.connect();
-      try {
-        await pg.query("BEGIN");
-        await pg.query(
-          `INSERT INTO public.empresa (
-            id, grupo_id, cnpj, razao_social, nome_fantasia, email, telefone, cep, logradouro, numero, complemento, latitude, longitude, local
-          ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
-          [
-            id, payload.grupo_id, digits, payload.razao_social, payload.nome_fantasia, payload.email, payload.telefone,
-            payload.cep, payload.logradouro, payload.numero, payload.complemento, payload.latitude, payload.longitude, local,
-          ],
-        );
-        await this.gravarEmpresaLightsailNoPostgres(pg, payload, masked);
-        await pg.query("COMMIT");
-        postgresOk = true;
-      } catch (error) {
-        await pg.query("ROLLBACK");
-        throw error;
-      } finally {
-        pg.release();
-      }
-
-      await conn.commit();
+      await pg.query("BEGIN");
+      await pg.query(
+        `INSERT INTO public.empresa (
+          id, grupo_id, cnpj, razao_social, nome_fantasia, email, telefone, cep, logradouro, numero, complemento, latitude, longitude, local
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+        [
+          id, payload.grupo_id, digits, payload.razao_social, payload.nome_fantasia, payload.email, payload.telefone,
+          payload.cep, payload.logradouro, payload.numero, payload.complemento, payload.latitude, payload.longitude, local,
+        ],
+      );
+      await this.gravarEmpresaNoCadastro(pg, payload, masked);
+      await pg.query("COMMIT");
     } catch (error) {
-      await conn.rollback().catch(() => undefined);
-      if (postgresOk) await this.reverterEmpresaPostgres(id, previa.rows[0] ?? null);
+      await pg.query("ROLLBACK").catch(() => undefined);
       if (error instanceof AppError) throw error;
-      throw this.falhaGravacao(error, "Não foi possível gravar a empresa no Lightsail e no Postgres.");
+      throw this.falhaGravacao(error, "Não foi possível gravar a empresa no Postgres. Nada ficou gravado.");
     } finally {
-      conn.release();
+      pg.release();
     }
 
     return { ...payload, reativada: reativar };
@@ -650,7 +593,7 @@ export class CadastroService {
     const { cargo, reaproveitado: cargoReaproveitado } = input.cargo_id
       ? { cargo: await this.cargos.obter(input.cargo_id), reaproveitado: false }
       : await this.cargos.resolverNovo(input.novo_cargo!);
-    const endereco = await this.enderecoLightsail(input.empresa_id);
+    const endereco = await this.enderecoDaEmpresa(input.empresa_id);
     const tipo = input.tipo === "estagio" ? 1 : 2;
     // Estágio que aceita ensino médio leva a escolaridade 31 ("Ensino médio" em dna_work.flex), como o termo e a rescisão de médio leem.
     const escolaridade = tipo === 1 && input.aceita_ensino_medio ? ESCOLARIDADE_ENSINO_MEDIO : null;
@@ -713,65 +656,7 @@ export class CadastroService {
       longitude: empresa.longitude,
     }));
 
-    const mysql = this.mysqlPool();
-    const conn = await mysql.getConnection();
-    let postgresOk = false;
-    try {
-      await conn.beginTransaction();
-      await conn.query("INSERT INTO codigo_vaga (codigo) VALUES (?)", [codigo]);
-      for (const id of ids) {
-        await conn.query(
-          `INSERT INTO vaga (
-            id_vaga, comparador, id_empresa, cargo, salario, idade, idadeate, horabase, hora_saida_base,
-            segunda_entrada, segunda_saida, terca_entrada, terca_saida, quarta_entrada, quarta_saida,
-            quinta_entrada, quinta_saida, sexta_entrada, sexta_saida, sab_entrada, sab_saida, domindo_entrada, domindo_saida, atribuicaoes, atribu_contrato,
-            sede, dataabertura, tipo_vaga, sexo, status, carga_horaria, publicar, codigo, km, faturar, texto_carga,
-            periodo, semanas_inicio, semanas_fim, tempo_refeicao, escolaridade
-          ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,10,?,?,?,0,?,1,?,?, 'S', ?,?,?,?,?,?)`,
-          [
-            id, comparador, empresa.id, cargo.nome, salario, String(input.idade), input.idade_ate ? String(input.idade_ate) : null,
-            horas.entrada, horas.saida,
-            horas.segunda_entrada, horas.segunda_saida, horas.terca_entrada, horas.terca_saida,
-            horas.quarta_entrada, horas.quarta_saida, horas.quinta_entrada, horas.quinta_saida,
-            horas.sexta_entrada, horas.sexta_saida, horas.sab_entrada, horas.sab_saida, horas.domingo_entrada, horas.domingo_saida,
-            input.atividades, input.atividades, hoje, tipo, input.sexo, input.carga_horaria, codigo, "30", textoCarga,
-            colunasGrade.periodo, faixa?.inicio ?? null, faixa?.fim ?? null, colunasGrade.tempo_refeicao, escolaridade,
-          ],
-        );
-        await conn.query(
-          `INSERT INTO etapa_vaga (
-            id_vaga, avalia_comportamental, avalia_cultural, avalia_escolar, avalia_tecnico, avalia_basico, avalia_cargo,
-            entrevista_agente, entrevista_agente_tipo, entrevista_empresa, entrevista_empresa_tipo, contratacao, convocacao_automatica
-          ) VALUES (?,1,0,0,0,1,0,1,'P',1,'V','T',1)`,
-          [id],
-        );
-        await conn.query(
-          "INSERT INTO log_diversos (usuario, id_empresa, id_vaga, acao, data) VALUES (?,?,?,?,NOW())",
-          [usuario.slice(0, 120), empresa.id, id, acao],
-        );
-      }
-      await conn.query(
-        `INSERT INTO vaga_valores (
-          comparador, cobra_selecao, tipo_selecao, valor_selecao, cobra_recorrente, tipo_recorrente, valor_recorrente,
-          pro_rata, cobra_comissao, tipo_comissao, valor_comissao, treinamento, tipo_treinamento, valor_treinamento
-        ) VALUES (?,0,'F','',0,'0','','0',0,'P','0',0,'F','0')`,
-        [comparador],
-      );
-      await conn.query(
-        `INSERT INTO vaga_endereco (comparador, logradouro, numero, complemento, bairro, cidade, uf, cep, empresa)
-         VALUES (?,?,?,?,?,?,?,?,0)`,
-        [
-          comparador,
-          endereco?.logradouro || empresa.logradouro,
-          endereco?.numero || empresa.numero,
-          endereco?.complemento || empresa.complemento,
-          bairro || null,
-          endereco?.cidade || cidadeUf.split("/")[0]?.trim() || null,
-          endereco?.uf || cidadeUf.split("/")[1]?.trim() || null,
-          endereco?.cep || empresa.cep,
-        ],
-      );
-
+    {
       const pg = await this.db.connect();
       try {
         await pg.query("BEGIN");
@@ -845,48 +730,22 @@ export class CadastroService {
           ],
         );
         await pg.query("COMMIT");
-        postgresOk = true;
       } catch (error) {
-        await pg.query("ROLLBACK");
-        throw error;
+        await pg.query("ROLLBACK").catch(() => undefined);
+        if (error instanceof AppError) throw error;
+        throw this.falhaGravacao(error, "Não foi possível abrir a vaga no Postgres. Nada ficou gravado.");
       } finally {
         pg.release();
       }
-
-      await conn.commit();
-    } catch (error) {
-      await conn.rollback().catch(() => undefined);
-      if (postgresOk) await this.apagarVagaPostgres(ids, codigo, comparador);
-      if (error instanceof AppError) throw error;
-      throw this.falhaGravacao(error, "Não foi possível abrir a vaga no Lightsail e no Postgres. Nada ficou gravado.");
-    } finally {
-      conn.release();
     }
 
-    // Junta com as vagas iguais que a empresa já tinha. Se falhar aqui, o sync de vagas abertas recalcula no próximo ciclo.
+    // Junta com as vagas iguais que a empresa já tinha.
     await reagruparVagaIds(this.db).catch(() => undefined);
     return { codigo, comparador, quantidade: ids.length, ids, cargo: { nome: cargo.nome, reaproveitado: cargoReaproveitado } };
   }
 
-  private async reverterEmpresaPostgres(id: string, previa: Record<string, unknown> | null) {
-    await this.db.query("DELETE FROM public.empresa WHERE id = $1", [id]).catch(() => undefined);
-    if (!previa) {
-      await this.db.query("DELETE FROM dna_work.assinaturas_empresa WHERE id_empresa = $1 AND tipo IN ('TCE', 'Convenio')", [id]).catch(() => undefined);
-      await this.db.query("DELETE FROM dna_work.empresa WHERE id_empresa = $1", [id]).catch(() => undefined);
-      return;
-    }
-    await this.db.query(
-      `UPDATE dna_work.empresa SET razao_social=$2, nome_fantasia=$3, email=$4, telefone=$5, cep=$6, logradouro=$7,
-        numero=$8, complemento=$9, bairro=$10, cidade=$11, uf=$12, status=$13, sede=$14, matriz=$15, lat=$16, lng=$17
-       WHERE id_empresa=$1`,
-      [
-        id, previa.razao_social, previa.nome_fantasia, previa.email, previa.telefone, previa.cep, previa.logradouro,
-        previa.numero, previa.complemento, previa.bairro, previa.cidade, previa.uf, previa.status, previa.sede, previa.matriz, previa.lat, previa.lng,
-      ],
-    ).catch(() => undefined);
-  }
-
-  private async gravarEmpresaLightsailNoPostgres(
+  /** Ficha da empresa em dna_work.empresa (a que o resto do sistema lê): cria ou reativa. */
+  private async gravarEmpresaNoCadastro(
     pg: PoolClient,
     payload: {
       id: string;
@@ -938,9 +797,9 @@ export class CadastroService {
     );
   }
 
-  private async enderecoLightsail(id: string) {
-    const [rows] = await this.mysqlPool().query<RowDataPacket[]>(
-      "SELECT logradouro, numero, complemento, bairro, cidade, uf, cep FROM empresa WHERE id_empresa = ? LIMIT 1",
+  private async enderecoDaEmpresa(id: string) {
+    const { rows } = await this.db.query(
+      "SELECT logradouro, numero, complemento, bairro, cidade, uf, cep FROM dna_work.empresa WHERE id_empresa::text = $1 LIMIT 1",
       [id],
     );
     return rows[0] as {
@@ -959,11 +818,6 @@ export class CadastroService {
     for (let tentativa = 0; tentativa < 8; tentativa += 1) {
       const prefixo = Array.from({ length: 3 }, () => letras[randomInt(letras.length)]).join("");
       const codigo = `${prefixo}-${String(randomInt(10000)).padStart(4, "0")}`;
-      const [mysqlRows] = await this.mysqlPool().query<RowDataPacket[]>(
-        "SELECT codigo FROM codigo_vaga WHERE codigo = ? LIMIT 1",
-        [codigo],
-      );
-      if (mysqlRows.length) continue;
       const pg = await this.db.query("SELECT codigo FROM dna_work.codigo_vaga WHERE codigo = $1 LIMIT 1", [codigo]);
       if (!pg.rows[0]) return codigo;
     }
@@ -974,8 +828,8 @@ export class CadastroService {
     let valor = Math.floor(Date.now() / 1000);
     for (let tentativa = 0; tentativa < 5; tentativa += 1) {
       const texto = String(valor);
-      const [rows] = await this.mysqlPool().query<RowDataPacket[]>("SELECT comparador FROM vaga WHERE comparador = ? LIMIT 1", [texto]);
-      if (!rows.length) return texto;
+      const { rowCount } = await this.db.query("SELECT 1 FROM dna_work.vaga WHERE comparador::text = $1 LIMIT 1", [texto]);
+      if (!rowCount) return texto;
       valor += 1;
     }
     return String(Date.now());
@@ -1129,16 +983,6 @@ export class CadastroService {
     throw new AppError(502, "GEOCODE_FALHOU", "Não foi possível obter latitude e longitude a partir do endereço da empresa.");
   }
 
-
-  private async apagarVagaPostgres(ids: string[], codigo: string, comparador: string) {
-    await this.db.query("DELETE FROM public.vaga WHERE id = ANY($1::uuid[])", [ids]).catch(() => undefined);
-    await this.db.query("DELETE FROM dna_work.etapa_vaga WHERE id_vaga = ANY($1::varchar[])", [ids]).catch(() => undefined);
-    await this.db.query("DELETE FROM dna_work.log_diversos WHERE id_vaga = ANY($1::varchar[]) AND acao = 'Abertura de vaga ADM'", [ids]).catch(() => undefined);
-    await this.db.query("DELETE FROM dna_work.vaga WHERE id_vaga = ANY($1::varchar[])", [ids]).catch(() => undefined);
-    await this.db.query("DELETE FROM dna_work.vaga_valores WHERE comparador = $1", [comparador]).catch(() => undefined);
-    await this.db.query("DELETE FROM dna_work.vaga_endereco WHERE comparador = $1", [comparador]).catch(() => undefined);
-    await this.db.query("DELETE FROM dna_work.codigo_vaga WHERE codigo = $1", [codigo]).catch(() => undefined);
-  }
 
   private falhaGravacao(error: unknown, fallback: string) {
     const message = error instanceof Error ? error.message : fallback;

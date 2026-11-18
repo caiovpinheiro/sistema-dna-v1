@@ -9,7 +9,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { jsonSchemaTransform, validatorCompiler, type ZodTypeProvider } from "fastify-type-provider-zod";
 import type { Pool } from "pg";
-import type { MysqlPool } from "./db/mysql.js";
 import type { AppConfig } from "./config.js";
 import type { SchemaCapabilities } from "./db/capabilities.js";
 import { AppError } from "./lib/errors.js";
@@ -60,7 +59,6 @@ export type AppContext = {
   config: AppConfig;
   db: Pool;
   capabilities: SchemaCapabilities;
-  mysql?: MysqlPool | null;
   /** Só o server.ts liga: roda o sync (vagas abertas + Notion) nos slots 00, 06, 12 e 18 de São Paulo. */
   agendarSyncNotion?: boolean;
 };
@@ -127,10 +125,12 @@ export async function buildApp(context: AppContext): Promise<FastifyInstance> {
   const processos = new ProcessoService(context.db, new ProcessoRepository(), vagas, candidatos, empresas);
   const termos = new TermoService(context.db, context.config);
   const cargos = new CargoService(context.db, context.config);
+  // Vagas abertas do cadastro -> public.vaga (triagem). Só Postgres.
+  const vagasAbertas = new VagasAbertasSyncService(context.db, context.config, app.log);
   const services = {
     candidatos: new CandidatoService(context.db, candidatos),
     empresas: new EmpresaService(context.db, empresas, { apiKey: context.config.GOOGLE_MAPS_API_KEY, log: app.log }),
-    vagas: new VagaService(context.db, vagas, empresas, context.config, context.capabilities, context.mysql ?? null),
+    vagas: new VagaService(context.db, vagas, empresas, context.config, context.capabilities, () => vagasAbertas.alinhar("situacao")),
     contratacoes: new ContratacaoService(context.db, contratacoes, vagas, candidatos, context.config, context.capabilities, processos),
     processos,
     dashboard: new DashboardService(context.db, contratacoes, context.config),
@@ -140,9 +140,9 @@ export async function buildApp(context: AppContext): Promise<FastifyInstance> {
     asaas: new AsaasService(context.db, context.config),
     regua: new ReguaService(context.db, context.config),
     acesso: new AcessoService(context.db, context.config),
-    cadastro: new CadastroService(context.db, context.mysql ?? null, context.config, cargos),
+    cadastro: new CadastroService(context.db, context.config, cargos),
     cargos,
-    triagem: new TriagemService(context.db, context.mysql ?? null, context.config, app.log),
+    triagem: new TriagemService(context.db, () => vagasAbertas.alinhar("triagem"), context.config, app.log),
     curriculo: new CurriculoService(context.config),
     matching: new TriagemMatchingService(context.db, context.config, criarTransporteJev(context.config)),
     dossie: new DossieService(context.db, context.config),
@@ -150,9 +150,9 @@ export async function buildApp(context: AppContext): Promise<FastifyInstance> {
     holerites: new HoleriteService(context.db),
     disparador: new DisparadorService(),
     sync: new SyncCicloService(
-      new VagasAbertasSyncService(context.db, context.mysql ?? null, context.config, app.log),
+      vagasAbertas,
       new CargosSyncService(context.db, context.config, cargos, app.log),
-      new NotionSyncService(context.db, context.mysql ?? null, context.config, app.log),
+      new NotionSyncService(context.db, context.config, app.log),
       app.log,
     ),
   };

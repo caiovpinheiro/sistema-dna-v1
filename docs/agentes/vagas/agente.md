@@ -1,10 +1,10 @@
 # Agente — Vagas
 
-> Última revisão: 2026-11-13 (commit "Botões com retorno de clique e Pesquisar sempre recarrega")
+> Última revisão: 2026-11-18 (sistema desligado do Lightsail; sync agendado parado; triagem só com vagas abertas no cadastro)
 
 ## Para que serve
 
-Aqui o usuário consulta todas as vagas (cópia do Lightsail em `dna_work.vaga`) com filtros por cargo, grupo, empresa, modalidade, situação e prioridade, e muda a situação direto na lista. Também pode abrir a ficha de uma vaga, com funil, mensagem para o candidato, candidatos sugeridos e contratados, e editar a vaga. Em "Consultar Modelos" (tela "Modelos de vaga"), mantém os **modelos globais de vaga** (um por cargo e modalidade, em `public.vaga_repetida`), que preenchem o formulário de abertura de vaga. As vagas abertas usadas pela Triagem (`public.vaga`) vêm de syncs automáticos a partir do Lightsail, do Notion e de `public.cargo`.
+Aqui o usuário consulta todas as vagas (`dna_work.vaga`) com filtros por cargo, grupo, empresa, modalidade, situação e prioridade, e muda a situação direto na lista. Também pode abrir a ficha de uma vaga, com funil, mensagem para o candidato, candidatos sugeridos e contratados, e editar a vaga. Em "Consultar Modelos" (tela "Modelos de vaga"), mantém os **modelos globais de vaga** (um por cargo e modalidade, em `public.vaga_repetida`), que preenchem o formulário de abertura de vaga. As vagas abertas usadas pela Triagem (`public.vaga`) vêm de syncs automáticos a partir do Lightsail, do Notion e de `public.cargo`.
 
 ## Rotas e abas
 
@@ -35,7 +35,7 @@ Menu: `vagaLinks` em `frontend/src/components/shell.tsx` (linhas 36-39). Para li
 
 **Backend**
 - `backend/src/routes/index.ts`: vagas (linhas 229-273), modelos globais (232-253), modelos legados `/api/v1/modelos` (718-726), cargos (757), abertura de vaga `/grupos-empresas/vagas` (762-770), sync manual (592-597).
-- `backend/src/services/vaga.service.ts`: list, get (ficha + mensagem), update (status no Lightsail + espelhos), create e sugeridos.
+- `backend/src/services/vaga.service.ts`: list, get (ficha + mensagem), update (status e espelhos; depois alinha `public.vaga`), create e sugeridos.
 - `backend/src/repositories/vaga.repository.ts`: SQL de `dna_work.vaga` (lista e ficha com a `prioridade`, `salvarPrioridade`, funil, inscritos, sugeridos, quem já trabalhou, opções de filtro).
 - `backend/src/services/presenters.ts`: `presentVaga`, `posicoesLivres`.
 - `backend/src/services/cadastro.service.ts`: `consultarModelos`, `opcoesModelos`, `obterModelo`, `criarModelo`, `editarModelo`, `apagarModelo`, `listarModelos`, `criarVaga`. Também tem `MIRROR_SQL`, que cria `public.vaga`, `public.vaga_repetida` e `public.cargo` se não existirem.
@@ -70,14 +70,14 @@ Menu: `vagaLinks` em `frontend/src/components/shell.tsx` (linhas 36-39). Para li
 | DELETE | `/api/v1/vagas/modelos/:vagaId` | Apaga o modelo. As vagas já abertas não mudam. | routes:251 → `CadastroService.apagarModelo` |
 | GET | `/api/v1/cargos` | Lista de `public.cargo` para o campo Cargo. | routes:757 → `CargoService.listar` |
 | GET | `/api/v1/grupos-empresas/vagas` | Modelos para o campo "Modelo" da abertura de vaga. | routes:762 → `CadastroService.listarModelos` |
-| POST | `/api/v1/grupos-empresas/vagas` | Abre a vaga (Lightsail + Postgres). Fica na tela de Grupos e Empresas. | routes:768 → `CadastroService.criarVaga` |
+| POST | `/api/v1/grupos-empresas/vagas` | Abre a vaga (só Postgres: `dna_work.*` e `public.vaga`). Fica na tela de Grupos e Empresas. | routes:768 → `CadastroService.criarVaga` |
 | GET | `/api/v1/modelos/:id` | Modelo legado (`dna_work.vaga_modelo`). `VagaFormPage` chama com `?modelo=`, mas só quando não há `:id`, o que nunca acontece na rota atual. | routes:722 → `LegadoService.modelo` |
 | GET | `/api/v1/empresas?pageSize=100` e `/api/v1/empresas/:id` | Opções de empresa no `VagaFormPage`. | routes:194/198 |
 | POST | `/api/v1/configuracoes/sync?dry=` | Roda o ciclo de sync na hora (só administrador). | routes:592 → `SyncCicloService.executar` |
 
 ## Dados
 
-**Postgres `dna_work.*` (cópia do Lightsail): base de `/vagas` e da ficha**
+**Postgres `dna_work.*` (cadastro; antes era cópia do Lightsail): base de `/vagas` e da ficha**
 - `dna_work.vaga`:
   - campos principais: `id_vaga`, `id_empresa`, `cargo`, `tipo_vaga`, `salario` (texto no formato legado), `status` (código 0-9), `comparador`, `dataabertura`, `quantidade_posicoes`, `codigo`;
   - horário: `texto_carga`, `horabase`, `hora_saida_base`, `segunda_entrada` … `domindo_saida` (assim mesmo, "domindo"), `semanas_inicio`, `semanas_fim`, `periodo`, `tempo_refeicao`;
@@ -102,23 +102,22 @@ Menu: `vagaLinks` em `frontend/src/components/shell.tsx` (linhas 36-39). Para li
 - Leitura: `horarioDoEspelho` (triagem.service.ts:68) usa o `texto=` quando existe; senão monta o texto pela grade com `textoDoHorario` ("Segunda a sexta, 08:00 às 17:00; sábado por escala, 08:00 às 14:00").
 - Os modelos (`vaga_repetida.horario`) guardam o texto de `textoDoModelo`. A consulta de modelos sempre remonta o texto pelos dias, porque o valor guardado pode estar no formato do sync.
 
-**MySQL Lightsail**
-- `PATCH /vagas/:id` com mudança de situação: `UPDATE vaga SET status = ?, data_adicao = data_adicao` (vaga.service.ts:55). Sem MySQL, devolve 503 `LIGHTSAIL_INDISPONIVEL`.
-- `criarVaga` (abertura, na tela de Grupos e Empresas) grava `codigo_vaga`, `vaga`, `etapa_vaga`, `log_diversos`, `vaga_valores` e `vaga_endereco`, e repete tudo em `dna_work.*` e `public.vaga`.
+**Lightsail (MySQL antigo): desligado desde 18/11/2026.** O sistema não lê nem grava mais nada lá; `db/mysql.ts` foi removido. As variáveis `DNA_WORK_DB_*` continuam no `config.ts` só para scripts de conferência. A fonte de tudo é o Postgres (`dna_work.*` e `public.*`).
 
-**Syncs que alimentam `public.vaga`** (ciclo em `SyncCicloService`, um por vez)
-1. **vagas-abertas** (`VagasAbertasSyncService.executar`, linha 178):
-   - lê do Lightsail as vagas com `empresa.sede = 10`, `vaga.status = 0` e `tipo_vaga IN (1,2,4)`;
-   - insere em `public.vaga` as que faltam, se a empresa já está em `public.empresa`; as outras viram "pendentes";
-   - alinha horário, turno, idade, salário e benefícios das que já existem (referência: `dna_work.vaga`);
-   - **apaga** de `public.vaga` as que mudaram para status diferente de 0 no Lightsail;
-   - no fim, `reagruparVagaIds`.
+**Alinhamento de `public.vaga`** (`VagasAbertasSyncService.alinhar`, só Postgres, um por vez)
+- Roda quando a situação de uma vaga muda (`VagaService.update`) e no começo de cada busca da Triagem. Não tem mais agenda.
+- Lê `dna_work.vaga` + `dna_work.empresa` com `sede = 10`, `status = 0` e `tipo_vaga IN (1,2,4)`; benefícios de `dna_work.beneficio_vaga`/`dna_work.beneficio`.
+- Insere em `public.vaga` as abertas que faltam (se a empresa já está em `public.empresa`; as outras viram "pendentes").
+- Alinha grade, turno, idade, salário e benefícios das que já existem. **O texto do horário em `public.vaga` é mantido** (vem do Notion ou da edição); só a grade é corrigida.
+- **Apaga** de `public.vaga` as que estão com status diferente de 0 em `dna_work.vaga`. No fim, `reagruparVagaIds`.
+
+**Ciclo manual/agendado** (`SyncCicloService`: vagas abertas, cargos e Notion)
 2. **cargos** (`CargosSyncService.executar`, linha 89): para `public.vaga` e `public.vaga_repetida`, cria em `public.cargo` (vazios) os cargos que faltam, liga `cargo_id` e completa `descricao`/`requisitos` vazios com os do cargo.
 3. **notion** (`NotionSyncService`):
-   - lê blocos/tabelas do Notion (`NOTION_TOKEN`, API `2022-06-28`) e, para vagas abertas cujo `codigo` segue o padrão `ABC-123`, grava os turnos do Notion no Lightsail (`UPDATE vaga … WHERE status = 0`), em `dna_work.vaga` e em `public.vaga.horario`;
-   - grava bairro/cidade/UF da empresa no Lightsail (`empresa`) e em `public.empresa.local`;
+   - lê blocos/tabelas do Notion (`NOTION_TOKEN`, API `2022-06-28`) e, para vagas abertas em `dna_work.vaga` cujo `codigo` segue o padrão `ABC-123`, grava os turnos do Notion em `dna_work.vaga` e em `public.vaga.horario`;
+   - grava bairro/cidade/UF da empresa em `dna_work.empresa` e em `public.empresa.local`;
    - não mexe nos modelos.
-- **Agenda**: `agendarPorSlot` roda o ciclo nos slots 00/06/12/18 h de São Paulo. Fica ativo quando `NOTION_SYNC_AUTO=true` ou, sem essa variável, em `NODE_ENV=production` (server.ts:18). O modo dry vem de `NOTION_SYNC_DRY`. O disparo manual é `POST /api/v1/configuracoes/sync`.
+- **Agenda: desligada** (18/11/2026). `agendarPorSlot` só roda o ciclo (slots 00/06/12/18 h de São Paulo) com `NOTION_SYNC_AGENDA=1` no ambiente (server.ts). Para voltar só com o Notion, ligue essa variável. O modo dry vem de `NOTION_SYNC_DRY`. O disparo manual é `POST /api/v1/configuracoes/sync`.
 
 ## Regras e comportamentos importantes
 
@@ -126,8 +125,8 @@ Menu: `vagaLinks` em `frontend/src/components/shell.tsx` (linhas 36-39). Para li
 - **Situação** (`lib/vaga-status.ts`):
   - os códigos do Lightsail viram 4 status: aberta = 0, 3, 4, 5, 9; pausada = 8; contratada = 1; fechada = 2, 6, 7 (código desconhecido ou nulo conta como fechada);
   - ao mudar de status, grava o código padrão (aberta 0, pausada 8, contratada 1, fechada 6). Se o status não mudou, mantém o código atual (`codigoParaStatus`).
-- **Mudança de status**: grava **primeiro no Lightsail** e depois em `dna_work.vaga`. Se o Lightsail falhar, nada muda (vaga.service.ts:51-56, 92-98). A lista pede confirmação ("Mudar X de A para B?"); a ficha usa `window.confirm` para Fechar/Reabrir.
-- **Outras edições** (cargo, salário, horário, benefícios…): vão para `dna_work.vaga` e `public.vaga`. **O Lightsail não recebe** (comentário em vaga.service.ts:99).
+- **Mudança de status**: grava só em `dna_work.vaga` e em seguida alinha `public.vaga` (a vaga entra ou sai da Triagem na hora). A lista pede confirmação ("Mudar X de A para B?"); a ficha usa `window.confirm` para Fechar/Reabrir.
+- **Outras edições** (cargo, salário, horário, benefícios…): vão para `dna_work.vaga` e `public.vaga`.
   - Mudar algum campo de horário recalcula `semanas_inicio`/`semanas_fim` e a grade do espelho (`horarioAlinhado` mantém o texto antigo quando só muda emoji para "?").
   - Benefícios vão para `dna_work.vaga.beneficios_texto` e `public.vaga.beneficios`.
   - No fim, `reagruparVagaIds` roda; se falhar, o sync recalcula depois.
@@ -154,8 +153,8 @@ Menu: `vagaLinks` em `frontend/src/components/shell.tsx` (linhas 36-39). Para li
 ## Cuidados ao mudar
 
 - `dna_work.vaga.prioridade` só existe no Postgres. Se a cópia do Lightsail para `dna_work.vaga` for refeita do zero (apagar e recriar a tabela), a coluna e as prioridades se perdem; o mesmo vale para `beneficios_texto`.
-- **Três bancos para a mesma vaga**: Lightsail (fonte), `dna_work.vaga` (cópia, base da lista e da ficha) e `public.vaga` (só abertas, base da Triagem). Mudar uma coluna num lugar sem o sync ou o `update` correspondente deixa as telas divergentes.
-- O sync **apaga** de `public.vaga` toda vaga que não está com status 0 no Lightsail. Fechar uma vaga em `/vagas` tira ela da Triagem no próximo ciclo, não na hora.
+- **Dois lugares para a mesma vaga**: `dna_work.vaga` (cadastro, base da lista e da ficha) e `public.vaga` (só abertas, base da Triagem e dos fluxos do n8n). Mudar uma coluna num lugar sem o `update` correspondente deixa as telas divergentes.
+- O alinhamento **apaga** de `public.vaga` toda vaga que não está com status 0 em `dna_work.vaga`. A Triagem também filtra por `dna_work.vaga.status = 0` na consulta.
 - `horarioDe`, `faixaDaSemana` e `horarioAlinhado` (vagas-abertas-sync) são usados por `VagaService` e `CadastroService`. `horarioDoEspelho` (triagem.service) é usado por Triagem, matching JEV e Dossiê. Não mude o formato `N=HH:MM-HH:MM;texto=` sem mudar os dois lados.
 - `textoDoHorario` existe no backend e no frontend (`lib/horario-escala.ts`): as duas cópias precisam gerar o mesmo texto (comentário no topo do arquivo). O texto é cortado em 255 caracteres (`texto_carga` tem limite de 255 no schema).
 - As colunas do Lightsail se chamam `domindo_entrada`/`domindo_saida`. O formulário de modelo e o de abertura usam `domingo_*`, e o de edição usa `domindo_*`.
@@ -167,7 +166,7 @@ Menu: `vagaLinks` em `frontend/src/components/shell.tsx` (linhas 36-39). Para li
 
 ## Como testar
 
-- `/vagas`: aplique cada filtro e confira a URL e o total. Mude a situação pelo selo numa vaga de teste (isso grava no Lightsail).
+- `/vagas`: aplique cada filtro e confira a URL e o total. Mude a situação pelo selo numa vaga de teste (grava em `dna_work.vaga` e tira/põe a vaga na Triagem).
 - `/vagas/:id`: confira a mensagem, a foto do cargo e o "Copiar foto e mensagem" (cargo sem foto mostra "Copiar mensagem"), os sugeridos e os contratados. Use Fechar/Reabrir só numa vaga de teste.
 - `/vagas/:id/editar`: mude o horário (Fixo/Escala/Folga), use "Gerar texto pelos dias", salve e confira o `public.vaga.horario` da vaga, se ela estiver aberta.
 - `/vagas/modelos`: crie um modelo ("Novo modelo"), tente criar outro com o mesmo cargo e modalidade (deve dar 409), edite, use "Abrir vaga" e apague. Pesquise por cargo e modalidade e use "Limpar filtros" (a modalidade volta para "Todas"). Confira o salário formatado ("R$ 2.600,00") e o horário em linhas.

@@ -5,7 +5,6 @@ import { migrationRequired, AppError } from "../lib/errors.js";
 import { formatMoneyLegacy, moneyToNumber, parseMoney } from "../lib/money.js";
 import { faixaDaSemana, horarioAlinhado, horarioDe } from "./vagas-abertas-sync.service.js";
 import type { SchemaCapabilities } from "../db/capabilities.js";
-import type { MysqlPool } from "../db/mysql.js";
 import { codigoParaStatus } from "../lib/vaga-status.js";
 import { EmpresaRepository } from "../repositories/empresa.repository.js";
 import { one } from "../repositories/sql.js";
@@ -47,15 +46,9 @@ export class VagaService {
     private readonly empresas: EmpresaRepository,
     private readonly config: AppConfig,
     private readonly capabilities: SchemaCapabilities,
-    private readonly mysql: MysqlPool | null = null,
+    /** Alinha public.vaga (triagem) às vagas abertas depois que a situação muda. */
+    private readonly alinharTriagem: (() => Promise<unknown>) | null = null,
   ) {}
-
-  /** Grava o código no Lightsail antes do Postgres: se o Lightsail recusar, nada muda. Só o número do status, sem mexer em tabela. */
-  private async statusNoLightsail(id: string, codigo: number) {
-    if (!this.mysql) throw new AppError(503, "LIGHTSAIL_INDISPONIVEL", "Não foi possível falar com o Lightsail para mudar a situação.");
-    // data_adicao muda sozinha a cada UPDATE no Lightsail; a abertura da vaga fica a original.
-    await this.mysql.query("UPDATE vaga SET status = ?, data_adicao = data_adicao WHERE id_vaga = ?", [codigo, id]);
-  }
 
   private ensureCapacityColumn() {
     if (!this.capabilities.quantidadePosicoes) throw migrationRequired(this.capabilities.missing);
@@ -93,12 +86,9 @@ export class VagaService {
     const { situacao, ...dados } = input;
     if (situacao) {
       const codigo = codigoParaStatus(situacao, current.status);
-      if (codigo !== Number(current.status)) {
-        await this.statusNoLightsail(id, codigo);
-        dados.status = codigo;
-      }
+      if (codigo !== Number(current.status)) dados.status = codigo;
     }
-    // Cargo, salário e horário: dna_work.vaga e public.vaga. O Lightsail não recebe a edição.
+    // Cargo, salário e horário: dna_work.vaga e public.vaga.
     const espelhar = await this.dadosDoEspelho(id, dados, salario);
     await this.repo.update(this.db, id, dados, salario);
     if (espelhar.faixa) {
@@ -109,6 +99,8 @@ export class VagaService {
     // Detalhe diferente, vaga_id diferente: a vaga editada sai do grupo das repetidas (ou entra no grupo igual).
     // Se falhar aqui, o sync de vagas abertas recalcula no próximo ciclo.
     await reagruparVagaIds(this.db).catch(() => undefined);
+    // Abriu ou fechou: entra ou sai da triagem na hora. Falha aqui não desfaz a edição; a busca da triagem alinha de novo.
+    if (dados.status !== undefined && this.alinharTriagem) await this.alinharTriagem().catch(() => undefined);
     return presentVaga((await this.repo.findById(this.db, id))!);
   }
 

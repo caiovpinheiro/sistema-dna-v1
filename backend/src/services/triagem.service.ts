@@ -1,6 +1,4 @@
-import type { RowDataPacket } from "mysql2";
 import type { AppConfig } from "../config.js";
-import type { MysqlPool } from "../db/mysql.js";
 import { AppError } from "../lib/errors.js";
 import { distanciaKm, geocodeCepServidor, rotuloDoCep, type Ponto } from "../lib/triagem-geo.js";
 import type { Pool } from "pg";
@@ -147,7 +145,8 @@ export function distanciaDaVaga(origem: Ponto, cep: string, vaga: { cep: string 
 export class TriagemService {
   constructor(
     private readonly db: Pool,
-    private readonly mysql: MysqlPool | null,
+    /** Alinha public.vaga às vagas abertas do cadastro antes da busca (VagasAbertasSyncService.alinhar). */
+    private readonly alinharVagas: (() => Promise<unknown>) | null,
     private readonly config: AppConfig,
     private readonly log?: Logger,
   ) {}
@@ -173,6 +172,8 @@ export class TriagemService {
        LEFT JOIN public.empresa e ON e.id = v.empresa_id
        LEFT JOIN dna_work.vaga dv ON dv.id_vaga = v.id::text
        WHERE v.tipo_vaga = ANY($1::int[])
+         -- Só a vaga aberta no cadastro (dna_work.vaga.status 0): contratada, pausada ou fechada não aparece.
+         AND (dv.id_vaga IS NULL OR dv.status::text = '0')
          AND ((v.latitude IS NOT NULL AND v.longitude IS NOT NULL) OR regexp_replace(coalesce(v.cep, ''), '\\D', '', 'g') = $2)`,
       [codigos, digits(cep)],
     );
@@ -192,6 +193,10 @@ export class TriagemService {
 
   async buscar(input: BuscaTriagem) {
     await this.enderecosAtualizados();
+    if (this.alinharVagas) {
+      await this.alinharVagas().catch((error: unknown) =>
+        this.log?.error({ erro: error instanceof Error ? error.message : String(error) }, "triagem: falha ao alinhar as vagas abertas"));
+    }
     const [origem, originLabel, vagas] = await Promise.all([
       this.origem(input),
       rotuloDoCep(input.cep),
@@ -234,14 +239,13 @@ export class TriagemService {
     return { originLabel, jobs: ordenarResultado(candidatas) };
   }
 
-  /** Empresas do agente (sede 10) com vaga aberta no Lightsail que ainda não estão em public.empresa. */
+  /** Empresas do agente (sede 10) com vaga aberta no cadastro (dna_work) que ainda não estão em public.empresa. */
   async empresasPendentes(): Promise<EmpresaPendente[]> {
-    if (!this.mysql) return [];
-    const [rows] = await this.mysql.query<RowDataPacket[]>(`
-      SELECT e.id_empresa, e.nome_fantasia, e.razao_social, e.cnpj, COUNT(*) AS vagas
-      FROM empresa e
-      JOIN vaga v ON v.id_empresa = e.id_empresa
-      WHERE e.sede = 10 AND v.status = 0
+    const { rows } = await this.db.query<{ id_empresa: string; nome_fantasia: string | null; razao_social: string | null; cnpj: string | null; vagas: number }>(`
+      SELECT e.id_empresa::text AS id_empresa, e.nome_fantasia, e.razao_social, e.cnpj, COUNT(*)::int AS vagas
+      FROM dna_work.empresa e
+      JOIN dna_work.vaga v ON v.id_empresa = e.id_empresa
+      WHERE e.sede::text = '10' AND v.status::text = '0'
       GROUP BY e.id_empresa, e.nome_fantasia, e.razao_social, e.cnpj
       ORDER BY e.nome_fantasia, e.razao_social
     `);
