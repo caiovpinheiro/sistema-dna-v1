@@ -1,6 +1,6 @@
 # Agente — Financeiro
 
-> Última revisão: 2026-11-17 (relatório: adicionar linha e salvar sem enviar; contratação ativa fatura mesmo com a vaga aberta ou cancelada)
+> Última revisão: 2026-11-18 (rescisão em vaga cancelada cobra uma vez no mês da rescisão; desistência não fatura)
 
 ## Para que serve
 
@@ -120,7 +120,7 @@ Permissões (`backend/src/lib/paginas.ts:28-56`; o hook fica em `app.ts:163`). O
 
 Faturamento (`legado.service.ts:98`)
 - Entram só empresas com `sede = '10'` e `usa_asaas` igual a 1 ou 2. A empresa precisa de valor maior que 0.
-- Situação da vaga (`VAGA_FATURAVEL`, `legado.service.ts`): contratação **ativa** (`conratacaovaga.status = 1`) entra sempre, qualquer que seja o `status` da vaga. As outras só entram com a vaga fora de 0, 3, 4, 5 e 6 (regra do sistema antigo). Motivo: contratação feita no sistema antigo deixa a vaga "aberta" (0), e vaga cancelada (6) depois da contratação tirava da cobrança quem continuava trabalhando (casos 2499, 2500, 2501, 2504 e 2514, out/2026). Vale para a lista e para o Relatório.
+- Situação da vaga (`VAGA_FATURAVEL`, `legado.service.ts`): contratação **ativa** (`conratacaovaga.status = 1`) entra sempre, qualquer que seja o `status` da vaga. Contratação **encerrada com rescisão** (`status = 2`, `data_demicao` válida e diferente de `data_contratacao`) também entra com qualquer vaga, mas só até o mês da rescisão (cobra uma vez e para; o filtro de datas cuida disso). **Desistência** (a pessoa não chegou a trabalhar) é gravada como `status = 2` com `data_demicao = data_contratacao` e não fatura nunca. As outras só entram com a vaga fora de 0, 3, 4, 5 e 6 (regra do sistema antigo). Motivo: contratação feita no sistema antigo deixa a vaga "aberta" (0), e vaga cancelada (6) depois da contratação tirava da cobrança quem continuava trabalhando (casos 2499, 2500 e 2514, out/2026; 2501 e 2504 eram desistência e foram encerradas assim em 18/11/2026). Vale para a lista e para o Relatório.
 - O período depende de `datafechamento` (dia 10, 20 ou 30) e é montado por `periodo()`. As datas são texto `AAAA/MM/DD` comparado como string.
 - Valor por contratação (`VALOR_CONTRATO`, linha 61): se `public.valor_empresas` estiver conferido (`est_status`/`clt_status = 'ok'`), estágio = mensal + taxa de R&S no mês da contratação, e CLT = percentual do salário ou valor fixo, só no mês da contratação. Sem preço conferido, vale o cálculo antigo (`VALOR_LEGADO`, linha 42) com `vaga_valores` e `faturamento_empresa`.
 - Filtro de status: "3" = tudo que não está faturado (padrão da tela), "0" = aberta, "1" = faturado e "2" = parcial. O status vem de `max(status_fatura)` em `dna_work.fatura` do mês.

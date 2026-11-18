@@ -91,8 +91,12 @@ const VALOR_CONTRATO = `
  * Filtro da situação da vaga herdado do sistema antigo (vaga aberta, cancelada etc. não fatura).
  * Contratação ativa (status 1) fatura sempre: a vaga pode ter ficado "aberta" (contratação feita no sistema antigo)
  * ou ter sido cancelada depois, e a pessoa continua trabalhando.
+ * Contratação encerrada com rescisão (data de demissão diferente da data de contratação) também fatura,
+ * só no mês da rescisão (o filtro de datas cuida disso). Desistência é gravada com demissão = contratação e não fatura.
  */
-const VAGA_FATURAVEL = `(cv.status::text = '1' OR v.status::text NOT IN ('5', '4', '3', '0', '6'))`;
+const VAGA_FATURAVEL = `(cv.status::text = '1'
+  OR (cv.status::text = '2' AND cv.data_demicao ~ '^[0-9]{4}/[0-9]{2}/[0-9]{2}$' AND cv.data_demicao <> cv.data_contratacao)
+  OR v.status::text NOT IN ('5', '4', '3', '0', '6'))`;
 
 function periodo(mes: string, ano: string) {
   const mesNum = Number(mes);
