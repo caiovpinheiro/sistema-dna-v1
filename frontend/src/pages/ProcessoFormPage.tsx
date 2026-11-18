@@ -1,11 +1,12 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
-import { ArrowLeft, Check, Plus, Search } from "lucide-react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Check, Plus, Search } from "lucide-react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Alerta, CabecalhoPagina } from "@/components/pagina";
 import { Button, Field, Input, Textarea, cn } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 import { formatCpf, textoPlano } from "@/lib/format";
+import { VoltarLink } from "../components/voltar";
 
 type Company = { id_empresa: string; razao_social: string; nome_fantasia: string | null };
 type Job = { id_vaga: string; cargo: string };
@@ -45,9 +46,7 @@ export function ProcessoFormPage() {
   const pronto = Boolean(personId && companyId && jobId);
   return (
     <form className="grid max-w-4xl grid-cols-[minmax(0,1fr)] gap-5" onSubmit={(event) => { event.preventDefault(); save.mutate(); }}>
-      <Link to="/processos" className="inline-flex w-fit items-center gap-1 text-sm font-semibold text-slate-500 hover:text-navy-900">
-        <ArrowLeft size={16} /> Processos
-      </Link>
+      <VoltarLink to="/processos" rotulo="Processos" />
       <CabecalhoPagina titulo="Novo processo" descricao="Informe a vaga, o candidato e quem o enviou. O processo começa na etapa certa conforme a origem." />
 
       <Bloco numero={1} titulo="Empresa e vaga" texto="Busque a empresa (pelo menos 2 letras) e escolha uma das vagas dela." feito={Boolean(companyId && jobId)}>

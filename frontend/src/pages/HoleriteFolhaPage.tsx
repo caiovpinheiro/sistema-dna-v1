@@ -1,11 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, FileDown, Loader2, Save } from "lucide-react";
+import { FileDown, Loader2, Save } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import { Alerta, CabecalhoPagina } from "@/components/pagina";
 import { Button, Card, Empty, Input, Skeleton } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 import { dateBr, money } from "@/lib/format";
+import { VoltarLink } from "../components/voltar";
 
 type Lancamento = { faltas: number; auxilio_transporte: number; acrescimos: number; descricao_acrescimos: string; descontos: number; descricao_descontos: string };
 type Calculo = { dias_mes: number; dias_trabalhados: number; bolsa_base: number; bolsa_proporcional: number; valor_faltas: number; proventos: number; total_descontos: number; liquido: number };
@@ -110,7 +111,7 @@ export function HoleriteFolhaPage() {
   const nomeEmpresa = dados ? dados.empresa.nome_fantasia || dados.empresa.razao_social : "";
   return (
     <div className="grid gap-5">
-      <Link to="/financeiro/holerite" className="inline-flex w-fit items-center gap-1 text-sm font-semibold text-slate-500 hover:text-navy-900"><ArrowLeft size={16} /> Holerite</Link>
+      <VoltarLink to="/financeiro/holerite" rotulo="Holerite" />
       <CabecalhoPagina
         titulo={nomeEmpresa ? `Folha de ${nomeEmpresa}` : "Folha de holerite"}
         descricao={dados ? `Holerites de estágio de ${porExtenso(competencia)}${dados.empresa.cnpj ? `, CNPJ ${dados.empresa.cnpj}` : ""}. Lance faltas, auxílio-transporte, acréscimos e descontos, salve e gere os PDFs.` : "Holerites de estágio da empresa no mês."}

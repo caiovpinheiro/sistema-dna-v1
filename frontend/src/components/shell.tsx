@@ -1,6 +1,7 @@
 import { BarChart3, Briefcase, Building2, ChevronDown, ExternalLink, FileSignature, FileWarning, GraduationCap, Handshake, Layers, LayoutDashboard, ListChecks, LogOut, Mail, Menu, Moon, Percent, Receipt, Search, Send, Settings, Sun, Users, Wallet, X } from "lucide-react";
 import { useEffect, useState, type ComponentType } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { registrarPagina } from "../lib/voltar";
 import { api } from "@/lib/api";
 import { cn } from "./ui";
 
@@ -168,7 +169,11 @@ export function Shell({ email, admin, paginas, notify }: { email: string; admin:
   const [open, setOpen] = useState(false);
   const [hover, setHover] = useState(false);
   const [escuro, setEscuro] = useState(() => localStorage.getItem("dnawork-tema") !== "claro");
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
+  // Caminho de navegação da aba, usado pelo "Voltar" das fichas (lib/voltar.ts).
+  useEffect(() => {
+    registrarPagina(`${pathname}${search}`);
+  }, [pathname, search]);
   useEffect(() => {
     const tema = escuro ? "escuro" : "claro";
     localStorage.setItem("dnawork-tema", tema);

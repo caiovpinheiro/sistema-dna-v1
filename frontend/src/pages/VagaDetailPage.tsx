@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Check, ChevronRight, Copy, FilePlus2, Lock, Pencil, RotateCcw, UserPlus } from "lucide-react";
+import { Check, ChevronRight, Copy, FilePlus2, Lock, Pencil, RotateCcw, UserPlus } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 import { useState, type ReactNode } from "react";
 import { Alerta } from "@/components/pagina";
@@ -8,6 +8,7 @@ import { ApiError, api } from "@/lib/api";
 import { copiarComFoto, fotoDoCargo } from "@/lib/foto-cargo";
 import { dateBr, formatCpf, formatPhone, money, regimeLabel, situacaoLabel, textoPlano } from "@/lib/format";
 import { ProcessosRelacionados } from "@/pages/ProcessosPage";
+import { VoltarLink } from "../components/voltar";
 
 /** Mensagem para o candidato no formato do Notion (cargo, local, salário + benefícios e horário), com botão de copiar. Copia junto a foto do cargo, se houver. */
 function MensagemVaga({ texto, cargo }: { texto: string; cargo: string }) {
@@ -116,7 +117,7 @@ export function VagaDetailPage() {
   if (job.isLoading) return <Skeleton className="h-64" />;
   if (!job.data) return (
     <div className="grid gap-4">
-      <Link to="/vagas" className="inline-flex w-fit items-center gap-1.5 text-sm font-semibold text-cyan-700 hover:underline"><ArrowLeft size={16} /> Vagas</Link>
+      <VoltarLink to="/vagas" rotulo="Vagas" className="inline-flex w-fit items-center gap-1.5 text-sm font-semibold text-cyan-700 hover:underline" />
       <Alerta>Vaga não encontrada.</Alerta>
     </div>
   );
@@ -136,7 +137,7 @@ export function VagaDetailPage() {
   return (
     <div className="grid gap-5">
       <header className="grid gap-3">
-        <Link to="/vagas" className="inline-flex w-fit items-center gap-1.5 text-sm font-semibold text-slate-500 hover:text-cyan-700"><ArrowLeft size={16} /> Vagas</Link>
+        <VoltarLink to="/vagas" rotulo="Vagas" className="inline-flex w-fit items-center gap-1.5 text-sm font-semibold text-slate-500 hover:text-cyan-700" />
         <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
           <div className="grid min-w-0 gap-1">
             <div className="flex flex-wrap items-center gap-2.5">

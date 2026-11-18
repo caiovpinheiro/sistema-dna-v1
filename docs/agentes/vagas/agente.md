@@ -1,6 +1,6 @@
 # Agente — Vagas
 
-> Última revisão: 2026-11-18 (filtro de cargo junta Operadora de Caixa, Operador de Caixa/loja e com Delivery em Operador de Caixa; sistema desligado do Lightsail)
+> Última revisão: 2026-11-18 (voltar da ficha da vaga leva à página de origem (empresa, consulta etc.); filtro de cargo junta Operadora de Caixa, Operador de Caixa/loja e com Delivery em Operador de Caixa; sistema desligado do Lightsail)
 
 ## Para que serve
 
@@ -121,6 +121,7 @@ Menu: `vagaLinks` em `frontend/src/components/shell.tsx` (linhas 36-39). Para li
 
 ## Regras e comportamentos importantes
 
+- **Voltar das fichas** (`VoltarLink`, `frontend/src/components/voltar.tsx`, regras em `frontend/src/lib/voltar.ts`): o link "←" do topo leva para a página de onde a pessoa veio (ex.: da ficha da empresa para a vaga, volta para a empresa; da consulta filtrada, volta com os filtros). O Shell guarda o caminho da aba no `sessionStorage` (`dnawork-caminho`) como pilha; formulários (`/novo`, `/nova`, `/editar`, `/gerar`) e a própria ficha não são destino. Aberta direto, sem histórico, o link vai para a lista padrão da seção. Teste: `frontend/test/voltar.test.ts`.
 - **Pesquisar sempre tem efeito:** com os mesmos filtros, recarrega a lista (`refetch`, ou a chave `rodada` no Financeiro); o botão mostra "Pesquisando…" com ícone girando enquanto carrega. Todo botão do sistema afunda e muda o tom ao ser pressionado (`index.css`, `.app-canvas button:active`).
 - **Situação** (`lib/vaga-status.ts`):
   - os códigos do Lightsail viram 4 status: aberta = 0, 3, 4, 5, 9; pausada = 8; contratada = 1; fechada = 2, 6, 7 (código desconhecido ou nulo conta como fechada);

@@ -1,12 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, ChevronRight, Eye, FileX, Send } from "lucide-react";
+import { ChevronRight, Eye, FileX, Send } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { DocumentosContratacao } from "@/components/documentos-contratacao";
 import { Alerta, FiltroChips } from "@/components/pagina";
 import { Badge, Button, Card, Field, Input, Select, Skeleton, Textarea } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 import { dateBr, formatCpf, formatPhone, money, regimeLabel, situacaoLabel, textoPlano } from "@/lib/format";
+import { VoltarLink } from "../components/voltar";
 
 type Detail = {
   id_contratacao: number;
@@ -332,11 +333,7 @@ export function RescisaoDetailPage() {
 }
 
 function Voltar() {
-  return (
-    <Link to="/contratacoes/rescisao" className="inline-flex w-fit items-center gap-1 text-sm font-semibold text-slate-500 hover:text-navy-900">
-      <ArrowLeft size={16} /> Rescisão
-    </Link>
-  );
+  return <VoltarLink to="/contratacoes/rescisao" rotulo="Rescisão" />;
 }
 
 function Info({ label, value }: { label: string; value: string }) {

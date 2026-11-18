@@ -1,11 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState, type ReactNode } from "react";
-import { ArrowLeft, Check, ChevronRight, Search, UserCheck, UserPlus } from "lucide-react";
+import { Check, ChevronRight, Search, UserCheck, UserPlus } from "lucide-react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Alerta, CabecalhoPagina } from "@/components/pagina";
 import { Badge, Button, Card, Field, Input, cn } from "@/components/ui";
 import { ApiError, api, idempotencyKey } from "@/lib/api";
 import { dateBr, formatCnpj, formatCpf, money, regimeLabel, textoPlano } from "@/lib/format";
+import { VoltarLink } from "../components/voltar";
 
 type Company = { id_empresa: string; razao_social: string; nome_fantasia: string | null; cnpj: string };
 type Job = {
@@ -110,9 +111,7 @@ export function NovaContratacaoPage() {
 
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-5">
-      <Link to="/contratacoes" className="inline-flex w-fit items-center gap-1 text-sm font-semibold text-slate-500 hover:text-navy-900">
-        <ArrowLeft size={16} /> Contratações
-      </Link>
+      <VoltarLink to="/contratacoes" rotulo="Contratações" />
       <CabecalhoPagina
         titulo="Nova contratação"
         descricao="Escolha a empresa, uma vaga aberta com posição livre e o candidato. A contratação ocupa uma posição da vaga."

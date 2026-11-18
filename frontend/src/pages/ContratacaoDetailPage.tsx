@@ -1,12 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
-import { ArrowLeft, FileText, UserMinus } from "lucide-react";
+import { FileText, UserMinus } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { DocumentosContratacao } from "@/components/documentos-contratacao";
 import { Alerta } from "@/components/pagina";
 import { Badge, Button, Card, Skeleton } from "@/components/ui";
 import { api } from "@/lib/api";
 import { dateBr, formatCpf, money, regimeLabel, situacaoLabel, textoPlano } from "@/lib/format";
+import { VoltarLink } from "../components/voltar";
 
 type Detail = {
   id_contratacao: number; id_candidato: string; id_empresa: string; id_vaga: string;
@@ -95,11 +96,7 @@ export function ContratacaoDetailPage() {
 }
 
 function Voltar() {
-  return (
-    <Link to="/contratacoes" className="inline-flex w-fit items-center gap-1 text-sm font-semibold text-slate-500 hover:text-navy-900">
-      <ArrowLeft size={16} /> Contratações
-    </Link>
-  );
+  return <VoltarLink to="/contratacoes" rotulo="Contratações" />;
 }
 
 function Par({ rotulo, children }: { rotulo: string; children: ReactNode }) {

@@ -1,6 +1,6 @@
 # Agente — Processos
 
-> Última revisão: 2026-11-16 (pesquisa inteligente nas buscas)
+> Última revisão: 2026-11-18 (voltar da ficha e do novo processo leva à página de origem; pesquisa inteligente nas buscas)
 
 ## Para que serve
 
@@ -68,6 +68,7 @@ Tudo no **Postgres, schema `dna_work`**. As duas tabelas de processo existem só
 
 ## Regras e comportamentos importantes
 
+- **Voltar das fichas** (`VoltarLink`, `frontend/src/components/voltar.tsx`, regras em `frontend/src/lib/voltar.ts`): o link "←" do topo leva para a página de onde a pessoa veio (ex.: da ficha da empresa para a vaga, volta para a empresa; da consulta filtrada, volta com os filtros). O Shell guarda o caminho da aba no `sessionStorage` (`dnawork-caminho`) como pilha; formulários (`/novo`, `/nova`, `/editar`, `/gerar`) e a própria ficha não são destino. Aberta direto, sem histórico, o link vai para a lista padrão da seção. Teste: `frontend/test/voltar.test.ts`.
 - **Pesquisa inteligente** (campo Candidato, `nome`): palavras do nome em qualquer ordem e sem acento. No servidor, cada palavra digitada precisa aparecer, em qualquer ordem e sem diferenciar acento e maiúscula; uma palavra só de números (ou um documento com pontuação) vale contra os dígitos do documento (`condicaoPorPalavras`/`palavrasDaBusca` em `backend/src/lib/busca-texto.ts`, sem a extensão unaccent). Na tela, o campo é o `BuscaInteligente` (`frontend/src/components/busca-inteligente.tsx`): a partir de 2 letras mostra até 6 sugestões do próprio sistema (`frontend/src/lib/sugestoes.ts`), navegáveis com ↑/↓ e Enter; Enter sem sugestão marcada (ou "Pesquisar … na lista") faz a busca normal. O histórico do navegador fica desligado (`autoComplete="off"` no campo e no formulário). A sugestão abre o processo (`/processos/:id`). A busca continua acontecendo também ao sair do campo.
 - **Etapa inicial** (`etapaInicial`, lib/processo.ts:17): origem `dnawork` começa em `encaminhado`. Origem `empresa` começa em `recebido`, ou em `encaminhado` se já veio com data de encaminhamento.
 - **Validações ao criar** (schemas/processo.ts):

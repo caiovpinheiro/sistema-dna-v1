@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ReactNode } from "react";
-import { ArrowLeft, ArrowRight, Check, ChevronRight, UserCheck } from "lucide-react";
+import { ArrowRight, Check, ChevronRight, UserCheck } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 import { Alerta } from "@/components/pagina";
 import { Badge, Button, Card, Skeleton, cn } from "@/components/ui";
@@ -8,6 +8,7 @@ import { FichaCandidato, type FichaCandidatoDados } from "@/components/ficha-can
 import { ApiError, api } from "@/lib/api";
 import { dateBr, etapaLabel, formatPhone, origemLabel, textoPlano } from "@/lib/format";
 import { EtapaBadge } from "./ProcessosPage";
+import { VoltarLink } from "../components/voltar";
 
 const trilha = ["recebido", "encaminhado", "entrevista_agendada", "entrevista_realizada", "contratado"] as const;
 const finais = new Set(["contratado", "reprovado", "desistente"]);
@@ -171,11 +172,7 @@ function horaLocal(valor: string) {
 }
 
 function Voltar() {
-  return (
-    <Link to="/processos" className="inline-flex w-fit items-center gap-1 text-sm font-semibold text-slate-500 hover:text-navy-900">
-      <ArrowLeft size={16} /> Processos
-    </Link>
-  );
+  return <VoltarLink to="/processos" rotulo="Processos" />;
 }
 
 function Par({ rotulo, children }: { rotulo: string; children: ReactNode }) {
