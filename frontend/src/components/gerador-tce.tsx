@@ -279,7 +279,7 @@ export function GeradorTce({ editarId }: { editarId?: string }) {
     }
   }
 
-  /** Vaga escolhida: preenche as condições que ela tem e, sem empresa escolhida ainda, a concedente. */
+  /** Vaga escolhida: preenche as condições que ela tem e, sem empresa escolhida ainda, a concedente. A vaga pode ser de outra empresa. */
   function escolherVaga(vaga: VagaEstagio) {
     setCampos((atual) => ({ ...atual, ...vaga.campos, ...FIXOS }));
     setVagaBusca(`${vaga.cargo}${vaga.empresa ? ` · ${vaga.empresa}` : ""}`);
@@ -291,8 +291,6 @@ export function GeradorTce({ editarId }: { editarId?: string }) {
       setConcedente({ razao_social: empresa.razao_social, cnpj: empresa.cnpj, endereco: empresa.endereco, cep: empresa.cep, cidade: empresa.cidade, estado: empresa.estado, email: empresa.email, representante: empresa.representante });
       setBusca(`${empresa.razao_social}${empresa.nome_fantasia ? ` (${empresa.nome_fantasia})` : ""} · ${empresa.cnpj}`);
       setVagaAviso("A empresa concedente também foi preenchida com a empresa da vaga.");
-    } else if (empresaId && vaga.empresaId && vaga.empresaId !== empresaId) {
-      setVagaAviso("Atenção: a vaga é de outra empresa, diferente da concedente escolhida no bloco 1.");
     } else {
       setVagaAviso("");
     }
@@ -458,7 +456,7 @@ export function GeradorTce({ editarId }: { editarId?: string }) {
                 ))}
               </Sugestoes>
             ) : null}
-            {vagaAviso ? <p className={cn("mt-1 text-xs", vagaAviso.startsWith("Atenção") ? "text-amber-800" : "text-slate-500")}>{vagaAviso}</p> : null}
+            {vagaAviso ? <p className="mt-1 text-xs text-slate-500">{vagaAviso}</p> : null}
           </Busca>
           <Subtitulo>Período</Subtitulo>
           <Grade>{camposDa("estagio", ["estagio_inicio", "estagio_termino", "emissao_cidade_data", "data_termo_aditivo"])}</Grade>
