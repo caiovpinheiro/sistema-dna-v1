@@ -63,7 +63,14 @@ const itemRelatorio = z.object({
   inicio: z.string().max(20).nullable().optional(),
   situacao: z.string().trim().min(1).max(40),
   valor: z.number().finite().nonnegative().max(1_000_000),
+  unidade: z.string().max(200).nullable().optional(),
 });
+
+/** "Faturamento 10/2026", também com texto depois ("Faturamento 10/2026 consolidado - Loja 01 …"). */
+function competenciaDaDescricao(descricao: string) {
+  const achado = descricao.match(/^Faturamento\s+(\d{1,2})\/(\d{4})(?!\d)/);
+  return achado?.[1] && achado[2] ? { mes: achado[1], ano: achado[2], consolidado: /consolidad/i.test(descricao) } : null;
+}
 
 type Services = {
   candidatos: CandidatoService;
@@ -720,22 +727,23 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
     schema: { tags: ["asaas"], params: z.object({ id: z.string().uuid() }) },
   }, async (request) => {
     const cobranca = await services.asaas.resumoNota(request.params.id);
-    const competencia = cobranca.descricao.match(/^Faturamento\s+(\d{1,2})\/(\d{4})$/);
-    if (!competencia?.[1] || !competencia[2]) return ok(notasSugeridas(cobranca.valor, { estagio: 0, clt: 0 }));
-    return ok(await legado.sugerirNotas(cobranca.id_empresa, competencia[1], competencia[2], cobranca.valor));
+    const competencia = competenciaDaDescricao(cobranca.descricao);
+    if (!competencia) return ok(notasSugeridas(cobranca.valor, { estagio: 0, clt: 0 }));
+    return ok(await legado.sugerirNotas(cobranca.id_empresa, competencia.mes, competencia.ano, cobranca.valor, competencia.consolidado));
   });
   api.get("/api/v1/faturamento/relatorio", {
-    schema: { tags: ["faturamento"], querystring: z.object({ empresa: z.string().min(1), mes: z.string(), ano: z.string() }) },
-  }, async (request) => ok(await legado.relatorioComEdicao(request.query.empresa, request.query.mes, request.query.ano)));
+    schema: { tags: ["faturamento"], querystring: z.object({ empresa: z.string().min(1), mes: z.string(), ano: z.string(), consolidado: z.enum(["1"]).optional() }) },
+  }, async (request) => ok(await legado.relatorioComEdicao(request.query.empresa, request.query.mes, request.query.ano, request.query.consolidado === "1")));
   // Salvar o relatório editado sem enviar (vale na lista, no envio e na sugestão de nota) e descartar a edição.
   api.put("/api/v1/faturamento/relatorio", {
-    schema: { tags: ["faturamento"], body: z.object({ empresa: z.string().min(1), mes: z.string(), ano: z.string(), itens: z.array(itemRelatorio).max(400) }) },
+    schema: { tags: ["faturamento"], body: z.object({ empresa: z.string().min(1), mes: z.string(), ano: z.string(), consolidado: z.boolean().optional(), itens: z.array(itemRelatorio).max(400) }) },
   }, async (request) => ok(await legado.salvarRelatorio(request.body.empresa, request.body.mes, request.body.ano, request.body.itens.map((item) => ({
     nome: item.nome ?? null, cargo: item.cargo ?? null, modalidade: item.modalidade ?? null, inicio: item.inicio ?? null, situacao: item.situacao, valor: item.valor,
-  })))));
+    ...(request.body.consolidado ? { unidade: item.unidade ?? null } : {}),
+  })), Boolean(request.body.consolidado))));
   api.delete("/api/v1/faturamento/relatorio", {
-    schema: { tags: ["faturamento"], querystring: z.object({ empresa: z.string().min(1), mes: z.string(), ano: z.string() }) },
-  }, async (request) => ok(await legado.descartarRelatorio(request.query.empresa, request.query.mes, request.query.ano)));
+    schema: { tags: ["faturamento"], querystring: z.object({ empresa: z.string().min(1), mes: z.string(), ano: z.string(), consolidado: z.enum(["1"]).optional() }) },
+  }, async (request) => ok(await legado.descartarRelatorio(request.query.empresa, request.query.mes, request.query.ano, request.query.consolidado === "1")));
   api.post("/api/v1/faturamento/relatorios", {
     schema: { tags: ["faturamento"], body: z.object({
       empresas: z.array(z.string().min(1)).max(200).optional(),
@@ -745,6 +753,8 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
       status: z.string().optional(),
       empresa: z.string().optional(),
       itens: z.array(itemRelatorio).max(400).optional(),
+      /** Relatório da matriz com as filiais cobradas por ela (cobrança "Faturamento M/AAAA consolidado …"). Só com uma empresa. */
+      consolidado: z.boolean().optional(),
     }) },
   }, async (request) => {
     let ids = request.body.empresas ?? [];
@@ -767,10 +777,12 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
             inicio: item.inicio ?? null,
             situacao: item.situacao,
             valor: item.valor,
+            unidade: item.unidade ?? null,
           })),
         }
       : null;
-    return ok(await legado.enviarRelatorios(config, ids, request.body.mes, request.body.ano, (input) => services.asaas.boletoDoFaturamento(input), ajuste));
+    const consolidado = Boolean(request.body.consolidado) && ids.length === 1;
+    return ok(await legado.enviarRelatorios(config, ids, request.body.mes, request.body.ano, (input) => services.asaas.boletoDoFaturamento(input), ajuste, consolidado));
   });
   api.get("/api/v1/procfy/excel", {
     schema: { tags: ["procfy"], querystring: z.object({ de: z.string().optional(), ate: z.string().optional(), status: z.string().optional(), tipoData: z.string().optional(), sistema: z.string().optional() }) },

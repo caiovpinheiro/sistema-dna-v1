@@ -13,6 +13,8 @@ type Item = {
   inicio: string | null;
   situacao: string;
   valor: number;
+  /** Só no relatório consolidado: a unidade (filial) da linha. */
+  unidade?: string | null;
 };
 
 type Relatorio = {
@@ -49,7 +51,7 @@ function linhasDe(itens: Item[]): Linha[] {
 /** Linha em branco para cobrança retroativa (ou qualquer acréscimo). */
 function linhaNova(): Linha {
   sequencia += 1;
-  return { chave: `nova-${sequencia}`, nova: true, incluida: true, nome: "", cargo: "", modalidade: "", inicio: null, situacao: "Retroativo", valor: 0, valorTexto: "" };
+  return { chave: `nova-${sequencia}`, nova: true, incluida: true, nome: "", cargo: "", modalidade: "", inicio: null, situacao: "Retroativo", valor: 0, valorTexto: "", unidade: "" };
 }
 
 function quando(iso: string) {
@@ -77,12 +79,15 @@ export function RelatorioEmpresaPainel({
   empresaId,
   mes,
   ano,
+  consolidado = false,
   onClose,
   onEnviado,
 }: {
   empresaId: string;
   mes: string;
   ano: string;
+  /** Cobrança "Faturamento M/AAAA consolidado …": junta a matriz e as filiais cobradas por ela, com a coluna Unidade. */
+  consolidado?: boolean;
   onClose: () => void;
   onEnviado?: () => void;
 }) {
@@ -92,10 +97,11 @@ export function RelatorioEmpresaPainel({
   const [aviso, setAviso] = useState("");
   const [carregada, setCarregada] = useState("");
   const competencia = Boolean(mes && ano);
-  const chave = `${empresaId}|${mes}|${ano}`;
+  const chave = `${empresaId}|${mes}|${ano}|${consolidado ? "consolidado" : ""}`;
+  const parametros = { empresa: empresaId, mes, ano, ...(consolidado ? { consolidado: "1" } : {}) };
   const relatorio = useQuery({
-    queryKey: ["faturamento-relatorio", empresaId, mes, ano],
-    queryFn: () => api<Relatorio>(`/api/v1/faturamento/relatorio?${new URLSearchParams({ empresa: empresaId, mes, ano })}`),
+    queryKey: ["faturamento-relatorio", empresaId, mes, ano, consolidado],
+    queryFn: () => api<Relatorio>(`/api/v1/faturamento/relatorio?${new URLSearchParams(parametros)}`),
     enabled: competencia,
   });
 
@@ -109,6 +115,7 @@ export function RelatorioEmpresaPainel({
   }, [relatorio.data, chave, carregada]);
 
   const visiveis = useMemo(() => linhas.filter((linha) => linha.incluida), [linhas]);
+  const comUnidade = consolidado;
   const total = useMemo(() => Math.round(visiveis.reduce((soma, linha) => soma + numero(linha.valorTexto), 0) * 100) / 100, [visiveis]);
   const origem = relatorio.data?.data.itens ?? [];
   const calculado = relatorio.data?.data.calculado;
@@ -121,7 +128,8 @@ export function RelatorioEmpresaPainel({
       || (linha.nome ?? "") !== (item.nome ?? "")
       || (linha.cargo ?? "") !== (item.cargo ?? "")
       || (linha.modalidade ?? "") !== (item.modalidade ?? "")
-      || linha.situacao !== item.situacao;
+      || linha.situacao !== item.situacao
+      || (linha.unidade ?? "") !== (item.unidade ?? "");
   });
   const original = calculado?.total ?? relatorio.data?.data.total ?? 0;
 
@@ -137,12 +145,13 @@ export function RelatorioEmpresaPainel({
       inicio: linha.inicio,
       situacao: linha.situacao.trim() || "Ativo",
       valor: numero(linha.valorTexto),
+      ...(consolidado ? { unidade: linha.unidade?.trim() || null } : {}),
     }));
   }
 
   async function recarregar() {
     // Espera o relatório novo chegar antes de soltar o efeito que remonta as linhas.
-    await client.invalidateQueries({ queryKey: ["faturamento-relatorio", empresaId, mes, ano] });
+    await client.invalidateQueries({ queryKey: ["faturamento-relatorio", empresaId, mes, ano, consolidado] });
     setCarregada("");
     await client.invalidateQueries({ queryKey: ["faturamento"] });
   }
@@ -150,7 +159,7 @@ export function RelatorioEmpresaPainel({
   const salvar = useMutation({
     mutationFn: () => api<{ total: number; linhas: number }>("/api/v1/faturamento/relatorio", {
       method: "PUT",
-      body: JSON.stringify({ empresa: empresaId, mes, ano, itens: itensDaTela() }),
+      body: JSON.stringify({ empresa: empresaId, mes, ano, consolidado, itens: itensDaTela() }),
     }),
     onSuccess: async () => {
       await recarregar();
@@ -160,7 +169,7 @@ export function RelatorioEmpresaPainel({
   });
 
   const descartar = useMutation({
-    mutationFn: () => api(`/api/v1/faturamento/relatorio?${new URLSearchParams({ empresa: empresaId, mes, ano })}`, { method: "DELETE" }),
+    mutationFn: () => api(`/api/v1/faturamento/relatorio?${new URLSearchParams(parametros)}`, { method: "DELETE" }),
     onSuccess: async () => {
       await recarregar();
       setAviso("Edição descartada. O relatório voltou ao calculado.");
@@ -183,6 +192,7 @@ export function RelatorioEmpresaPainel({
         empresas: [empresaId],
         mes,
         ano,
+        consolidado,
         itens: itensDaTela(),
       }),
     }),
@@ -208,8 +218,9 @@ export function RelatorioEmpresaPainel({
       ["Competência", competenciaTexto],
       ["E-mail", dados?.email ?? ""],
       [],
-      ["Candidato", "Cargo", "Modalidade", "Início", "Situação", "Valor"],
+      [...(comUnidade ? ["Unidade"] : []), "Candidato", "Cargo", "Modalidade", "Início", "Situação", "Valor"],
       ...visiveis.map((linha) => [
+        ...(comUnidade ? [linha.unidade ?? ""] : []),
         linha.nome || "Sem nome",
         linha.cargo ?? "",
         linha.modalidade ?? "",
@@ -218,7 +229,7 @@ export function RelatorioEmpresaPainel({
         numero(linha.valorTexto).toFixed(2).replace(".", ","),
       ]),
       [],
-      ["", "", "", "", "Total", total.toFixed(2).replace(".", ",")],
+      [...(comUnidade ? [""] : []), "", "", "", "", "Total", total.toFixed(2).replace(".", ",")],
     ];
     const base = (dados?.empresa || "empresa").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\w]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "empresa";
     baixarRelatorio(`relatorio-${base}-${mes.padStart(2, "0")}-${ano}.csv`, corpo.map((colunas) => colunas.map(celulaCsv).join(";")).join("\r\n"));
@@ -231,7 +242,7 @@ export function RelatorioEmpresaPainel({
           <div>
             <h2 id="relatorio-titulo" className="text-lg font-bold text-navy-900">{dados?.empresa ? textoPlano(dados.empresa) : "Relatório da empresa"}</h2>
             <p className="text-sm text-slate-500">
-              {competencia ? `${mes.padStart(2, "0")}/${ano}` : "Sem competência"}
+              {competencia ? `${mes.padStart(2, "0")}/${ano}${consolidado ? " · consolidado com as unidades" : ""}` : "Sem competência"}
               {dados?.cnpj ? ` · ${formatCnpj(dados.cnpj)}` : ""}
               {dados ? ` · ${dados.email || "Sem e-mail financeiro"}` : ""}
             </p>
@@ -244,7 +255,7 @@ export function RelatorioEmpresaPainel({
           </div>
         </div>
 
-        {!competencia ? <p className="text-sm text-slate-500">Esta cobrança não é um faturamento mensal. O relatório só abre quando a descrição é Faturamento M/AAAA.</p> : null}
+        {!competencia ? <p className="text-sm text-slate-500">Esta cobrança não é um faturamento mensal. O relatório só abre quando a descrição começa com Faturamento M/AAAA.</p> : null}
         {relatorio.isLoading ? <Skeleton className="h-40" /> : null}
         {relatorio.error instanceof Error ? <Alerta>{relatorio.error.message}</Alerta> : null}
 
@@ -262,6 +273,7 @@ export function RelatorioEmpresaPainel({
               <thead>
                 <tr>
                   <th>Entra</th>
+                  {comUnidade ? <th>Unidade</th> : null}
                   <th>Candidato</th>
                   <th>Cargo</th>
                   <th>Modalidade</th>
@@ -276,6 +288,7 @@ export function RelatorioEmpresaPainel({
                     <td>
                       <input className="size-4 accent-cyan-700" aria-label={`Incluir ${linha.nome || "candidato"}`} type="checkbox" checked={linha.incluida} onChange={(event) => atualizar(linha.chave, { incluida: event.target.checked })} />
                     </td>
+                    {comUnidade ? <td><Input aria-label="Unidade" value={linha.unidade ?? ""} onChange={(event) => atualizar(linha.chave, { unidade: event.target.value })} /></td> : null}
                     <td><Input aria-label="Candidato" value={linha.nome ?? ""} onChange={(event) => atualizar(linha.chave, { nome: event.target.value })} /></td>
                     <td><Input aria-label="Cargo" value={linha.cargo ?? ""} onChange={(event) => atualizar(linha.chave, { cargo: event.target.value })} /></td>
                     <td><Input aria-label="Modalidade" value={linha.modalidade ?? ""} onChange={(event) => atualizar(linha.chave, { modalidade: event.target.value })} /></td>
@@ -300,6 +313,7 @@ export function RelatorioEmpresaPainel({
             <table className="data-table min-w-[720px]">
               <thead>
                 <tr>
+                  {comUnidade ? <th>Unidade</th> : null}
                   <th>Candidato</th>
                   <th>Cargo</th>
                   <th>Modalidade</th>
@@ -311,6 +325,7 @@ export function RelatorioEmpresaPainel({
               <tbody>
                 {visiveis.map((linha) => (
                   <tr key={linha.chave}>
+                    {comUnidade ? <td className="text-slate-600">{linha.unidade || "—"}</td> : null}
                     <td className="font-semibold text-navy-900">{linha.nome || "Sem nome"}</td>
                     <td className="text-slate-600">{linha.cargo || "—"}</td>
                     <td className="text-slate-600">{linha.modalidade || "—"}</td>

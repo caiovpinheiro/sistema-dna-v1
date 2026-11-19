@@ -47,10 +47,14 @@ function dataEnvio(valor: string) {
   return partes[0]?.length === 4 && partes[2] ? `${partes[2]}/${partes[1]}/${partes[0]}` : valor;
 }
 
+/**
+ * Competência da cobrança: "Faturamento 10/2026", também com texto depois ("Faturamento 10/2026 - Brito Confiança").
+ * Com "consolidado" na descrição, o relatório junta a matriz e as filiais cobradas por ela.
+ */
 function competencia(descricao: string) {
-  const encontrado = descricao.match(/^Faturamento\s+(\d{1,2})\/(\d{4})$/);
+  const encontrado = descricao.match(/^Faturamento\s+(\d{1,2})\/(\d{4})(?!\d)/);
   if (!encontrado?.[1] || !encontrado[2]) return null;
-  return { mes: String(Number(encontrado[1])), ano: encontrado[2] };
+  return { mes: String(Number(encontrado[1])), ano: encontrado[2], consolidado: /consolidad/i.test(descricao) };
 }
 
 function monthStart() {
@@ -82,7 +86,7 @@ export function ContasReceberPage() {
   const [acoesAbertas, setAcoesAbertas] = useState(false);
   const [pagamento, setPagamento] = useState<{ id: string; data: string } | null>(null);
   const [nota, setNota] = useState<{ id: string; origem: SugestaoNota["origem"] | "carregando"; itens: ItemNota[] } | null>(null);
-  const [relatorio, setRelatorio] = useState<{ empresaId: string; mes: string; ano: string } | null>(null);
+  const [relatorio, setRelatorio] = useState<{ empresaId: string; mes: string; ano: string; consolidado: boolean } | null>(null);
 
   const query = useQuery({
     queryKey: ["cobrancas", de, ate, situacao],
@@ -229,7 +233,7 @@ export function ContasReceberPage() {
         } else {
           const resposta = await api<{ enviados: number; pulados?: number; falhas: Array<{ motivo: string }> }>("/api/v1/faturamento/relatorios", {
             method: "POST",
-            body: JSON.stringify({ empresas: [row.id_empresa], mes: referencia.mes, ano: referencia.ano }),
+            body: JSON.stringify({ empresas: [row.id_empresa], mes: referencia.mes, ano: referencia.ano, consolidado: referencia.consolidado }),
           });
           enviados += resposta.data.enviados;
           pulados += resposta.data.pulados ?? 0;
@@ -481,7 +485,7 @@ export function ContasReceberPage() {
                     <td className="whitespace-nowrap text-slate-600">{row.envio ? <span className="tabular-nums">Enviado em {dataEnvio(row.envio)}</span> : <span className="text-slate-400">Não enviado</span>}</td>
                     <td>
                       <div className="flex min-w-56 flex-wrap justify-end gap-1.5">
-                        <button type="button" className="acao acao-cyan" onClick={() => { const ref = competencia(row.descricao); setRelatorio({ empresaId: row.id_empresa, mes: ref?.mes ?? "", ano: ref?.ano ?? "" }); }}>Relatório</button>
+                        <button type="button" className="acao acao-cyan" onClick={() => { const ref = competencia(row.descricao); setRelatorio({ empresaId: row.id_empresa, mes: ref?.mes ?? "", ano: ref?.ano ?? "", consolidado: ref?.consolidado ?? false }); }}>Relatório</button>
                         {row.url_pagamento ? <a className="acao acao-cyan inline-flex items-center gap-1" href={row.url_pagamento} target="_blank" rel="noreferrer">Link <ExternalLink size={12} /></a> : null}
                         {podeEnviar ? <button type="button" className="acao acao-cyan" disabled={Boolean(progresso)} onClick={() => enviarPendentes([row.id])}>Enviar relatório</button> : null}
                         <button type="button" className="acao acao-cyan" onClick={() => sincronizar.mutate(row.id)}>Verificar</button>
@@ -565,7 +569,7 @@ export function ContasReceberPage() {
           </Card>
         </div>
       ) : null}
-      {relatorio ? <RelatorioEmpresaPainel empresaId={relatorio.empresaId} mes={relatorio.mes} ano={relatorio.ano} onClose={() => setRelatorio(null)} /> : null}
+      {relatorio ? <RelatorioEmpresaPainel empresaId={relatorio.empresaId} mes={relatorio.mes} ano={relatorio.ano} consolidado={relatorio.consolidado} onClose={() => setRelatorio(null)} /> : null}
       {pagamento ? (
         <div className="fixed inset-0 z-50 grid place-items-center bg-navy-950/40 p-4" role="dialog" aria-modal="true" aria-labelledby="recebimento-titulo">
           <Card className="motion-pop grid w-full max-w-md gap-4">

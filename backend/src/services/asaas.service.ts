@@ -73,9 +73,9 @@ export class AsaasService {
                SELECT ce.data::text
                FROM dna_work.cobranca_email ce
                WHERE ce.id_empresa::text = c.id_empresa::text
-                 AND c.descricao ~ '^Faturamento [0-9]+/[0-9]{4}$'
-                 AND ltrim(split_part(regexp_replace(c.descricao, '^Faturamento ', ''), '/', 1), '0') = ltrim(ce.mes::text, '0')
-                 AND split_part(regexp_replace(c.descricao, '^Faturamento ', ''), '/', 2) = ce.ano::text
+                 AND c.descricao ~ '^Faturamento [0-9]+/[0-9]{4}([^0-9]|$)'
+                 AND ltrim(substring(c.descricao from '^Faturamento ([0-9]+)/'), '0') = ltrim(ce.mes::text, '0')
+                 AND substring(c.descricao from '^Faturamento [0-9]+/([0-9]{4})') = ce.ano::text
                ORDER BY ce.id DESC
                LIMIT 1
              ) AS envio
@@ -200,9 +200,10 @@ export class AsaasService {
       FROM dna_work.cobranca_asaas
       WHERE id_empresa::text = $1
         AND situacao = 'aberta'
-        AND descricao ~ '^Faturamento [0-9]+/[0-9]{4}$'
-        AND ltrim(split_part(regexp_replace(descricao, '^Faturamento ', ''), '/', 1), '0') = ltrim(split_part(regexp_replace($2, '^Faturamento ', ''), '/', 1), '0')
-        AND split_part(regexp_replace(descricao, '^Faturamento ', ''), '/', 2) = split_part(regexp_replace($2, '^Faturamento ', ''), '/', 2)
+        -- "Faturamento 10/2026", também com texto depois ("… - Brito Confiança", "… consolidado - Loja 01 …").
+        AND descricao ~ '^Faturamento [0-9]+/[0-9]{4}([^0-9]|$)'
+        AND ltrim(substring(descricao from '^Faturamento ([0-9]+)/'), '0') = ltrim(substring($2 from '^Faturamento ([0-9]+)/'), '0')
+        AND substring(descricao from '^Faturamento [0-9]+/([0-9]{4})') = substring($2 from '^Faturamento [0-9]+/([0-9]{4})')
       ORDER BY vencimento DESC
       LIMIT 1
     `, [input.idEmpresa, input.descricao]);

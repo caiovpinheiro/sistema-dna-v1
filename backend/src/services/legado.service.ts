@@ -18,7 +18,14 @@ export type ItemRelatorio = {
   inicio: string | null;
   situacao: string;
   valor: number;
+  /** Só no relatório consolidado: a unidade (filial) de onde vem a linha. */
+  unidade?: string | null;
 };
+
+/** Chave do relatório salvo: o consolidado da matriz fica separado do relatório só dela. */
+function chaveSalva(idEmpresa: string, consolidado: boolean) {
+  return consolidado ? `${idEmpresa}#consolidado` : idEmpresa;
+}
 
 function totalDe(itens: Array<{ valor: number }>) {
   return Math.round(itens.reduce((soma, item) => soma + (Number(item.valor) || 0), 0) * 100) / 100;
@@ -257,17 +264,32 @@ export class LegadoService {
     return { quantidade: row?.quantidade ?? 0, valor: Number(row?.valor ?? 0) };
   }
 
-  async relatorioEmpresa(idEmpresa: string, mes: string, ano: string) {
+  /**
+   * Unidades do relatório consolidado: a matriz e as filiais cobradas por ela
+   * (matriz = id da matriz, usa_asaas 2, sede 10). Sem consolidar, só a própria empresa.
+   */
+  private async unidadesDoRelatorio(idEmpresa: string, consolidado: boolean) {
+    if (!consolidado) return [idEmpresa];
+    const filiais = await many<{ id: string }>(this.db, `
+      SELECT id_empresa::text AS id FROM dna_work.empresa
+      WHERE matriz::text = $1 AND id_empresa::text <> $1 AND usa_asaas::text = '2' AND sede::text = '10'
+    `, [idEmpresa]);
+    return [idEmpresa, ...filiais.map((filial) => filial.id)];
+  }
+
+  async relatorioEmpresa(idEmpresa: string, mes: string, ano: string, consolidado = false) {
     const datas = periodo(mes, ano);
+    const unidades = await this.unidadesDoRelatorio(idEmpresa, consolidado);
     const empresa = await one<{ nome: string | null; cnpj: string | null; email: string | null; email_financeiro: string | null; fechamento: string | null }>(this.db, `
       SELECT coalesce(nome_fantasia, razao_social) AS nome, cnpj, email, email_financeiro, datafechamento::text AS fechamento
       FROM dna_work.empresa WHERE id_empresa = $1
     `, [idEmpresa]);
     if (!empresa) throw new AppError(404, "EMPRESA_NAO_ENCONTRADA", "Empresa não encontrada.");
     const linhas = await many<{
-      nome: string | null; cargo: string | null; modalidade: string | null; inicio: string | null; demissao: string | null; valor: string;
+      nome: string | null; cargo: string | null; modalidade: string | null; inicio: string | null; demissao: string | null; valor: string; unidade: string | null;
     }>(this.db, `
       SELECT c.nome, v.cargo, m.descricao AS modalidade, cv.datainicio AS inicio, cv.data_demicao AS demissao,
+             btrim(coalesce(e.nome_fantasia, e.razao_social)) AS unidade,
              round((${VALOR_CONTRATO}), 2)::text AS valor
       FROM dna_work.conratacaovaga cv
       JOIN dna_work.vaga v ON v.id_vaga = cv.id_vaga
@@ -277,7 +299,7 @@ export class LegadoService {
       LEFT JOIN public.valor_empresas ve ON ve.id_empresa = e.id_empresa::text
       LEFT JOIN dna_work.candidato c ON c.id_candidato = cv.id_candidato
       LEFT JOIN dna_work.modalidade_vaga m ON m.id = v.tipo_vaga
-      WHERE e.id_empresa = $5
+      WHERE e.id_empresa::text = ANY($5::text[])
         AND (
           cv.data_demicao IS NULL OR btrim(cv.data_demicao) = ''
           OR (
@@ -300,15 +322,16 @@ export class LegadoService {
         OR cv.datainicio <= to_char((date_trunc('month', to_date(replace($4, '/', '-') || '01', 'YYYY-MM-DD')) + interval '1 month' - interval '1 day' + interval '3 day')::date, 'YYYY/MM/DD')
       )
         AND (${VALOR_CONTRATO}) > 0
-      ORDER BY c.nome
-    `, [datas.dataInicio30, datas.dataInicio10e20, datas.data30, datas.data10e20, idEmpresa]);
-    const itens = linhas.map((linha) => ({
+      ORDER BY ${consolidado ? "unidade, " : ""}c.nome
+    `, [datas.dataInicio30, datas.dataInicio10e20, datas.data30, datas.data10e20, unidades]);
+    const itens: ItemRelatorio[] = linhas.map((linha) => ({
       nome: linha.nome,
       cargo: linha.cargo,
       modalidade: linha.modalidade,
       inicio: linha.inicio,
       situacao: linha.demissao ? "Desligado" : "Ativo",
       valor: Number(linha.valor),
+      ...(consolidado ? { unidade: linha.unidade } : {}),
     }));
     return {
       empresa: empresa.nome,
@@ -353,11 +376,13 @@ export class LegadoService {
   }
 
   /** Relatório calculado + o salvo (se houver). `itens`/`total` já são os que valem (salvos na frente). */
-  async relatorioComEdicao(idEmpresa: string, mes: string, ano: string) {
-    const calculado = await this.relatorioEmpresa(idEmpresa, mes, ano);
-    const salvo = (await this.relatoriosEditados([idEmpresa], mes, ano)).get(idEmpresa) ?? null;
+  async relatorioComEdicao(idEmpresa: string, mes: string, ano: string, consolidado = false) {
+    const calculado = await this.relatorioEmpresa(idEmpresa, mes, ano, consolidado);
+    const chave = chaveSalva(idEmpresa, consolidado);
+    const salvo = (await this.relatoriosEditados([chave], mes, ano)).get(chave) ?? null;
     return {
       ...calculado,
+      consolidado,
       calculado: { itens: calculado.itens, total: calculado.total },
       editado: salvo ? { atualizado_em: salvo.atualizado_em } : null,
       itens: salvo ? salvo.itens : calculado.itens,
@@ -365,7 +390,7 @@ export class LegadoService {
     };
   }
 
-  async salvarRelatorio(idEmpresa: string, mes: string, ano: string, itens: ItemRelatorio[]) {
+  async salvarRelatorio(idEmpresa: string, mes: string, ano: string, itens: ItemRelatorio[], consolidado = false) {
     if (!/^\d{1,2}$/.test(mes) || !/^\d{4}$/.test(ano)) throw new AppError(422, "COMPETENCIA_INVALIDA", "Mês ou ano inválido.");
     const empresa = await one<{ id: string }>(this.db, `SELECT id_empresa::text AS id FROM dna_work.empresa WHERE id_empresa::text = $1`, [idEmpresa]);
     if (!empresa) throw new AppError(404, "EMPRESA_NAO_ENCONTRADA", "Empresa não encontrada.");
@@ -375,19 +400,19 @@ export class LegadoService {
       VALUES ($1, $2, $3, $4::jsonb, now())
       ON CONFLICT (id_empresa, mes, ano) DO UPDATE SET itens = EXCLUDED.itens, atualizado_em = now()
       RETURNING atualizado_em::text AS atualizado_em
-    `, [idEmpresa, Number(mes), Number(ano), JSON.stringify(itens)]);
+    `, [chaveSalva(idEmpresa, consolidado), Number(mes), Number(ano), JSON.stringify(itens)]);
     return { atualizado_em: row?.atualizado_em ?? null, total: totalDe(itens), linhas: itens.length };
   }
 
-  async descartarRelatorio(idEmpresa: string, mes: string, ano: string) {
+  async descartarRelatorio(idEmpresa: string, mes: string, ano: string, consolidado = false) {
     if (!/^\d{1,2}$/.test(mes) || !/^\d{4}$/.test(ano)) throw new AppError(422, "COMPETENCIA_INVALIDA", "Mês ou ano inválido.");
     await this.garantirEditados();
-    await this.db.query(`DELETE FROM dna_work.faturamento_relatorio_editado WHERE id_empresa = $1 AND mes = $2 AND ano = $3`, [idEmpresa, Number(mes), Number(ano)]);
+    await this.db.query(`DELETE FROM dna_work.faturamento_relatorio_editado WHERE id_empresa = $1 AND mes = $2 AND ano = $3`, [chaveSalva(idEmpresa, consolidado), Number(mes), Number(ano)]);
     return { descartado: true };
   }
 
-  async sugerirNotas(idEmpresa: string, mes: string, ano: string, valor: number) {
-    const relatorio = await this.relatorioComEdicao(idEmpresa, mes, ano);
+  async sugerirNotas(idEmpresa: string, mes: string, ano: string, valor: number, consolidado = false) {
+    const relatorio = await this.relatorioComEdicao(idEmpresa, mes, ano, consolidado);
     const partes = { estagio: 0, clt: 0 };
     for (const item of relatorio.itens) {
       const regime = classifyRegime(item.modalidade);
@@ -403,7 +428,8 @@ export class LegadoService {
     mes: string,
     ano: string,
     boleto: (input: { idEmpresa: string; valor: number; vencimento: string; descricao: string }) => Promise<{ url: string | null; vencimento: string }>,
-    ajuste?: { idEmpresa: string; itens: Array<{ nome: string | null; cargo: string | null; modalidade: string | null; inicio?: string | null; situacao: string; valor: number }> } | null,
+    ajuste?: { idEmpresa: string; itens: Array<{ nome: string | null; cargo: string | null; modalidade: string | null; inicio?: string | null; situacao: string; valor: number; unidade?: string | null }> } | null,
+    consolidado = false,
   ) {
     const enviados: string[] = [];
     const boletos: string[] = [];
@@ -414,7 +440,7 @@ export class LegadoService {
     const data = `${hoje.getFullYear()}/${String(hoje.getMonth() + 1).padStart(2, "0")}/${String(hoje.getDate()).padStart(2, "0")}`;
     const descricao = `Faturamento ${mes}/${ano}`;
     for (const id of ids) {
-      const relatorio = await this.relatorioComEdicao(id, mes, ano).catch((error: unknown) => {
+      const relatorio = await this.relatorioComEdicao(id, mes, ano, consolidado).catch((error: unknown) => {
         falhas.push({ empresa: id, motivo: error instanceof Error ? error.message : "Não foi possível montar o relatório." });
         return null;
       });
@@ -427,6 +453,7 @@ export class LegadoService {
           inicio: item.inicio ?? null,
           situacao: item.situacao,
           valor: item.valor,
+          ...(consolidado ? { unidade: item.unidade ?? null } : {}),
         }));
         relatorio.total = Math.round(ajuste.itens.reduce((soma, item) => soma + item.valor, 0) * 100) / 100;
       }
@@ -476,8 +503,10 @@ export class LegadoService {
           pulados.push(relatorio.empresa || id);
           continue;
         }
+        const comUnidade = relatorio.itens.some((linha) => linha.unidade);
         const corpo = relatorio.itens.map((linha) => `
           <tr>
+            ${comUnidade ? `<td style="padding:6px 8px;border-bottom:1px solid #e5e7eb">${textoHtml(linha.unidade ?? "")}</td>` : ""}
             <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb">${textoHtml(linha.nome ?? "")}</td>
             <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb">${textoHtml(linha.cargo ?? "")}</td>
             <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb">${textoHtml(linha.modalidade ?? "")}</td>
@@ -490,6 +519,7 @@ export class LegadoService {
           <p>Segue o relatório de faturamento de ${textoHtml(mes)}/${textoHtml(ano)} e o boleto para pagamento.</p>
           <table style="border-collapse:collapse;width:100%;max-width:720px">
             <tr>
+              ${comUnidade ? `<td style="padding:6px 8px;font-weight:bold">Unidade</td>` : ""}
               <td style="padding:6px 8px;font-weight:bold">Candidato</td>
               <td style="padding:6px 8px;font-weight:bold">Cargo</td>
               <td style="padding:6px 8px;font-weight:bold">Modalidade</td>
