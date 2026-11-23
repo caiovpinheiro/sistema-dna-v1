@@ -660,6 +660,7 @@ function AbaVaga({ empresaInicial, modeloInicial, modo = "vaga" }: { empresaInic
   const navigate = useNavigate();
   const empresas = useQuery({ queryKey: ["empresas-tela"], enabled: !ehModelo, queryFn: () => api<Empresa[]>("/api/v1/grupos-empresas/empresas") });
   const [form, setForm] = useState({ ...vagaVazia, empresa_id: empresaInicial });
+  const empresaDaVaga = (empresas.data?.data ?? []).find((empresa) => empresa.id === form.empresa_id);
   const [modos, setModos] = useState(modosFixos);
   const [aviso, setAviso] = useState("");
   const queryClient = useQueryClient();
@@ -825,10 +826,11 @@ function AbaVaga({ empresaInicial, modeloInicial, modo = "vaga" }: { empresaInic
                 <BuscaOpcao
                   value={form.empresa_id}
                   onChange={(empresaId) => setForm({ ...form, empresa_id: empresaId })}
-                  opcoes={(empresas.data?.data ?? []).map((empresa) => ({ id: empresa.id, label: empresa.nome_fantasia || empresa.razao_social }))}
-                  placeholder="Pesquisar empresa"
+                  opcoes={(empresas.data?.data ?? []).map((empresa) => ({ id: empresa.id, label: empresa.nome_fantasia || empresa.razao_social, detalhe: empresa.cnpj ? `CNPJ ${formatCnpj(empresa.cnpj)}` : "Sem CNPJ" }))}
+                  placeholder="Pesquisar empresa pelo nome ou CNPJ"
                 />
               </Field>
+              {empresaDaVaga ? <p className="mt-1 text-xs text-slate-500">{empresaDaVaga.cnpj ? `CNPJ ${formatCnpj(empresaDaVaga.cnpj)}` : "Empresa sem CNPJ"}{empresaDaVaga.nome_fantasia && empresaDaVaga.razao_social !== empresaDaVaga.nome_fantasia ? ` · ${empresaDaVaga.razao_social}` : ""}</p> : null}
             </Celula>
             <Celula span={2}>
               <Field label="Modelo (opcional)">
