@@ -301,7 +301,7 @@ test("pesquisa candidatos e empresas com filtro e paginação", async () => {
   assert.equal(companies.json().data[0].acesso_portal, false);
 });
 
-test("gera acesso ao portal e mostra e-mail e senha na empresa", async () => {
+test("gera acesso ao portal, mostra a senha só na resposta e não a guarda", async () => {
   await db.query(`
     create table if not exists dna_work.usuario_empresa (
       id_u varchar(40) primary key,
@@ -314,8 +314,14 @@ test("gera acesso ao portal e mostra e-mail e senha na empresa", async () => {
       status integer,
       tipo integer,
       data_senha varchar(20),
-      atualiza_senha integer
+      atualiza_senha integer,
+      senha_envio text
     )
+  `);
+  // Senha em texto guardada por uma versão antiga: precisa ser apagada.
+  await db.query(`
+    insert into dna_work.usuario_empresa (id_u, nome_u, email_u, senha_u, senha_hash, empresa_u, status, tipo, atualiza_senha, senha_envio)
+    values ('usuario-antigo', 'Antigo', 'antigo@example.com', 'md5', 'hash', 'empresa-antiga', 1, 1, 0, 'SenhaEmTexto1')
   `);
   await db.query(`create table if not exists dna_work.vinculo_empresa_usuario (id_usuario varchar(40), id_empresa varchar(40))`);
   await db.query(`create table if not exists dna_work.paginas_usuario_empresa (id_usuario varchar(42), menu text, sub1 text, sub2 text, paginas text)`);
@@ -337,9 +343,18 @@ test("gera acesso ao portal e mostra e-mail e senha na empresa", async () => {
   assert.equal(gerado.json().data.email, "portal@example.com");
   assert.equal(gerado.json().data.criado, true);
   assert.equal(String(gerado.json().data.senha).length, 12);
+  const gravado = await db.query(`select senha_envio, senha_hash, atualiza_senha from dna_work.usuario_empresa where empresa_u = $1`, [id]);
+  assert.equal(gravado.rows[0].senha_envio, null);
+  assert.match(gravado.rows[0].senha_hash, /^\$argon2id\$/);
+  assert.equal(gravado.rows[0].atualiza_senha, 1);
+  const restantes = await db.query(`select count(*)::int as n from dna_work.usuario_empresa where senha_envio is not null`);
+  assert.equal(restantes.rows[0].n, 0);
+  const antigo = await db.query(`select senha_u, senha_hash from dna_work.usuario_empresa where id_u = 'usuario-antigo'`);
+  assert.deepEqual(antigo.rows[0], { senha_u: "md5", senha_hash: "hash" });
   const ficha = await call("GET", `/api/v1/empresas/${id}`);
   assert.equal(ficha.json().data.portal.email, "portal@example.com");
-  assert.equal(ficha.json().data.portal.senha, gerado.json().data.senha);
+  assert.equal("senha" in ficha.json().data.portal, false);
+  assert.equal(JSON.stringify(ficha.json()).includes(gerado.json().data.senha), false);
   const lista = await call("GET", "/api/v1/empresas?q=Empresa%20Portal&page=1&pageSize=5");
   assert.equal(lista.json().data.find((item: { id_empresa: string }) => item.id_empresa === id).acesso_portal, true);
   const nunca = await call("GET", "/api/v1/empresas?q=Empresa%20Portal&acesso=nunca&page=1&pageSize=5");
@@ -361,5 +376,7 @@ test("gera acesso ao portal e mostra e-mail e senha na empresa", async () => {
   assert.equal(nova.statusCode, 200);
   assert.notEqual(nova.json().data.senha, gerado.json().data.senha);
   const atualizada = await call("GET", `/api/v1/empresas/${id}`);
-  assert.equal(atualizada.json().data.portal.senha, nova.json().data.senha);
+  assert.equal(JSON.stringify(atualizada.json()).includes(nova.json().data.senha), false);
+  const redefinida = await db.query(`select senha_envio, atualiza_senha from dna_work.usuario_empresa where empresa_u = $1`, [id]);
+  assert.deepEqual(redefinida.rows[0], { senha_envio: null, atualiza_senha: 1 });
 });

@@ -1,6 +1,6 @@
 # Agente — Empresas
 
-> Última revisão: 2026-11-18 (limites do formulário iguais às colunas: número 10, bairro 50, IE 20, responsável 150; pesquisa inteligente nas buscas)
+> Última revisão: 2026-11-23 (senha do portal não fica mais salva em texto: só aparece na resposta de gerar, e a empresa troca no primeiro acesso)
 
 ## Para que serve
 
@@ -42,11 +42,11 @@ Backend
 | Método | Caminho | O que faz | Onde está no backend |
 |---|---|---|---|
 | GET | `/api/v1/empresas` | Lista paginada; filtros `q`, `razao_social`, `nome_fantasia`, `cnpj`, `cidade`, `uf`, `status`, `acesso` (`acessou`/`nunca`/`sem`), `sort`, `order` | `routes/index.ts:194` → `EmpresaService.list` |
-| GET | `/api/v1/empresas/:id` | Ficha + `acesso_portal`, `portal` (e-mail, senha, nome) e `uso_portal` | `routes/index.ts:198` → `EmpresaService.get` |
+| GET | `/api/v1/empresas/:id` | Ficha + `acesso_portal`, `portal` (e-mail e nome; **sem senha**) e `uso_portal` | `routes/index.ts:198` → `EmpresaService.get` |
 | PATCH | `/api/v1/empresas/:id` | Edita campos permitidos | `routes/index.ts:211` → `EmpresaService.update` |
 | POST | `/api/v1/empresas` | Cria empresa só em `dna_work.empresa` (não usado pela UI atual) | `routes/index.ts:191` → `EmpresaService.create` |
 | GET | `/api/v1/empresas/:id/cobranca` | Condições de cobrança da empresa (ou `null`) | `routes/index.ts:201` → `valorDaEmpresa` |
-| POST | `/api/v1/empresas/:id/acesso-portal` | Cria o login do portal (`{ email }`) ou gera nova senha (`{ redefinir: true }`) | `routes/index.ts:204` → `EmpresaService.gerarAcessoPortal` |
+| POST | `/api/v1/empresas/:id/acesso-portal` | Cria o login do portal (`{ email }`) ou gera nova senha (`{ redefinir: true }`). Só esta resposta traz a `senha` | `routes/index.ts:204` → `EmpresaService.gerarAcessoPortal` |
 | GET | `/api/v1/empresas/:id/vagas` | Vagas da empresa (filtro `situacao` opcional); a ficha busca de 100 em 100 até 10 páginas | `routes/index.ts:214` → `VagaService.list({ id_empresa })` |
 | GET | `/api/v1/empresas/:id/contratacoes` | Contratações da empresa (paginado, padrão 20) | `routes/index.ts:221` → `ContratacaoService.listByEmpresa` |
 
@@ -54,7 +54,7 @@ Backend
 
 Postgres, schema `dna_work` (cópia do Lightsail):
 - `dna_work.empresa` — lido e gravado (PATCH/POST). Campos: `id_empresa`, `razao_social`, `nome_fantasia`, `cnpj`, `email` (minúsculas), `telefone`, `celular`, endereço (`cep`, `logradouro`, `numero`, `complemento`, `bairro`, `cidade`, `uf`), `status` (1 ativo, 0 inativo), `responsavel`, `tipo_empresa`, `matriz`, `ie`, `site`, `obs`, `data_adicao`. Ao criar acesso ao portal também faz `recrutamento = 1` (ignora se a coluna não existir).
-- `dna_work.usuario_empresa` — login do portal. Gravado por `gerarAcessoPortal`: `id_u`, `nome_u`, `email_u`, `senha_u` (MD5 legado), `senha_hash` (argon2), `senha_envio` (senha em texto para exibir na ficha), `telefone_u`, `empresa_u`, `status`, `tipo`, `data_senha`, `atualiza_senha`.
+- `dna_work.usuario_empresa` — login do portal. Gravado por `gerarAcessoPortal`: `id_u`, `nome_u`, `email_u`, `senha_u` (MD5 legado), `senha_hash` (Argon2id), `telefone_u`, `empresa_u`, `status`, `tipo`, `data_senha`, `atualiza_senha` (gravado 1: obriga a troca no primeiro acesso). `senha_envio` (senha em texto de versões antigas) não é mais lida nem gravada; é zerada uma vez por processo (`limparSenhaEnvio`). A coluna ficou para não quebrar uma versão antiga ainda rodando; pode ser removida depois.
 - `dna_work.vinculo_empresa_usuario` — vínculo usuário ↔ empresa (insert se não existir).
 - `dna_work.paginas_usuario_empresa` — menus do portal (insert com valores fixos `MENU_PORTAL`, `SUB1_PORTAL`, `SUB2_PORTAL` em `empresa.service.ts:9–11`, se ainda não houver).
 - `dna_work.portal_empresa_acesso` — só leitura aqui (`ultimo_login`, `ultimo_uso`, `logins`, `email`); quem grava não foi encontrado neste repositório (provavelmente o portal de empresas).
@@ -85,8 +85,9 @@ Serviços externos: nenhum.
   - Já tem usuário ativo e não pediu `redefinir` → 409 `ACESSO_EXISTENTE`.
   - `redefinir: true` → nova senha (12 caracteres: 8 letras + 4 números, sem caracteres ambíguos) no mesmo usuário; a anterior deixa de valer. A tela pede confirmação (`window.confirm`).
   - Novo acesso: e-mail do corpo ou o da empresa; inválido → 422 `EMAIL_INVALIDO`; e-mail já usado por usuário de outra empresa → 409 `EMAIL_EM_USO`. Nome do usuário: responsável, fantasia ou razão social (o primeiro com 2+ letras). Insert/updates em transação.
-  - A senha fica guardada em `senha_envio` e **volta em todo GET da ficha** (`portal.senha`) para ser copiada.
-- **Efeito colateral de leitura**: `GET /empresas` e `GET /empresas/:id` executam DDL — `CREATE TABLE IF NOT EXISTS dna_work.portal_empresa_acesso` e `ALTER TABLE dna_work.usuario_empresa ADD COLUMN IF NOT EXISTS senha_envio` (`empresa.service.ts:259–275`). Se `usuario_empresa` não existir (42P01), a ficha mostra "sem acesso" em vez de falhar.
+  - A senha **só volta na resposta do POST**: a tela mostra a senha a partir dessa resposta, em estado local, com "Copie agora. Por segurança, ela não fica salva." Ao reabrir a ficha, aparecem só o e-mail e "Gerar nova senha".
+  - No banco ficam só `senha_hash` (Argon2id) e `senha_u` (MD5, enquanto o sistema antigo existir), com `atualiza_senha = 1` (no update e no insert): logo depois do login, o portal de empresas mostra "Crie uma senha nova" e volta `atualiza_senha` para 0.
+- **Efeito colateral de leitura**: `GET /empresas` e `GET /empresas/:id` executam DDL — `CREATE TABLE IF NOT EXISTS dna_work.portal_empresa_acesso` e, uma vez por processo, `UPDATE dna_work.usuario_empresa SET senha_envio = NULL` (`limparSenhaEnvio`). Se `usuario_empresa` não existir (42P01), a ficha mostra "sem acesso" em vez de falhar.
 - **Vagas na ficha**: ordenadas aberta → pausada → contratada → fechada, depois pela data de abertura mais recente (`EmpresaDetailPage.tsx:20–29`). `situacao` vem de `presentVaga`/`statusDaVaga`.
 - **Cobrança**: o card só aparece se existir linha em `public.valor_empresas` para o `id_empresa`.
 - **Permissão**: `/api/v1/empresas*` exige a página `empresas` ou admin (`lib/paginas.ts:33`).
@@ -98,7 +99,7 @@ Serviços externos: nenhum.
 - `CobrancaEmpresa` é compartilhado com a aba Grupo (e o visual dele muda nas duas telas). Valor ativo em `text-cyan-700`, selos com `Badge`.
 - O formulário de edição mostra razão social/fantasia como estão gravadas: se vierem com `&amp;`, o campo mostra `&amp;` (decodificar mudaria o que é salvo).
 - O hash MD5 em `senha_u` existe por compatibilidade com o portal legado; não remova sem saber como o portal autentica.
-- `senha_envio` guarda senha em texto e é exposta no GET da ficha: qualquer mudança aqui tem impacto de segurança.
+- Nunca volte a guardar ou devolver a senha em texto (risco de segurança e LGPD). Não mexa em `senha_hash`/`senha_u` de usuários existentes: o login do portal confere primeiro o Argon2id e depois o MD5, e mudar esses campos derruba acessos.
 - O PATCH monta o `SET` com as chaves recebidas; é seguro só por causa do filtro `PATCHABLE`.
 - A ficha busca até 1.000 vagas (10 × 100); empresas com mais que isso ficam cortadas.
 - Não confundir `id_empresa` (`dna_work.empresa`, string) com `id` (`public.empresa`, uuid); as empresas criadas em `/grupos-empresas` usam o mesmo valor nos dois.
@@ -106,6 +107,6 @@ Serviços externos: nenhum.
 ## Como testar
 
 - Manual: `/empresas` → testar busca por CNPJ com e sem máscara, filtros de status e portal, troca de "por página" (20/25/50/100); abrir uma ficha; editar e salvar só um campo; "Gerar acesso" (com e-mail) e "Gerar nova senha" — só em base de teste, pois grava login real do portal.
-- Testes backend em `backend/test/escopo.test.ts` (Postgres embutido): "cadastra empresa e bloqueia CNPJ duplicado", "pesquisa candidatos e empresas com filtro e paginação", "gera acesso ao portal e mostra e-mail e senha na empresa".
+- Testes backend em `backend/test/escopo.test.ts` (Postgres embutido): "cadastra empresa e bloqueia CNPJ duplicado", "pesquisa candidatos e empresas com filtro e paginação", "gera acesso ao portal, mostra a senha só na resposta e não a guarda".
 - Frontend: sem teste específico.
 - Comandos: `npm run lint -w frontend`, `npm run lint -w backend`, `npm test -w backend`.

@@ -12,12 +12,15 @@ const MENU_PORTAL = "9%34%35%37";
 const SUB1_PORTAL = "146%203%206";
 const SUB2_PORTAL = "47%51%52%86%89";
 
+/** Acesso ao portal como aparece na ficha: a senha nunca fica salva, então não volta aqui. */
 export type AcessoPortal = {
   ativo: boolean;
   email: string | null;
-  senha: string | null;
   nome: string | null;
 };
+
+/** A senha em texto que versões antigas guardavam em `senha_envio` é apagada uma vez por processo. */
+let senhaEnvioLimpa = false;
 
 export type UsoPortal = {
   ultimo_login: string | null;
@@ -116,10 +119,15 @@ export class EmpresaService {
     };
   }
 
-  async gerarAcessoPortal(id: string, input: { email?: string; redefinir?: boolean }): Promise<AcessoPortal & { criado: boolean }> {
+  /**
+   * Cria o login do portal ou gera nova senha. A senha só volta nesta resposta, para a equipe
+   * copiar e enviar: no banco ficam só o Argon2id (`senha_hash`) e o MD5 do portal antigo
+   * (`senha_u`), e `atualiza_senha = 1` obriga a empresa a criar outra no primeiro acesso.
+   */
+  async gerarAcessoPortal(id: string, input: { email?: string; redefinir?: boolean }): Promise<AcessoPortal & { senha: string; criado: boolean }> {
     const empresa = await this.repo.findById(this.db, id);
     if (!empresa) throw new AppError(404, "EMPRESA_NAO_ENCONTRADA", "Empresa não encontrada.");
-    await this.garantirSenhaEnvio();
+    await this.limparSenhaEnvio();
     const atual = await this.usuarioPortal(id);
     if (atual && !input.redefinir) {
       throw new AppError(409, "ACESSO_EXISTENTE", "Esta empresa já tem acesso ao portal.");
@@ -131,9 +139,9 @@ export class EmpresaService {
     if (atual) {
       await this.db.query(`
         update dna_work.usuario_empresa
-        set senha_u = $2, senha_hash = $3, senha_envio = $4, status = 1, atualiza_senha = 0, data_senha = $5
+        set senha_u = $2, senha_hash = $3, status = 1, atualiza_senha = 1, data_senha = $4
         where id_u = $1
-      `, [atual.id, senhaLegada, senhaHash, senha, hoje]);
+      `, [atual.id, senhaLegada, senhaHash, hoje]);
       return { ativo: true, email: atual.email, senha, nome: atual.nome, criado: false };
     }
 
@@ -172,16 +180,16 @@ export class EmpresaService {
       if (mesmoEmail.rows[0]) {
         await client.query(`
           update dna_work.usuario_empresa
-          set nome_u = $2, email_u = $3, senha_u = $4, senha_hash = $5, senha_envio = $6,
-              telefone_u = $7, empresa_u = $8, status = 1, tipo = 1, atualiza_senha = 0, data_senha = $9
+          set nome_u = $2, email_u = $3, senha_u = $4, senha_hash = $5,
+              telefone_u = $6, empresa_u = $7, status = 1, tipo = 1, atualiza_senha = 1, data_senha = $8
           where id_u = $1
-        `, [usuarioId, nome, email, senhaLegada, senhaHash, senha, telefone, id, hoje]);
+        `, [usuarioId, nome, email, senhaLegada, senhaHash, telefone, id, hoje]);
       } else {
         await client.query(`
           insert into dna_work.usuario_empresa
-            (id_u, nome_u, email_u, senha_u, senha_hash, senha_envio, telefone_u, empresa_u, status, tipo, data_senha, atualiza_senha)
-          values ($1,$2,$3,$4,$5,$6,$7,$8,1,1,$9,0)
-        `, [usuarioId, nome, email, senhaLegada, senhaHash, senha, telefone, id, hoje]);
+            (id_u, nome_u, email_u, senha_u, senha_hash, telefone_u, empresa_u, status, tipo, data_senha, atualiza_senha)
+          values ($1,$2,$3,$4,$5,$6,$7,1,1,$8,1)
+        `, [usuarioId, nome, email, senhaLegada, senhaHash, telefone, id, hoje]);
       }
       await client.query(`
         insert into dna_work.vinculo_empresa_usuario (id_usuario, id_empresa)
@@ -212,14 +220,14 @@ export class EmpresaService {
   }
 
   private async portalDe(id: string): Promise<{ acesso_portal: boolean; portal: AcessoPortal }> {
-    const vazio: AcessoPortal = { ativo: false, email: null, senha: null, nome: null };
+    const vazio: AcessoPortal = { ativo: false, email: null, nome: null };
     try {
-      await this.garantirSenhaEnvio();
+      await this.limparSenhaEnvio();
       const usuario = await this.usuarioPortal(id);
       if (!usuario) return { acesso_portal: false, portal: vazio };
       return {
         acesso_portal: true,
-        portal: { ativo: true, email: usuario.email, senha: usuario.senha, nome: usuario.nome },
+        portal: { ativo: true, email: usuario.email, nome: usuario.nome },
       };
     } catch (error) {
       if (codigoPg(error) === "42P01") return { acesso_portal: false, portal: vazio };
@@ -251,9 +259,9 @@ export class EmpresaService {
     }
   }
 
-  private async usuarioPortal(id: string): Promise<{ id: string; email: string; senha: string | null; nome: string } | null> {
-    const rows = await this.db.query<{ id_u: string; email_u: string; senha_envio: string | null; nome_u: string }>(`
-      select u.id_u, u.email_u, u.senha_envio, u.nome_u
+  private async usuarioPortal(id: string): Promise<{ id: string; email: string; nome: string } | null> {
+    const rows = await this.db.query<{ id_u: string; email_u: string; nome_u: string }>(`
+      select u.id_u, u.email_u, u.nome_u
       from dna_work.usuario_empresa u
       where u.status = 1 and (
         u.empresa_u = $1
@@ -267,11 +275,25 @@ export class EmpresaService {
     `, [id]);
     const usuario = rows.rows[0];
     if (!usuario) return null;
-    return { id: usuario.id_u, email: usuario.email_u, senha: usuario.senha_envio, nome: usuario.nome_u };
+    return { id: usuario.id_u, email: usuario.email_u, nome: usuario.nome_u };
   }
 
-  private async garantirSenhaEnvio(): Promise<void> {
-    await this.db.query("alter table dna_work.usuario_empresa add column if not exists senha_envio text");
+  /**
+   * Apaga, uma vez por processo, as senhas em texto que versões antigas guardavam em `senha_envio`.
+   * A coluna continua existindo (uma versão antiga ainda rodando pode lê-la); remover depois.
+   * Não mexe em `senha_hash` nem em `senha_u`: o login do portal confere os dois.
+   */
+  private async limparSenhaEnvio(): Promise<void> {
+    if (senhaEnvioLimpa) return;
+    try {
+      await this.db.query("update dna_work.usuario_empresa set senha_envio = null where senha_envio is not null");
+    } catch (error) {
+      // Sem a tabela (42P01) ainda não há o que limpar; tenta de novo depois.
+      if (codigoPg(error) === "42P01") return;
+      // Sem a coluna (42703) não há senha guardada.
+      if (codigoPg(error) !== "42703") throw error;
+    }
+    senhaEnvioLimpa = true;
   }
 
   private async garantirTabelaAcesso(): Promise<void> {

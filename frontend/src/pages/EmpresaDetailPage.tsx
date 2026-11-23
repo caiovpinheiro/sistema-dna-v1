@@ -14,7 +14,7 @@ type Company = {
   complemento: string | null; bairro: string | null; cidade: string | null; uf: string | null; responsavel: string | null;
   matriz: string | null; ie: string | null; site: string | null; obs: string | null; status: number | null;
   acesso_portal?: boolean;
-  portal?: { ativo: boolean; email: string | null; senha: string | null; nome: string | null };
+  portal?: { ativo: boolean; email: string | null; nome: string | null };
   uso_portal?: { ultimo_login: string | null; ultimo_uso: string | null; logins: number; email: string | null } | null;
 };
 type Job = { id_vaga: string; cargo: string; regime: string; situacao: string; quantidade_posicoes: number | null; ocupadas: number; disponiveis: number | null; codigo: string | null; dataabertura: string | null };
@@ -204,14 +204,19 @@ function AcessoPortal({ empresaId, emailEmpresa, portal, uso }: { empresaId: str
   const [email, setEmail] = useState(emailEmpresa ?? "");
   const [erro, setErro] = useState("");
   const [aviso, setAviso] = useState("");
-  const acesso = portal ?? { ativo: false, email: null, senha: null, nome: null };
+  // A senha só existe na resposta de "Gerar": não fica salva, então some ao reabrir a ficha.
+  // Guarda de qual empresa ela é, para não aparecer na ficha de outra.
+  const [gerada, setGerada] = useState<{ empresaId: string; senha: string } | null>(null);
+  const senhaGerada = gerada?.empresaId === empresaId ? gerada.senha : "";
+  const acesso = portal ?? { ativo: false, email: null, nome: null };
   const gerar = useMutation({
-    mutationFn: (redefinir: boolean) => api<Company["portal"] & { criado: boolean }>(`/api/v1/empresas/${empresaId}/acesso-portal`, {
+    mutationFn: (redefinir: boolean) => api<NonNullable<Company["portal"]> & { senha: string; criado: boolean }>(`/api/v1/empresas/${empresaId}/acesso-portal`, {
       method: "POST",
       body: JSON.stringify({ email: email.trim(), redefinir }),
     }),
     onSuccess: async (resposta) => {
       setErro("");
+      setGerada(resposta.data?.senha ? { empresaId, senha: resposta.data.senha } : null);
       setAviso(resposta.data?.criado ? "Acesso criado. Envie o e-mail e a senha para a empresa." : "Nova senha gerada. A anterior deixa de funcionar.");
       await queryClient.invalidateQueries({ queryKey: ["empresa", empresaId] });
       await queryClient.invalidateQueries({ queryKey: ["empresas"] });
@@ -242,11 +247,17 @@ function AcessoPortal({ empresaId, emailEmpresa, portal, uso }: { empresaId: str
           </div>
           <div className="min-w-0">
             <dt className="text-xs text-slate-500">Senha</dt>
-            <dd className="flex flex-wrap items-center gap-2 text-sm font-semibold tracking-wide text-slate-700">
-              <span>{acesso.senha || "Não registrada"}</span>
-              {acesso.senha ? <button type="button" className="acao acao-cyan inline-flex items-center gap-1 tracking-normal" onClick={() => void copiar(acesso.senha!)}><Copy size={12} /> Copiar</button> : null}
-            </dd>
-            {acesso.senha ? null : <p className="mt-1 text-xs text-slate-500">A senha antiga não ficou salva para consulta. Gere uma nova para enviar à empresa.</p>}
+            {senhaGerada ? (
+              <>
+                <dd className="flex flex-wrap items-center gap-2 text-sm font-semibold tracking-wide text-slate-700">
+                  <span>{senhaGerada}</span>
+                  <button type="button" className="acao acao-cyan inline-flex items-center gap-1 tracking-normal" onClick={() => void copiar(senhaGerada)}><Copy size={12} /> Copiar</button>
+                </dd>
+                <p className="mt-1 text-xs font-semibold text-amber-700">Copie agora. Por segurança, ela não fica salva.</p>
+              </>
+            ) : (
+              <dd className="text-xs text-slate-500">Por segurança, a senha nunca fica salva no sistema. Para enviar uma senha à empresa, gere uma nova: no primeiro acesso, o portal pede para ela criar outra.</dd>
+            )}
           </div>
         </dl>
       ) : (
