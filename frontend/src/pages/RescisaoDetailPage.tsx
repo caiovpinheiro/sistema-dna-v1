@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { ChevronRight, Eye, FileX, Send } from "lucide-react";
+import { AlertTriangle, ChevronRight, ExternalLink, Eye, FileX, Send } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { DocumentosContratacao } from "@/components/documentos-contratacao";
 import { Alerta, FiltroChips } from "@/components/pagina";
@@ -51,6 +51,15 @@ type Vaga = {
   atribuicaoes: string | null;
 };
 
+type ContratoFaltante = {
+  id: string;
+  origem: "historico" | "termo";
+  nome: string;
+  data: string | null;
+  situacao: string;
+  texto: string | null;
+};
+
 const MOTIVOS = [
   "Candidato solicitou o desligamento",
   "Empresa solicitou o desligamento",
@@ -71,6 +80,9 @@ export function RescisaoDetailPage() {
   const [message, setMessage] = useState("");
   const [resumoPronto, setResumoPronto] = useState(false);
   const [pedido, setPedido] = useState<"" | "perguntar" | "enviado">("");
+  const [faltantes, setFaltantes] = useState<ContratoFaltante[] | null>(null);
+  const [vendo, setVendo] = useState<string | null>(null);
+  const [conferindo, setConferindo] = useState(false);
 
   const query = useQuery({
     queryKey: ["rescisao-contratacao", id],
@@ -147,12 +159,31 @@ export function RescisaoDetailPage() {
     setPrevia(true);
   }
 
-  function confirmarDemissao() {
+  async function confirmarDemissao() {
     setMessage("");
     if (!motivo || !dataDemissao) {
       setMessage("Preencha o motivo e a data de demissão.");
       return;
     }
+    // Contrato da entrada sem assinatura não impede a rescisão: só avisa e deixa seguir.
+    setConferindo(true);
+    try {
+      const resposta = await api<ContratoFaltante[]>(`/api/v1/contratacoes/${id}/contratos-faltantes`);
+      if (resposta.data.length) {
+        setVendo(null);
+        setFaltantes(resposta.data);
+        return;
+      }
+    } catch {
+      // Se a conferência falhar, a rescisão segue como antes.
+    } finally {
+      setConferindo(false);
+    }
+    demitir.mutate();
+  }
+
+  function seguirComRescisao() {
+    setFaltantes(null);
     demitir.mutate();
   }
 
@@ -256,8 +287,8 @@ export function RescisaoDetailPage() {
           {erroForm ? <Alerta>{message}</Alerta> : null}
 
           <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4">
-            <Button variant="danger" disabled={demitir.isPending} onClick={confirmarDemissao}>
-              <FileX size={16} /> {demitir.isPending ? "Gerando…" : "Gerar rescisão e demitir"}
+            <Button variant="danger" disabled={demitir.isPending || conferindo} onClick={() => void confirmarDemissao()}>
+              <FileX size={16} /> {demitir.isPending ? "Gerando…" : conferindo ? "Conferindo contratos…" : "Gerar rescisão e demitir"}
             </Button>
             <Button variant="secondary" type="button" onClick={gerarPrevia}>
               <Eye size={16} /> Ver prévia
@@ -300,6 +331,58 @@ export function RescisaoDetailPage() {
       )}
 
       <DocumentosContratacao id={String(data.id_contratacao)} />
+      {faltantes ? (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-900/40 p-4" role="dialog" aria-modal="true" aria-label="Contrato faltante">
+          <div className="grid max-h-[90vh] w-full max-w-lg gap-4 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 text-slate-700 shadow-xl">
+            <div>
+              <h2 className="flex items-center gap-2 text-xl font-extrabold text-navy-900">
+                <AlertTriangle size={20} className="shrink-0 text-amber-500" /> Contrato faltante
+              </h2>
+              <p className="mt-2 text-sm">
+                {faltantes.length === 1 ? "Este contrato da entrada não voltou assinado:" : `Estes ${faltantes.length} contratos da entrada não voltaram assinados:`}
+              </p>
+            </div>
+            <ul className="grid gap-2">
+              {faltantes.map((item) => {
+                const chave = `${item.origem}-${item.id}`;
+                return (
+                  <li key={chave} className="grid gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div className="grid min-w-0 gap-0.5">
+                        <span className="font-semibold text-navy-900">{item.nome}</span>
+                        <span className="text-xs text-slate-500">
+                          {[item.situacao, item.data ? `gerado em ${dateBr(item.data)}` : "", item.origem === "historico" ? "sistema antigo" : ""].filter(Boolean).join(" · ")}
+                        </span>
+                      </div>
+                      {item.origem === "termo" ? (
+                        <a className="inline-flex items-center gap-1 text-sm font-semibold text-cyan-700 hover:underline" href={`/termos/${item.id}`} target="_blank" rel="noreferrer">
+                          Ver contrato <ExternalLink size={14} />
+                        </a>
+                      ) : (
+                        <button type="button" className="text-sm font-semibold text-cyan-700 hover:underline" aria-expanded={vendo === chave} onClick={() => setVendo(vendo === chave ? null : chave)}>
+                          {vendo === chave ? "Fechar contrato" : "Ver contrato"}
+                        </button>
+                      )}
+                    </div>
+                    {vendo === chave ? (
+                      <p className="max-h-60 overflow-y-auto whitespace-pre-line rounded border border-slate-200 bg-white p-2 text-xs text-slate-600">
+                        {textoPlano(item.texto) || "Contrato sem texto gravado no sistema."}
+                      </p>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
+            <p className="text-sm text-slate-500">A rescisão pode seguir mesmo sem essas assinaturas.</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="danger" disabled={demitir.isPending} onClick={seguirComRescisao}>
+                <FileX size={16} /> Seguir com rescisão
+              </Button>
+              <Button variant="secondary" onClick={() => setFaltantes(null)}>Cancelar</Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       {pedido ? (
         <div className="fixed inset-0 z-50 grid place-items-center bg-slate-900/40 p-4" role="dialog" aria-modal="true" aria-label="Assinatura digital">
           <div className="grid w-full max-w-md gap-4 rounded-2xl border border-slate-200 bg-white p-6 text-slate-700 shadow-xl">

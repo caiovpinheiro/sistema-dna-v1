@@ -1,6 +1,6 @@
 # Agente — Contratações
 
-> Última revisão: 2026-11-18 (voltar da ficha da contratação, da nova contratação e da rescisão leva à página de origem; pesquisa inteligente nas buscas)
+> Última revisão: 2026-11-24 (rescisão avisa "Contrato faltante" quando um contrato da entrada não voltou assinado, sem impedir a demissão)
 
 ## Para que serve
 
@@ -14,7 +14,7 @@ Registra o vínculo (contratação) de um candidato numa vaga aberta com posiç�
 | `/contratacoes/nova` | `NovaContratacaoPage` | `frontend/src/pages/NovaContratacaoPage.tsx` | Blocos numerados (1 Empresa, 2 Vaga disponível, 3 Candidato com "Criar candidato") e painel lateral "Registrar a contratação" com o resumo do que foi escolhido, a data de início e o botão "Registrar contratação". Tela de sucesso com links para candidato, vaga e empresa e "Abrir contratação". Aceita `?empresa=&vaga=&candidato=&processo=` (vem de `ProcessoDetailPage` e `VagaDetailPage`). |
 | `/contratacoes/:id` | `ContratacaoDetailPage` | `frontend/src/pages/ContratacaoDetailPage.tsx` | Cabeçalho com nome, selos de situação e regime e o botão "Gerar TCE" (só regime estágio). Cards "Vínculo" (candidato, empresa e vaga como links) e "Datas", tabela "Documentos gerados" e card "Encerrar vínculo" (só se ativa) com o botão "Fazer a rescisão", que leva a `/contratacoes/rescisao/:id`: o encerramento passa sempre pela rescisão (data, motivo, avaliação e prévia), que gera o documento. A ficha não encerra mais só com a data. |
 | `/contratacoes/rescisao` (menu "Rescisão") | `RescisaoPage` | `frontend/src/pages/RescisaoPage.tsx` | Só vínculos ativos (`status=1` fixo na query). Filtros com rótulo (Buscar, Regime), contador, tabela `data-table` com "Abrir" (lista em blocos em tela estreita). |
-| `/contratacoes/rescisao/:id` | `RescisaoDetailPage` | `frontend/src/pages/RescisaoDetailPage.tsx` | Cabeçalho com nome, selos e "Abrir contratação"; card "Dados do contratado"; formulário "Demitir" (motivo, data, avaliação em chips `FiltroChips`, resumo das atividades, motivo interno), botões "Gerar rescisão e demitir" e "Ver prévia" (só na tela); depois modal perguntando se envia para assinatura digital ("Sim, enviar" / "Não, agora não"). |
+| `/contratacoes/rescisao/:id` | `RescisaoDetailPage` | `frontend/src/pages/RescisaoDetailPage.tsx` | Cabeçalho com nome, selos e "Abrir contratação"; card "Dados do contratado"; formulário "Demitir" (motivo, data, avaliação em chips `FiltroChips`, resumo das atividades, motivo interno), botões "Gerar rescisão e demitir" e "Ver prévia" (só na tela); se faltar contrato da entrada assinado, antes abre o aviso "Contrato faltante" (nome do contrato, "Ver contrato", "Seguir com rescisão", "Cancelar"); depois modal perguntando se envia para assinatura digital ("Sim, enviar" / "Não, agora não"). |
 Permissão de menu/página: id `contratacoes` (`frontend/src/components/shell.tsx:24-27`, `:79-80`).
 
 ## Arquivos
@@ -31,7 +31,7 @@ Backend
 - Schemas: `backend/src/schemas/contratacao.ts`
 - Service: `backend/src/services/contratacao.service.ts`; `backend/src/services/presenters.ts` (`presentContratacao`, calcula `regime` e `situacao`); `backend/src/services/processo.service.ts` (`vincularContratacao`)
 - Repositories: `backend/src/repositories/contratacao.repository.ts`, `vaga.repository.ts`, `candidato.repository.ts`, `processo.repository.ts`
-- Libs: `backend/src/lib/rescisao-pdf.ts` (PDF com pdf-lib), `backend/src/lib/zapsign.ts`, `backend/src/lib/vaga-status.ts`, `backend/src/lib/normalize.ts` (`classifyRegime`), `backend/src/lib/dates.ts`
+- Libs: `backend/src/lib/contrato-faltante.ts` (regra do contrato faltante), `backend/src/lib/rescisao-pdf.ts` (PDF com pdf-lib), `backend/src/lib/zapsign.ts`, `backend/src/lib/vaga-status.ts`, `backend/src/lib/normalize.ts` (`classifyRegime`), `backend/src/lib/dates.ts`
 - Checagem de schema: `backend/src/db/capabilities.ts`
 - Permissão por API: `backend/src/lib/paginas.ts`, hook em `backend/src/app.ts:151-167`
 
@@ -44,6 +44,7 @@ Backend
 | POST | `/api/v1/contratacoes` | Cria vínculo. Exige cabeçalho `Idempotency-Key` (8–120 chars) | `routes/index.ts:275` → `ContratacaoService.create` |
 | POST | `/api/v1/contratacoes/:id/encerrar` | Encerra; se vier `motivo`, grava o documento de rescisão | `routes/index.ts:289` → `ContratacaoService.encerrar` |
 | GET | `/api/v1/contratacoes/:id/documentos` | Rescisão gerada + contratos do sistema antigo | `routes/index.ts:286` → `ContratacaoService.documentos` |
+| GET | `/api/v1/contratacoes/:id/contratos-faltantes` | Contratos da entrada que não voltaram assinados (aviso da rescisão) | `routes/index.ts` → `ContratacaoService.contratosFaltantes` → `lib/contrato-faltante.ts` |
 | GET | `/api/v1/contratacoes/:id/rescisao.pdf` | PDF da rescisão (inline) | `routes/index.ts:296` → `pdfRescisao` |
 | GET | `/api/v1/contratacoes/:id/assinatura` | Consulta a ZapSign (se já enviado) e devolve status e signatários | `routes/index.ts:302` → `acompanharAssinatura` |
 | POST | `/api/v1/contratacoes/:id/assinatura` | Cria o documento na ZapSign (ou só consulta, se já tem token) | `routes/index.ts:305` → `solicitarAssinatura` |
@@ -94,6 +95,12 @@ Encerramento (`contratacao.service.ts:311-369`):
 - Nome do documento: `tipo_vaga === 1` → "Rescisão de estágio", senão "Rescisão CLT" (`:329`).
 - O resumo é pré-preenchido no frontend com `atribu_contrato` (ou `atribuicaoes`) da vaga, sem HTML.
 
+Contrato faltante (aviso, não bloqueia):
+- Ao clicar "Gerar rescisão e demitir", a tela chama `GET /contratacoes/:id/contratos-faltantes`. Lista vazia (ou erro na conferência) → demite direto, como antes. Com itens → aviso "Contrato faltante"; "Seguir com rescisão" demite normalmente, "Cancelar" fecha sem gravar nada.
+- Faltante do sistema antigo: `contratos_gerados` do candidato nesta vaga, com `contratos_diversos.tipo = 'Candidato'`, `devolucao = '1'`, `status <> '3'` e `devolvido` 0 ou vazio (mesma regra de Documentos pendentes). "Ver contrato" abre o texto de `texto_contrato` dentro do aviso.
+- Faltante do sistema novo: `termo_estagio` da contratação com status diferente de `assinado` e `cancelado`. "Ver contrato" abre `/termos/:id` em outra aba (o formulário da rescisão não se perde).
+- Teste: `backend/test/contrato-faltante.test.ts`.
+
 Assinatura (`:256-309`, `:379-452`, `:511-536`):
 - Signatários: Candidato, Empresa (responsável), "Instituição de Ensino Diretor" (de `dna_work.instituicao` via `candidato.escola`) e "Agente" (`agente_integracao`, só se a tabela tiver coluna `email`). Só vai para a ZapSign quem tem e-mail com `@`; nenhum → 422 `EMAIL_AUSENTE`.
 - `external_id` na ZapSign = `rescisao-<id>`; autenticação `tokenEmail`.
@@ -121,6 +128,7 @@ Listagem:
 
 ## Como testar
 
+- Contrato faltante: abrir a rescisão de uma contratação ativa com contrato da entrada não devolvido, preencher motivo e data e clicar "Gerar rescisão e demitir" → aparece o aviso. No banco de produção, não clique "Seguir com rescisão" com pessoa real.
 - Tela: abrir `/contratacoes`, filtrar; `/contratacoes/nova`, escolher empresa (≥2 letras), vaga com posição livre, candidato e registrar; abrir a ficha e clicar "Fazer a rescisão" (abre a rescisão da mesma contratação). Em `/contratacoes/rescisao/:id`, preencher motivo/data, "Gerar rescisão e demitir", responder o modal e abrir "Imprimir original" (PDF). Envio real à ZapSign só com `ZAPSIGN_API_TOKEN` configurado.
 - Testes: `backend/test/escopo.test.ts` (Postgres embutido) cobre contratar até o limite, sexta bloqueada, duplicada, sem vaga, empresa divergente, concorrência na última posição e encerramento preservando histórico. Não há teste para rescisão/ZapSign (não encontrado).
 - Comandos: `npm run lint -w frontend`, `npm run lint -w backend`, `npm test -w backend`, `npm run agentes:conferir`.

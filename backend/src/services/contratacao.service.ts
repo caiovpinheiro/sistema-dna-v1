@@ -13,6 +13,7 @@ import type { ContratacaoCreate, ContratacaoEncerrar, ContratacaoListQuery } fro
 import { buildRescisaoPdf, type RescisaoPdfDados } from "../lib/rescisao-pdf.js";
 import { consultarDocumentoZapSign, criarDocumentoZapSign, type ZapDoc } from "../lib/zapsign.js";
 import { moneyToNumber } from "../lib/money.js";
+import { contratosFaltantes } from "../lib/contrato-faltante.js";
 import { statusDaVaga } from "../lib/vaga-status.js";
 import { presentContratacao } from "./presenters.js";
 import type { ProcessoService } from "./processo.service.js";
@@ -245,6 +246,17 @@ export class ContratacaoService {
         enviado_em: null,
       })),
     ];
+  }
+
+  /** Contratos da entrada que não voltaram assinados. Só aviso: a rescisão pode seguir mesmo assim. */
+  async contratosFaltantes(id: number) {
+    const row = await this.repo.findById(this.db, id);
+    if (!row) throw new AppError(404, "CONTRATACAO_NAO_ENCONTRADA", "Contratação não encontrada.");
+    const [antigos, termos] = await Promise.all([
+      this.repo.listarContratosParaDevolucao(this.db, row.id_candidato, row.id_vaga),
+      this.repo.listarTermosDaContratacao(this.db, id),
+    ]);
+    return contratosFaltantes(antigos, termos);
   }
 
   async pdfRescisao(id: number): Promise<Buffer> {

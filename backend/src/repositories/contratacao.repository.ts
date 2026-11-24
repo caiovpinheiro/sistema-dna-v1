@@ -294,6 +294,52 @@ export class ContratacaoRepository {
     `, [idCandidato, idVaga ?? ""]);
   }
 
+  /** Contratos do sistema antigo do candidato nesta vaga, com o tipo e a regra de devolução (filtrados em `lib/contrato-faltante.ts`). */
+  async listarContratosParaDevolucao(db: Db, idCandidato: string | null, idVaga: string | null) {
+    if (!idCandidato) return [];
+    const existe = await one<{ cg: string | null; cd: string | null }>(db, `
+      SELECT to_regclass('dna_work.contratos_gerados')::text AS cg, to_regclass('dna_work.contratos_diversos')::text AS cd
+    `);
+    if (!existe?.cg || !existe.cd) return [];
+    return many<{
+      id: number;
+      nome: string | null;
+      data: string | null;
+      status: string | null;
+      devolvido: string | null;
+      tipo: string | null;
+      devolucao: string | null;
+      texto: string | null;
+    }>(db, `
+      SELECT cg.id_contratogerado AS id,
+             coalesce(cg.nome_contrato, cd.nome) AS nome,
+             cg.data,
+             cg.status::text AS status,
+             cg.devolvido::text AS devolvido,
+             cd.tipo,
+             cd.devolucao::text AS devolucao,
+             tc.texto
+      FROM dna_work.contratos_gerados cg
+      JOIN dna_work.contratos_diversos cd ON cd.id_contrato::text = cg.id_contrato::text
+      LEFT JOIN dna_work.texto_contrato tc ON tc.id_contratogerado::text = cg.id_contratogerado::text
+      WHERE cg.id_candidato::text = $1
+        AND ($2::text = '' OR cg.vaga::text = $2)
+      ORDER BY cg.id_contratogerado
+    `, [idCandidato, idVaga ?? ""]);
+  }
+
+  /** TCEs gerados no sistema novo para esta contratação. */
+  async listarTermosDaContratacao(db: Db, idContratacao: number) {
+    const existe = await one<{ ok: string | null }>(db, `SELECT to_regclass('dna_work.termo_estagio')::text AS ok`);
+    if (!existe?.ok) return [];
+    return many<{ id: string; nome: string | null; status: string | null; criado_em: string | null }>(db, `
+      SELECT id::text AS id, nome, status, criado_em::text AS criado_em
+      FROM dna_work.termo_estagio
+      WHERE id_contratacao = $1
+      ORDER BY criado_em
+    `, [idContratacao]);
+  }
+
   async encerrar(db: Db, id: number, status: number, dataDemissao: string): Promise<void> {
     await db.query(`
       UPDATE dna_work.conratacaovaga
