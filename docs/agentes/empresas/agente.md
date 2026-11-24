@@ -1,6 +1,6 @@
 # Agente — Empresas
 
-> Última revisão: 2026-11-23 (senha do portal não fica mais salva em texto: só aparece na resposta de gerar, e a empresa troca no primeiro acesso)
+> Última revisão: 2026-11-24 (acesso ao portal grava só o Argon2id; `senha_u` (MD5) fica vazio)
 
 ## Para que serve
 
@@ -54,7 +54,7 @@ Backend
 
 Postgres, schema `dna_work` (cópia do Lightsail):
 - `dna_work.empresa` — lido e gravado (PATCH/POST). Campos: `id_empresa`, `razao_social`, `nome_fantasia`, `cnpj`, `email` (minúsculas), `telefone`, `celular`, endereço (`cep`, `logradouro`, `numero`, `complemento`, `bairro`, `cidade`, `uf`), `status` (1 ativo, 0 inativo), `responsavel`, `tipo_empresa`, `matriz`, `ie`, `site`, `obs`, `data_adicao`. Ao criar acesso ao portal também faz `recrutamento = 1` (ignora se a coluna não existir).
-- `dna_work.usuario_empresa` — login do portal. Gravado por `gerarAcessoPortal`: `id_u`, `nome_u`, `email_u`, `senha_u` (MD5 legado), `senha_hash` (Argon2id), `telefone_u`, `empresa_u`, `status`, `tipo`, `data_senha`, `atualiza_senha` (gravado 1: obriga a troca no primeiro acesso). `senha_envio` (senha em texto de versões antigas) não é mais lida nem gravada; é zerada uma vez por processo (`limparSenhaEnvio`). A coluna ficou para não quebrar uma versão antiga ainda rodando; pode ser removida depois.
+- `dna_work.usuario_empresa` — login do portal. Gravado por `gerarAcessoPortal`: `id_u`, `nome_u`, `email_u`, `senha_u` (MD5 legado: gravado vazio), `senha_hash` (Argon2id), `telefone_u`, `empresa_u`, `status`, `tipo`, `data_senha`, `atualiza_senha` (gravado 1: obriga a troca no primeiro acesso). `senha_envio` (senha em texto de versões antigas) não é mais lida nem gravada; é zerada uma vez por processo (`limparSenhaEnvio`). A coluna ficou para não quebrar uma versão antiga ainda rodando; pode ser removida depois.
 - `dna_work.vinculo_empresa_usuario` — vínculo usuário ↔ empresa (insert se não existir).
 - `dna_work.paginas_usuario_empresa` — menus do portal (insert com valores fixos `MENU_PORTAL`, `SUB1_PORTAL`, `SUB2_PORTAL` em `empresa.service.ts:9–11`, se ainda não houver).
 - `dna_work.portal_empresa_acesso` — só leitura aqui (`ultimo_login`, `ultimo_uso`, `logins`, `email`); quem grava não foi encontrado neste repositório (provavelmente o portal de empresas).
@@ -86,7 +86,7 @@ Serviços externos: nenhum.
   - `redefinir: true` → nova senha (12 caracteres: 8 letras + 4 números, sem caracteres ambíguos) no mesmo usuário; a anterior deixa de valer. A tela pede confirmação (`window.confirm`).
   - Novo acesso: e-mail do corpo ou o da empresa; inválido → 422 `EMAIL_INVALIDO`; e-mail já usado por usuário de outra empresa → 409 `EMAIL_EM_USO`. Nome do usuário: responsável, fantasia ou razão social (o primeiro com 2+ letras). Insert/updates em transação.
   - A senha **só volta na resposta do POST**: a tela mostra a senha a partir dessa resposta, em estado local, com "Copie agora. Por segurança, ela não fica salva." Ao reabrir a ficha, aparecem só o e-mail e "Gerar nova senha".
-  - No banco ficam só `senha_hash` (Argon2id) e `senha_u` (MD5, enquanto o sistema antigo existir), com `atualiza_senha = 1` (no update e no insert): logo depois do login, o portal de empresas mostra "Crie uma senha nova" e volta `atualiza_senha` para 0.
+  - No banco fica só `senha_hash` (Argon2id); `senha_u` (MD5) é gravado vazio, porque o portal confere o Argon2id primeiro. Fica com `atualiza_senha = 1` (no update e no insert): logo depois do login, o portal de empresas mostra "Crie uma senha nova" e volta `atualiza_senha` para 0.
 - **Efeito colateral de leitura**: `GET /empresas` e `GET /empresas/:id` executam DDL — `CREATE TABLE IF NOT EXISTS dna_work.portal_empresa_acesso` e, uma vez por processo, `UPDATE dna_work.usuario_empresa SET senha_envio = NULL` (`limparSenhaEnvio`). Se `usuario_empresa` não existir (42P01), a ficha mostra "sem acesso" em vez de falhar.
 - **Vagas na ficha**: ordenadas aberta → pausada → contratada → fechada, depois pela data de abertura mais recente (`EmpresaDetailPage.tsx:20–29`). `situacao` vem de `presentVaga`/`statusDaVaga`.
 - **Cobrança**: o card só aparece se existir linha em `public.valor_empresas` para o `id_empresa`.
@@ -98,7 +98,7 @@ Serviços externos: nenhum.
 - `GET /api/v1/empresas?q=` também é usado pelo formulário de candidato (busca de empresa) — não mude o formato de resposta.
 - `CobrancaEmpresa` é compartilhado com a aba Grupo (e o visual dele muda nas duas telas). Valor ativo em `text-cyan-700`, selos com `Badge`.
 - O formulário de edição mostra razão social/fantasia como estão gravadas: se vierem com `&amp;`, o campo mostra `&amp;` (decodificar mudaria o que é salvo).
-- O hash MD5 em `senha_u` existe por compatibilidade com o portal legado; não remova sem saber como o portal autentica.
+- Desde 2026-11-24 o interno não grava mais MD5 em `senha_u` (fica `null` ao gerar ou redefinir o acesso). O portal (`sistema-dna-empresas`, `portal-empresa.service.ts`) confere `senha_hash` primeiro e só usa o MD5 de quem ainda não tem hash.
 - Nunca volte a guardar ou devolver a senha em texto (risco de segurança e LGPD). Não mexa em `senha_hash`/`senha_u` de usuários existentes: o login do portal confere primeiro o Argon2id e depois o MD5, e mudar esses campos derruba acessos.
 - O PATCH monta o `SET` com as chaves recebidas; é seguro só por causa do filtro `PATCHABLE`.
 - A ficha busca até 1.000 vagas (10 × 100); empresas com mais que isso ficam cortadas.

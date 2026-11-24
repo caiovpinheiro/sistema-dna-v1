@@ -1,4 +1,4 @@
-import { createHash, randomInt, randomUUID } from "node:crypto";
+import { randomInt, randomUUID } from "node:crypto";
 import { hash } from "@node-rs/argon2";
 import type { Pool } from "pg";
 import { AppError } from "../lib/errors.js";
@@ -121,8 +121,8 @@ export class EmpresaService {
 
   /**
    * Cria o login do portal ou gera nova senha. A senha só volta nesta resposta, para a equipe
-   * copiar e enviar: no banco ficam só o Argon2id (`senha_hash`) e o MD5 do portal antigo
-   * (`senha_u`), e `atualiza_senha = 1` obriga a empresa a criar outra no primeiro acesso.
+   * copiar e enviar: no banco fica só o Argon2id (`senha_hash`); o MD5 antigo (`senha_u`) é apagado
+   * (o portal confere o Argon2id primeiro). `atualiza_senha = 1` obriga a empresa a criar outra no primeiro acesso.
    */
   async gerarAcessoPortal(id: string, input: { email?: string; redefinir?: boolean }): Promise<AcessoPortal & { senha: string; criado: boolean }> {
     const empresa = await this.repo.findById(this.db, id);
@@ -134,14 +134,13 @@ export class EmpresaService {
     }
     const senha = senhaInicial();
     const senhaHash = await hash(senha);
-    const senhaLegada = createHash("md5").update(senha).digest("hex");
     const hoje = new Date().toISOString().slice(0, 10).replaceAll("-", "/");
     if (atual) {
       await this.db.query(`
         update dna_work.usuario_empresa
-        set senha_u = $2, senha_hash = $3, status = 1, atualiza_senha = 1, data_senha = $4
+        set senha_u = null, senha_hash = $2, status = 1, atualiza_senha = 1, data_senha = $3
         where id_u = $1
-      `, [atual.id, senhaLegada, senhaHash, hoje]);
+      `, [atual.id, senhaHash, hoje]);
       return { ativo: true, email: atual.email, senha, nome: atual.nome, criado: false };
     }
 
@@ -180,16 +179,16 @@ export class EmpresaService {
       if (mesmoEmail.rows[0]) {
         await client.query(`
           update dna_work.usuario_empresa
-          set nome_u = $2, email_u = $3, senha_u = $4, senha_hash = $5,
-              telefone_u = $6, empresa_u = $7, status = 1, tipo = 1, atualiza_senha = 1, data_senha = $8
+          set nome_u = $2, email_u = $3, senha_u = null, senha_hash = $4,
+              telefone_u = $5, empresa_u = $6, status = 1, tipo = 1, atualiza_senha = 1, data_senha = $7
           where id_u = $1
-        `, [usuarioId, nome, email, senhaLegada, senhaHash, telefone, id, hoje]);
+        `, [usuarioId, nome, email, senhaHash, telefone, id, hoje]);
       } else {
         await client.query(`
           insert into dna_work.usuario_empresa
             (id_u, nome_u, email_u, senha_u, senha_hash, telefone_u, empresa_u, status, tipo, data_senha, atualiza_senha)
-          values ($1,$2,$3,$4,$5,$6,$7,1,1,$8,1)
-        `, [usuarioId, nome, email, senhaLegada, senhaHash, telefone, id, hoje]);
+          values ($1,$2,$3,null,$4,$5,$6,1,1,$7,1)
+        `, [usuarioId, nome, email, senhaHash, telefone, id, hoje]);
       }
       await client.query(`
         insert into dna_work.vinculo_empresa_usuario (id_usuario, id_empresa)
@@ -281,7 +280,7 @@ export class EmpresaService {
   /**
    * Apaga, uma vez por processo, as senhas em texto que versões antigas guardavam em `senha_envio`.
    * A coluna continua existindo (uma versão antiga ainda rodando pode lê-la); remover depois.
-   * Não mexe em `senha_hash` nem em `senha_u`: o login do portal confere os dois.
+   * Não mexe em `senha_hash` nem em `senha_u`: o login do portal confere o Argon2id e, se não houver, o MD5 antigo.
    */
   private async limparSenhaEnvio(): Promise<void> {
     if (senhaEnvioLimpa) return;
