@@ -36,10 +36,73 @@ function forPdf(value: string) {
   return out;
 }
 
-function tamanhoDoCampo(nome: string) {
+function tamanhoPadrao(nome: string) {
   if (nome === "plano_atividades") return 9;
   return 8;
 }
+
+/**
+ * Tamanho de letra de cada campo neste TCE: o padrão, ou menor quando o texto não cabe na linha. Calculado em fillTceTemplate
+ * e usado até o fim do preenchimento sem nenhum `await` no meio, então dois TCEs gerados ao mesmo tempo não se misturam.
+ */
+let tamanhosDoTce: Record<string, number> = {};
+
+function tamanhoDoCampo(nome: string) {
+  return tamanhosDoTce[nome] ?? tamanhoPadrao(nome);
+}
+
+const TAMANHO_MINIMO = 5.5;
+
+/** Maior tamanho (até `maximo`) em que o texto cabe numa linha de `largura`. */
+export function tamanhoQueCabe(font: PDFFont, texto: string, maximo: number, largura: number, minimo = TAMANHO_MINIMO) {
+  let tamanho = maximo;
+  while (tamanho > minimo && font.widthOfTextAtSize(texto, tamanho) > largura) tamanho -= 0.25;
+  return tamanho;
+}
+
+/** Quebra o texto em linhas de até `largura` (por palavra; palavra maior que a linha é quebrada por letra). */
+function quebrarLinhas(font: PDFFont, texto: string, tamanho: number, largura: number) {
+  const linhas: string[] = [];
+  for (const paragrafo of texto.split(/\r?\n/)) {
+    let atual = "";
+    for (const palavra of paragrafo.split(/\s+/).filter(Boolean)) {
+      const tentativa = atual ? `${atual} ${palavra}` : palavra;
+      if (font.widthOfTextAtSize(tentativa, tamanho) <= largura) {
+        atual = tentativa;
+        continue;
+      }
+      if (atual) linhas.push(atual);
+      atual = palavra;
+      while (font.widthOfTextAtSize(atual, tamanho) > largura && atual.length > 1) {
+        let corte = atual.length - 1;
+        while (corte > 1 && font.widthOfTextAtSize(atual.slice(0, corte), tamanho) > largura) corte--;
+        linhas.push(atual.slice(0, corte));
+        atual = atual.slice(corte);
+      }
+    }
+    linhas.push(atual);
+  }
+  return linhas;
+}
+
+// Quadro do plano de atividades (Anexo II, página 8): começa no mesmo topo do modelo e cresce para baixo até caber o texto,
+// no máximo até perto do rodapé. Só se nem assim couber, a letra diminui.
+const PLANO = { x: 49, topo: 636, largura: 503, alturaMinima: 56, fundoMinimo: 90 };
+
+export function medidasDoPlano(font: PDFFont, texto: string) {
+  const larguraUtil = PLANO.largura - 6;
+  const alturaMaxima = PLANO.topo - PLANO.fundoMinimo;
+  let tamanho = tamanhoPadrao("plano_atividades");
+  for (;;) {
+    const linhas = quebrarLinhas(font, texto, tamanho, larguraUtil).length;
+    // pdf-lib usa a altura da fonte como entrelinha; folga de uma linha e meia para as diferenças de quebra.
+    const altura = Math.max(PLANO.alturaMinima, Math.ceil((linhas + 1.5) * font.heightAtSize(tamanho) + 6));
+    if (altura <= alturaMaxima || tamanho <= TAMANHO_MINIMO) return { tamanho, altura: Math.min(altura, alturaMaxima) };
+    tamanho -= 0.25;
+  }
+}
+
+let alturaDoPlano = PLANO.alturaMinima;
 
 const CAMPOS_ANEXO_1 = new Set([
   "estagio_inicio",
@@ -55,7 +118,7 @@ const CAMPOS_ANEXO_1 = new Set([
 
 function ajustarQuadroDoPlano(field: PDFTextField, doc: PDFDocument) {
   const widget = field.acroField.getWidgets()[0];
-  widget?.dict.set(PDFName.of("Rect"), doc.context.obj([49, 580, 552, 636]));
+  widget?.dict.set(PDFName.of("Rect"), doc.context.obj([PLANO.x, PLANO.topo - alturaDoPlano, PLANO.x + PLANO.largura, PLANO.topo]));
 }
 
 function baseDoTexto(font: PDFFont, tamanho: number, altura: number) {
@@ -96,11 +159,29 @@ function alinharDataAditivo(field: PDFTextField, doc: PDFDocument, font: PDFFont
   widget.dict.set(PDFName.of("Rect"), doc.context.obj([rect.x, y, rect.x + rect.width, y + altura]));
 }
 
+// Coluna "Novo valor" da tabela do Termo Aditivo (Anexo III): texto até a borda direita da tabela.
+const LARGURA_NOVO_VALOR = 146;
+
+/** Escreve na célula: diminui a letra para caber numa linha; se ficar pequena demais, quebra em duas linhas. */
 function escrever(page: ReturnType<PDFDocument["getPages"]>[number], font: Awaited<ReturnType<PDFDocument["embedFont"]>>, x: number, y: number, texto: string, tamanho = 8) {
-  const valor = forPdf(texto).trim();
+  const valor = forPdf(texto).replace(/\s+/g, " ").trim();
   if (!valor) return;
-  page.drawRectangle({ x: x - 1, y: y - 2, width: 146, height: 11, color: rgb(1, 1, 1) });
-  page.drawText(valor, { x, y, size: tamanho, font, color: rgb(0, 0, 0) });
+  const umaLinha = tamanhoQueCabe(font, valor, tamanho, LARGURA_NOVO_VALOR, 6.5);
+  if (font.widthOfTextAtSize(valor, umaLinha) <= LARGURA_NOVO_VALOR) {
+    page.drawRectangle({ x: x - 1, y: y - 2, width: LARGURA_NOVO_VALOR, height: 11, color: rgb(1, 1, 1) });
+    page.drawText(valor, { x, y, size: umaLinha, font, color: rgb(0, 0, 0) });
+    return;
+  }
+  let menor = 7;
+  let linhas = quebrarLinhas(font, valor, menor, LARGURA_NOVO_VALOR);
+  while (linhas.length > 2 && menor > 5) {
+    menor -= 0.25;
+    linhas = quebrarLinhas(font, valor, menor, LARGURA_NOVO_VALOR);
+  }
+  page.drawRectangle({ x: x - 1, y: y - 6, width: LARGURA_NOVO_VALOR, height: 19, color: rgb(1, 1, 1) });
+  const [primeira = "", ...resto] = linhas;
+  page.drawText(primeira, { x, y: y + 4, size: menor, font, color: rgb(0, 0, 0) });
+  page.drawText(resto.join(" "), { x, y: y - 4, size: menor, font, color: rgb(0, 0, 0) });
 }
 
 function cobrirTextoDoModelo(doc: PDFDocument) {
@@ -108,7 +189,7 @@ function cobrirTextoDoModelo(doc: PDFDocument) {
   const aditivo = doc.getPages()[8];
   if (plano) {
     plano.drawRectangle({ x: 30, y: 664, width: 250, height: 12, color: rgb(1, 1, 1) });
-    plano.drawRectangle({ x: 49, y: 580, width: 503, height: 56, borderWidth: 0.6, borderColor: rgb(0, 0, 0) });
+    plano.drawRectangle({ x: PLANO.x, y: PLANO.topo - alturaDoPlano, width: PLANO.largura, height: alturaDoPlano, borderWidth: 0.6, borderColor: rgb(0, 0, 0) });
   }
   if (aditivo) {
     aditivo.drawRectangle({ x: 32, y: 353, width: 148, height: 16, color: rgb(1, 1, 1) });
@@ -122,7 +203,8 @@ function completarAnexo3(doc: PDFDocument, font: Awaited<ReturnType<PDFDocument[
   escrever(page, font, novo, 561.711, values.estagio_inicio ?? "");
   escrever(page, font, novo, 540.514, values.estagio_termino ?? "");
   const semanal = (values.carga_horaria_semanal ?? "").trim();
-  escrever(page, font, novo, 519.317, semanal ? `${semanal} horas` : "");
+  // A carga já costuma vir como "30 horas": só acrescenta "horas" quando veio só o número.
+  escrever(page, font, novo, 519.317, /^\d+([.,]\d+)?$/.test(semanal) ? `${semanal} horas` : semanal);
   escrever(page, font, novo, 498.12, values.jornada ?? "");
   escrever(page, font, novo, 476.923, values.bolsa ?? "");
   escrever(page, font, novo, 455.726, values.supervisor ?? "");
@@ -148,6 +230,20 @@ export async function fillTceTemplate(values: Record<string, string>): Promise<U
     throw new AppError(500, "MODELO_INCOMPATIVEL", `O modelo não possui os campos: ${missing.join(", ")}`);
   }
   const font = await doc.embedFont(StandardFonts.Helvetica);
+  // Antes de alinhar e escrever: o tamanho de letra que faz cada texto caber no seu campo.
+  tamanhosDoTce = {};
+  alturaDoPlano = PLANO.alturaMinima;
+  for (const [key, raw] of Object.entries(values)) {
+    const texto = forPdf(raw ?? "");
+    if (key === "plano_atividades") {
+      const plano = medidasDoPlano(font, texto);
+      tamanhosDoTce[key] = plano.tamanho;
+      alturaDoPlano = plano.altura;
+      continue;
+    }
+    const largura = form.getTextField(key).acroField.getWidgets()[0]?.getRectangle().width;
+    if (largura) tamanhosDoTce[key] = tamanhoQueCabe(font, texto.trim(), tamanhoPadrao(key), largura - 4);
+  }
   for (const field of form.getFields()) {
     if (field.constructor.name !== "PDFTextField") continue;
     const texto = form.getTextField(field.getName());
