@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Copy, Download, ExternalLink, GraduationCap, Mail, Pencil, RefreshCw, Send } from "lucide-react";
+import { Check, Copy, Download, ExternalLink, GraduationCap, Mail, Pencil, Printer, RefreshCw, Send } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Alerta, CabecalhoPagina } from "@/components/pagina";
@@ -52,6 +52,43 @@ function PdfPreview({ id }: { id: string }) {
   if (erro) return <Alerta>{erro}</Alerta>;
   if (!url) return <Skeleton className="h-[720px]" />;
   return <iframe title="Prévia do TCE" src={url} className="h-[720px] w-full rounded-xl border border-slate-200" />;
+}
+
+/**
+ * Baixa o TCE pronto para imprimir e assinar a caneta (nome e documento de cada parte embaixo da linha).
+ * É só um arquivo: não envia nada e não muda o status do termo.
+ */
+function BotaoPapel({ id, onErro }: { id: string; onErro: (mensagem: string) => void }) {
+  const [baixando, setBaixando] = useState(false);
+  async function baixar() {
+    setBaixando(true);
+    onErro("");
+    try {
+      const response = await fetch(`/api/v1/tce/${id}/pdf-papel`, { credentials: "include" });
+      if (!response.ok) {
+        const corpo = await response.json().catch(() => null) as { error?: { message?: string } } | null;
+        throw new Error(corpo?.error?.message || "Não foi possível gerar o PDF para assinatura em papel.");
+      }
+      const nome = /filename="([^"]+)"/.exec(response.headers.get("Content-Disposition") ?? "")?.[1] ?? "TCE-assinatura-em-papel.pdf";
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = nome;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) {
+      onErro(error instanceof Error ? error.message : "Não foi possível gerar o PDF para assinatura em papel.");
+    } finally {
+      setBaixando(false);
+    }
+  }
+  return (
+    <Button type="button" variant="secondary" disabled={baixando} onClick={() => void baixar()}>
+      <Printer size={16} /> {baixando ? "Gerando PDF…" : "Baixar para assinar em papel"}
+    </Button>
+  );
 }
 
 export function TermoDetailPage() {
@@ -173,6 +210,13 @@ export function TermoDetailPage() {
               <Button type="button" variant="secondary" disabled={email.isPending} onClick={() => email.mutate()}><Mail size={16} /> {email.isPending ? "Enviando e-mail…" : "Enviar PDF por e-mail"}</Button>
               <Button type="button" variant="secondary" disabled={escola.isPending} onClick={() => escola.mutate()}><GraduationCap size={16} /> {escola.isPending ? "Enviando…" : "Pedir assinatura da escola"}</Button>
             </div>
+            <div className="grid gap-2 border-t border-slate-100 pt-4">
+              <div>
+                <h3 className="text-[13px] font-bold text-navy-900">Ou assinar em papel</h3>
+                <p className="text-sm text-slate-500">Baixe o TCE com o nome de cada parte embaixo da linha, imprima e colha as assinaturas a caneta. Não envia nada e não muda a situação do termo.</p>
+              </div>
+              <BotaoPapel id={data.id} onErro={setErro} />
+            </div>
           </Card>
         </div>
       ) : (
@@ -214,6 +258,7 @@ export function TermoDetailPage() {
             <Button type="button" variant="secondary" disabled={assinatura.isPending} onClick={() => assinatura.mutate()}><RefreshCw size={16} /> {assinatura.isPending ? "Enviando…" : "Reenviar e-mails de assinatura"}</Button>
             <Button type="button" variant="secondary" disabled={escola.isPending} onClick={() => escola.mutate()}><GraduationCap size={16} /> {escola.isPending ? "Enviando…" : "Pedir assinatura da escola"}</Button>
             <Button type="button" variant="secondary" disabled={email.isPending} onClick={() => email.mutate()}><Mail size={16} /> {email.isPending ? "Enviando e-mail…" : "Enviar PDF por e-mail"}</Button>
+            {data.status !== "assinado" ? <BotaoPapel id={data.id} onErro={setErro} /> : null}
           </div>
         </Card>
       )}

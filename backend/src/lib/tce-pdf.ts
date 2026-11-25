@@ -209,3 +209,91 @@ export async function fillTceTemplate(values: Record<string, string>): Promise<U
 export function storageDir(configured: string): string {
   return configured || path.join(process.cwd(), "data", "tces");
 }
+
+// ---------------------------------------------------------------------------
+// Versão para assinatura em papel (a caneta): o mesmo PDF gerado do TCE, com o nome e o documento
+// de cada parte embaixo da sua linha de assinatura, um campo de data e sem o rodapé da ZapSign.
+// Não grava nada: é montada na hora a partir do PDF guardado.
+
+export type ParteQueAssina = { nome: string; documento: string };
+export type PartesDoTce = {
+  concedente: ParteQueAssina;
+  estagiario: ParteQueAssina;
+  escola: ParteQueAssina;
+  responsavel: ParteQueAssina | null;
+};
+
+function soDigitos(valor: string | undefined | null) {
+  return String(valor ?? "").replace(/\D/g, "");
+}
+
+function documentoDe(valor: string | undefined | null, rotulo: "CPF" | "CNPJ" | "CNPJ/INEP") {
+  const bruto = String(valor ?? "").trim();
+  if (!bruto) return "";
+  const d = soDigitos(bruto);
+  if (rotulo === "CPF" && d.length === 11) return `CPF ${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
+  if (rotulo !== "CPF" && d.length === 14) return `${rotulo} ${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`;
+  return `${rotulo} ${bruto}`;
+}
+
+/** Quem assina cada linha da página de assinaturas, a partir dos campos salvos do TCE (public.tces.payload). */
+export function partesDoTce(
+  campos: Partial<Record<string, string>>,
+  concedente: { razao_social?: string; cnpj?: string },
+): PartesDoTce {
+  const responsavel = String(campos.nome_responsavel ?? "").trim();
+  return {
+    concedente: { nome: String(concedente.razao_social ?? "").trim(), documento: documentoDe(concedente.cnpj, "CNPJ") },
+    estagiario: { nome: String(campos.nome ?? "").trim(), documento: documentoDe(campos.cpf, "CPF") },
+    escola: { nome: String(campos.nome_escola ?? "").trim(), documento: documentoDe(campos.escola_cnpj_inep, "CNPJ/INEP") },
+    responsavel: responsavel ? { nome: responsavel, documento: documentoDe(campos.cpf_responsavel, "CPF") } : null,
+  };
+}
+
+// Posições no templates/tce.pdf (pontos, origem no canto de baixo). Página 6 = assinaturas, página 8 = Anexo II.
+const PAGINA_ASSINATURAS = 5;
+const PAGINA_RODAPE_ZAPSIGN = 7;
+const LARGURA_COLUNA = 210;
+const COLUNAS = { esquerda: 160.75, direita: 406.7 };
+const BASE_LINHA_1 = 534;
+const BASE_LINHA_2 = 472;
+
+function caber(font: PDFFont, texto: string, tamanhoMax: number, largura: number) {
+  const completo = forPdf(texto).trim();
+  let tamanho = tamanhoMax;
+  while (tamanho > 6 && font.widthOfTextAtSize(completo, tamanho) > largura) tamanho -= 0.5;
+  if (font.widthOfTextAtSize(completo, tamanho) <= largura) return { valor: completo, tamanho };
+  // Nem com a fonte menor coube: corta e marca com reticências.
+  let corte = completo.length;
+  while (corte > 1 && font.widthOfTextAtSize(`${completo.slice(0, corte).trimEnd()}...`, tamanho) > largura) corte--;
+  return { valor: `${completo.slice(0, corte).trimEnd()}...`, tamanho };
+}
+
+function centralizar(page: ReturnType<PDFDocument["getPages"]>[number], font: PDFFont, centro: number, y: number, texto: string, tamanho: number, cor = rgb(0, 0, 0)) {
+  const { valor, tamanho: final } = caber(font, texto, tamanho, LARGURA_COLUNA);
+  if (!valor) return;
+  page.drawText(valor, { x: centro - font.widthOfTextAtSize(valor, final) / 2, y, size: final, font, color: cor });
+}
+
+function blocoDaParte(page: ReturnType<PDFDocument["getPages"]>[number], fontes: { normal: PDFFont; negrito: PDFFont }, centro: number, base: number, parte: ParteQueAssina | null) {
+  const cinza = rgb(0.25, 0.25, 0.25);
+  if (parte?.nome) centralizar(page, fontes.negrito, centro, base, parte.nome, 8);
+  if (parte?.documento) centralizar(page, fontes.normal, centro, base - 9.5, parte.documento, 7.5, cinza);
+  centralizar(page, fontes.normal, centro, base - 19, "Data: ____/____/________", 7.5, cinza);
+}
+
+export async function paraAssinaturaEmPapel(pdf: Uint8Array, partes: PartesDoTce): Promise<Uint8Array> {
+  const doc = await PDFDocument.load(pdf);
+  const paginas = doc.getPages();
+  const assinaturas = paginas[PAGINA_ASSINATURAS];
+  if (!assinaturas) throw new AppError(500, "MODELO_INCOMPATIVEL", "O PDF do TCE não tem a página de assinaturas.");
+  const fontes = { normal: await doc.embedFont(StandardFonts.Helvetica), negrito: await doc.embedFont(StandardFonts.HelveticaBold) };
+  blocoDaParte(assinaturas, fontes, COLUNAS.esquerda, BASE_LINHA_1, partes.concedente);
+  blocoDaParte(assinaturas, fontes, COLUNAS.direita, BASE_LINHA_1, partes.estagiario);
+  blocoDaParte(assinaturas, fontes, COLUNAS.esquerda, BASE_LINHA_2, partes.escola);
+  if (partes.responsavel) blocoDaParte(assinaturas, fontes, COLUNAS.direita, BASE_LINHA_2, partes.responsavel);
+  // O modelo traz desenhado no rodapé do Anexo II "ZapSign … Documento assinado eletronicamente": não vale no papel.
+  paginas[PAGINA_RODAPE_ZAPSIGN]?.drawRectangle({ x: 0, y: 8, width: 595.28, height: 18, color: rgb(1, 1, 1) });
+  doc.setTitle("TCE para assinatura em papel");
+  return doc.save();
+}

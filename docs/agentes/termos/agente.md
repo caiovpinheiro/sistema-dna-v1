@@ -1,6 +1,6 @@
 # Agente — Termos e documentos
 
-> Última revisão: 2026-11-18 (vaga de outra empresa no bloco 5 sem aviso)
+> Última revisão: 2026-11-25 (commit "TCE: baixar para assinar em papel")
 
 ## Para que serve
 
@@ -14,7 +14,7 @@ Gera o Termo de Compromisso de Estágio (TCE) em PDF a partir de um formulário 
 | `/termos/gerar` (menu "Gerar TCE") | `GerarTcePage` → `GeradorTce` | `frontend/src/pages/TermosPage.tsx`, `frontend/src/components/gerador-tce.tsx` | Formulário do TCE em cinco blocos numerados na ordem do termo (empresa concedente, estagiário, responsável legal opcional, instituição de ensino, condições do estágio/Anexo I), cada um com a pesquisa de preenchimento automático no topo (empresa, candidato, escola e vaga de estágio). Painel lateral fixo com os campos principais preenchidos por bloco e o botão de gerar. Aceita `?contratacao=<id>` (botão "Gerar TCE" da ficha de contratação). |
 | `/termos/documentos` (menu "Gerar documento") | `GerarDocumentoPage` (+ `GerarRescisaoMedio`) | `frontend/src/pages/GerarDocumentoPage.tsx`, `frontend/src/components/gerar-rescisao-medio.tsx` | Documento escolhido em `FiltroChips` no cabeçalho (Contrato de prestação de serviços = Modelo 1, Termo de adesão = Modelo 2, Rescisão de estágio do ensino médio), com uma frase do formato de cada um. Formulário em blocos (`Card` com título e frase, grade de 6 colunas) e rodapé fixo (`sticky`) com o erro de validação e o botão "Gerar contrato" / "Gerar termo de adesão" / "Gerar rescisão". Baixa o arquivo gerado. |
 | `/termos/:id/editar` | `EditarTcePage` → `GeradorTce editarId` | `frontend/src/pages/TermosPage.tsx` | Mesmo formulário carregado com os dados salvos; salvar refaz o PDF. |
-| `/termos/:id` | `TermoDetailPage` | `frontend/src/pages/TermoDetailPage.tsx` | `CabecalhoPagina` com o nome do estagiário, a empresa (`textoPlano`), selo da situação e as ações "Abrir contratação" (se houver `id_contratacao`) e "Editar dados" (se não assinado). Status "gerado": etapas (TCE gerado → Agora: enviar), prévia do PDF (iframe) à esquerda e painel à direita com os signatários e "Enviar para assinatura", "Enviar PDF por e-mail", "Pedir assinatura da escola". Depois de enviado: card "Assinaturas" com "X de Y assinaram", cada signatário com selo (Assinou, Abriu o link, Recusou, Aguardando) e copiar/abrir link (só enquanto o termo não está assinado), "Baixar PDF assinado", "Reenviar e-mails de assinatura", "Pedir assinatura da escola", "Enviar PDF por e-mail". |
+| `/termos/:id` | `TermoDetailPage` | `frontend/src/pages/TermoDetailPage.tsx` | `CabecalhoPagina` com o nome do estagiário, a empresa (`textoPlano`), selo da situação e as ações "Abrir contratação" (se houver `id_contratacao`) e "Editar dados" (se não assinado). Status "gerado": etapas (TCE gerado → Agora: enviar), prévia do PDF (iframe) à esquerda e painel à direita com os signatários e "Enviar para assinatura", "Enviar PDF por e-mail", "Pedir assinatura da escola" e, embaixo, "Ou assinar em papel" com "Baixar para assinar em papel" (`BotaoPapel`). Depois de enviado: card "Assinaturas" com "X de Y assinaram", cada signatário com selo (Assinou, Abriu o link, Recusou, Aguardando) e copiar/abrir link (só enquanto o termo não está assinado), "Baixar PDF assinado", "Reenviar e-mails de assinatura", "Pedir assinatura da escola", "Enviar PDF por e-mail" e, enquanto não está assinado, "Baixar para assinar em papel". |
 
 Ids de permissão: `termos`, `termos-gerar`, `termos-documento` (`frontend/src/components/shell.tsx:30-34`, `:69-71`).
 
@@ -54,6 +54,7 @@ Backend
 | GET | `/api/v1/tce/:id/dados` | Dados salvos para edição | `:406` → `TceService.dados` |
 | PATCH | `/api/v1/tce/:id` | Salva edição, refaz PDF, volta status para `gerado` | `:409` → `TceService.atualizar` |
 | GET | `/api/v1/tce/:id/pdf` | PDF do TCE (inline) | `:441` → `TceService.lerPdf` |
+| GET | `/api/v1/tce/:id/pdf-papel` | PDF para imprimir e assinar a caneta (download `TCE-<nome>-assinatura-em-papel.pdf`). Não grava nada | `routes/index.ts` → `TceService.pdfParaPapel` → `paraAssinaturaEmPapel` + `partesDoTce` (`lib/tce-pdf.ts`) |
 | POST | `/api/v1/tce/:id/enviar` | Cria documento na ZapSign e envia e-mails de assinatura | `:447` → `TceService.enviar` |
 | POST | `/api/v1/tce/:id/email` | Manda o PDF anexo para estagiário, empresa e escola | `:450` → `enviarDocumento` |
 | POST | `/api/v1/tce/:id/email-assinatura` | Reenvia e-mails com link de assinatura | `:453` → `enviarAssinaturas` |
@@ -97,6 +98,7 @@ TCE (`tce.service.ts`):
 - Signatários (`signatariosDe`, `:510-522`): estagiário; responsável (se `email_responsavel` diferente do do estagiário); empresa (representante ou razão social); escola (se tiver e-mail).
 - Enviar (`enviar`, `:315-366`): só com status `gerado` (409 `TERMO_JA_ENVIADO`); estagiário e empresa precisam de e-mail (422 `EMAIL_AUSENTE`); status vira `enviado` e guarda token e links. Se a Mailjet não estiver configurada, o envio à ZapSign vale e a resposta traz `email_enviado: false`; outro erro de e-mail vira 502 `EMAIL_ASSINATURA` (o TCE já ficou enviado).
 - Editar: bloqueado se `assinado` (GET dados) ou `assinado`/`cancelado` (PATCH) → 409 `TERMO_BLOQUEADO`. Salvar refaz o PDF no mesmo arquivo, zera `zapsign_token` e volta para `gerado` — o documento antigo na ZapSign não é cancelado (não encontrado código para isso).
+- **Assinatura em papel** (`pdfParaPapel`): é uma opção a mais, ao lado da ZapSign, e não muda nada do fluxo digital. Pega o PDF guardado do TCE e, na hora, acrescenta na página 6 (assinaturas), embaixo de cada linha, o nome em negrito, o documento (CNPJ da concedente, CPF do estagiário e do responsável, CNPJ/INEP da escola) e "Data: ____/____/________"; nome longo diminui até 6 pt e depois é cortado com "...". Responsável legal só aparece se `nome_responsavel` estiver preenchido. Também cobre de branco o rodapé "ZapSign … Documento assinado eletronicamente" que vem desenhado no próprio `templates/tce.pdf` (página 8): o texto continua no arquivo, só não aparece impresso. Não grava arquivo, não muda o status nem os signatários; o botão aparece com status `gerado` e, depois de enviado, enquanto não está `assinado`. As posições (`PAGINA_ASSINATURAS`, `COLUNAS`, `BASE_LINHA_*`) valem para o modelo atual: trocar o `tce.pdf` exige conferir de novo.
 - Excluir: apaga `public.tces`, `dna_work.termo_estagio` (transação) e o PDF. Não cancela nada na ZapSign.
 - Webhook (`termo.service.ts:32-40, 77-92`): `refus` → `recusado`; `cancel`/`delet` → `cancelado`; `signed` ou todos assinados → `assinado`; senão `enviado`. Guarda `signed_file` em `arquivo_assinado`.
 - Documentos do candidato (`routes/index.ts:892-904`): candidato escolhido na tela → o da contratação → o do mesmo CPF. Falha só vai para o log; o TCE é salvo mesmo assim.
@@ -113,6 +115,7 @@ Gerar documento:
 
 - `public.tces.payload` é a única fonte para editar, enviar e mandar e-mail. Mudar o formato quebra termos já gerados.
 - `MANUAL_FIELDS` (backend), `CAMPOS` (frontend) e os campos do `templates/tce.pdf` precisam andar juntos.
+- A versão para papel depende das posições da página de assinaturas do `templates/tce.pdf` (página 6) e do rodapé da página 8. Se o modelo mudar, rode `backend/test/tce-papel.test.ts` e confira o PDF impresso.
 - PDFs ficam em disco local. Se `PDF_STORAGE_DIR` não apontar para volume persistente, o PDF some ao reiniciar o container e "Enviar"/"PDF" dão 404.
 - O webhook ZapSign é o mesmo das rescisões de contratação (`ContratacaoService.receberAssinatura`).
 - `GerarTcePage` é aberta pela ficha de contratação (`/termos/gerar?contratacao=`); não mude o nome do parâmetro sem ajustar `ContratacaoDetailPage.tsx`.
@@ -125,6 +128,6 @@ Gerar documento:
 
 ## Como testar
 
-- Tela: `/termos/gerar` → escolher empresa, buscar candidato e escola, escolher a vaga no bloco 5 (confere jornada, bolsa, benefícios, plano e, sem empresa escolhida, a concedente), conferir carga horária 6/30 só leitura, gerar; conferir o PDF em `/termos/:id`; editar em `/termos/:id/editar`; excluir em `/termos`. Abrir uma contratação de estágio e clicar "Gerar TCE" para testar o pré-preenchimento. Em `/termos/documentos`, gerar contrato, adesão e rescisão do médio e abrir os arquivos. Envio real só com ZapSign/Mailjet configurados.
-- Testes: `backend/test/tce-candidato.test.ts` (pré-preenchimento, término do estágio, carga horária fixa e vaga → campos do Anexo I), `backend/test/documento-contrato.test.ts` (contrato e adesão .docx), `backend/test/rescisao-medio.test.ts` (cláusulas e PDF da rescisão do médio). Não há teste para gerar/enviar TCE nem para o webhook (não encontrado).
+- Tela: `/termos/gerar` → escolher empresa, buscar candidato e escola, escolher a vaga no bloco 5 (confere jornada, bolsa, benefícios, plano e, sem empresa escolhida, a concedente), conferir carga horária 6/30 só leitura, gerar; conferir o PDF em `/termos/:id`; editar em `/termos/:id/editar`; excluir em `/termos`. Abrir uma contratação de estágio e clicar "Gerar TCE" para testar o pré-preenchimento. Em `/termos/:id`, clicar "Baixar para assinar em papel" e conferir a página 6 (nome, documento e data de cada parte) e que a página 8 não tem o rodapé da ZapSign. Em `/termos/documentos`, gerar contrato, adesão e rescisão do médio e abrir os arquivos. Envio real só com ZapSign/Mailjet configurados.
+- Testes: `backend/test/tce-candidato.test.ts` (pré-preenchimento, término do estágio, carga horária fixa e vaga → campos do Anexo I), `backend/test/documento-contrato.test.ts` (contrato e adesão .docx), `backend/test/rescisao-medio.test.ts` (cláusulas e PDF da rescisão do médio), `backend/test/tce-papel.test.ts` (nomes e documentos das partes, página de assinaturas e rodapé da ZapSign coberto; usa `pdftotext`/`pdftoppm` do poppler e é pulado sem eles). Não há teste para gerar/enviar TCE nem para o webhook (não encontrado).
 - Comandos: `npm run lint -w frontend`, `npm run lint -w backend`, `npm test -w backend`, `npm run agentes:conferir`.

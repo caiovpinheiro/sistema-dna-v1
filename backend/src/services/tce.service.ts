@@ -8,7 +8,7 @@ import type { AppConfig } from "../config.js";
 import { AppError } from "../lib/errors.js";
 import { getEscola, mensagemEscola, searchEscolas } from "../lib/escolas.js";
 import { getEmpresaCadastro, listEmpresasCadastro } from "../lib/empresas-cadastro.js";
-import { fillTceTemplate } from "../lib/tce-pdf.js";
+import { fillTceTemplate, paraAssinaturaEmPapel, partesDoTce } from "../lib/tce-pdf.js";
 import { APOLICE_SEGURO, emissaoComData, CARGA_HORARIA_DIARIA, CARGA_HORARIA_SEMANAL, CAMPOS_DATA, dataParaPdf, emptyManual, ESCOLA_KEYS, type Concedente, type ManualData } from "../lib/tce-fields.js";
 import { preenchimentoDoCandidato, vagaParaTce, type CandidatoTce, type LinhaVagaTce, type VagaTce } from "../lib/tce-candidato.js";
 import { one } from "../repositories/sql.js";
@@ -315,6 +315,21 @@ export class TceService {
     if (pdfPath) {
       await fs.unlink(path.join(await pastaGravavel(this.config.PDF_STORAGE_DIR), path.basename(pdfPath))).catch(() => undefined);
     }
+  }
+
+  /**
+   * Mesmo PDF do TCE, pronto para imprimir e assinar a caneta: nome e documento de cada parte embaixo da linha,
+   * campo de data e sem o rodapé da ZapSign. Não muda o termo, o status nem o envio digital.
+   */
+  async pdfParaPapel(id: string): Promise<{ pdf: Uint8Array; nome: string }> {
+    const pdf = await this.lerPdf(id);
+    const saved = await this.db.query<{ candidato_nome: string | null; payload: { campos?: Partial<ManualData>; empresa?: Partial<Concedente> } | null }>(
+      "SELECT candidato_nome, payload FROM public.tces WHERE id = $1",
+      [id],
+    );
+    const row = saved.rows[0];
+    const partes = partesDoTce(row?.payload?.campos ?? {}, row?.payload?.empresa ?? {});
+    return { pdf: await paraAssinaturaEmPapel(pdf, partes), nome: row?.candidato_nome || partes.estagiario.nome };
   }
 
   async lerPdf(id: string): Promise<Buffer> {

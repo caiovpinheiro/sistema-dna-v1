@@ -536,6 +536,16 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
     const pdf = await services.tce.lerPdf(request.params.id);
     return reply.type("application/pdf").header("Content-Disposition", "inline").send(pdf);
   });
+  api.get("/api/v1/tce/:id/pdf-papel", {
+    schema: { tags: ["termos"], params: z.object({ id: z.string().uuid() }) },
+  }, async (request, reply) => {
+    const { pdf, nome } = await services.tce.pdfParaPapel(request.params.id);
+    // Nome do arquivo só com letras simples: alguns navegadores trocam acentos do cabeçalho por "_".
+    const simples = nome.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "termo";
+    return reply.type("application/pdf")
+      .header("Content-Disposition", `attachment; filename="TCE-${simples}-assinatura-em-papel.pdf"`)
+      .send(Buffer.from(pdf));
+  });
   api.post("/api/v1/tce/:id/enviar", {
     schema: { tags: ["termos"], params: z.object({ id: z.string().uuid() }) },
   }, async (request) => ok(await services.tce.enviar(request.params.id)));
