@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Copy, Download, ExternalLink, GraduationCap, Mail, Pencil, Printer, RefreshCw, Send } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Check, Copy, Download, ExternalLink, GraduationCap, Mail, Paperclip, Pencil, Printer, RefreshCw, Send } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Alerta, CabecalhoPagina } from "@/components/pagina";
 import { Badge, Button, Card, Skeleton } from "@/components/ui";
@@ -17,6 +17,7 @@ type Termo = {
   signatarios: Signatario[];
   candidato_nome: string | null;
   empresa_nome: string | null;
+  assinado_papel_em?: string | null;
 };
 
 const labels: Record<string, string> = {
@@ -91,6 +92,58 @@ function BotaoPapel({ id, onErro }: { id: string; onErro: (mensagem: string) => 
   );
 }
 
+const TIPOS_PAPEL = ["application/pdf", "image/jpeg", "image/png"];
+const MAXIMO_PAPEL = 10 * 1024 * 1024;
+
+/** Lê o arquivo escolhido como base64 (sem o prefixo data:). */
+function lerBase64(arquivo: File) {
+  return new Promise<string>((resolve, reject) => {
+    const leitor = new FileReader();
+    leitor.onload = () => resolve(String(leitor.result).replace(/^data:[^,]*,/, ""));
+    leitor.onerror = () => reject(new Error("Não foi possível ler o arquivo."));
+    leitor.readAsDataURL(arquivo);
+  });
+}
+
+/**
+ * Anexa o TCE assinado a caneta (escaneado ou foto). O termo passa a "Assinado" e o arquivo fica em
+ * "Baixar termo assinado". Também serve para trocar o arquivo já anexado.
+ */
+function AnexarPapel({ id, trocar, onFeito, onErro }: { id: string; trocar?: boolean; onFeito: (mensagem: string) => void; onErro: (mensagem: string) => void }) {
+  const entrada = useRef<HTMLInputElement>(null);
+  const [enviando, setEnviando] = useState(false);
+  async function escolher(arquivo: File | undefined) {
+    if (!arquivo) return;
+    onErro("");
+    if (!TIPOS_PAPEL.includes(arquivo.type) && !/\.(pdf|jpe?g|png)$/i.test(arquivo.name)) {
+      onErro("Envie o termo assinado em PDF, JPG ou PNG.");
+      return;
+    }
+    if (arquivo.size > MAXIMO_PAPEL) {
+      onErro("O arquivo passa de 10 MB. Escaneie com resolução menor ou envie em PDF.");
+      return;
+    }
+    setEnviando(true);
+    try {
+      await api(`/api/v1/tce/${id}/assinado-papel`, { method: "POST", body: JSON.stringify({ arquivo: { nome: arquivo.name, base64: await lerBase64(arquivo) } }) });
+      onFeito(trocar ? "Arquivo do termo assinado trocado." : "Termo assinado em papel anexado. O TCE ficou como assinado.");
+    } catch (error) {
+      onErro(error instanceof Error ? error.message : "Não foi possível anexar o termo assinado.");
+    } finally {
+      setEnviando(false);
+      if (entrada.current) entrada.current.value = "";
+    }
+  }
+  return (
+    <>
+      <input ref={entrada} type="file" accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png" className="hidden" aria-label="Arquivo do termo assinado em papel" onChange={(event) => void escolher(event.target.files?.[0])} />
+      <Button type="button" variant="secondary" disabled={enviando} onClick={() => entrada.current?.click()}>
+        <Paperclip size={16} /> {enviando ? "Anexando…" : trocar ? "Trocar arquivo assinado" : "Anexar termo assinado em papel"}
+      </Button>
+    </>
+  );
+}
+
 export function TermoDetailPage() {
   const { id } = useParams();
   const client = useQueryClient();
@@ -129,6 +182,12 @@ export function TermoDetailPage() {
       await client.invalidateQueries({ queryKey: ["termo", id] });
     },
   });
+  async function papelAnexado(mensagem: string) {
+    setErro("");
+    setAviso(mensagem);
+    await client.invalidateQueries({ queryKey: ["termo", id] });
+    await client.invalidateQueries({ queryKey: ["termos"] });
+  }
   if (query.isLoading) return <Skeleton className="h-64" />;
   if (!query.data) {
     return (
@@ -213,9 +272,10 @@ export function TermoDetailPage() {
             <div className="grid gap-2 border-t border-slate-100 pt-4">
               <div>
                 <h3 className="text-[13px] font-bold text-navy-900">Ou assinar em papel</h3>
-                <p className="text-sm text-slate-500">Baixe o TCE com o nome de cada parte embaixo da linha, imprima e colha as assinaturas a caneta. Não envia nada e não muda a situação do termo.</p>
+                <p className="text-sm text-slate-500">Baixe o TCE com o nome de cada parte embaixo da linha, imprima e colha as assinaturas a caneta. Depois, anexe aqui o termo assinado (PDF, JPG ou PNG): ele fica como assinado.</p>
               </div>
               <BotaoPapel id={data.id} onErro={setErro} />
+              <AnexarPapel id={data.id} onFeito={(mensagem) => void papelAnexado(mensagem)} onErro={setErro} />
             </div>
           </Card>
         </div>
@@ -225,11 +285,13 @@ export function TermoDetailPage() {
             <div>
               <h2 className="text-[15px] font-bold text-navy-900">Assinaturas</h2>
               <p className="text-sm text-slate-500">
-                <span className="font-semibold tabular-nums text-slate-700">{assinaram} de {signers.length}</span> {assinaram === 1 ? "assinou" : "assinaram"}. Copie o link de quem ainda não assinou para mandar por outro canal.
+                {data.assinado_papel_em
+                  ? <>Assinado em papel; arquivo anexado em <span className="font-semibold tabular-nums text-slate-700">{new Date(data.assinado_papel_em).toLocaleDateString("pt-BR")}</span>.</>
+                  : <><span className="font-semibold tabular-nums text-slate-700">{assinaram} de {signers.length}</span> {assinaram === 1 ? "assinou" : "assinaram"}. Copie o link de quem ainda não assinou para mandar por outro canal.</>}
               </p>
             </div>
             {data.arquivo_assinado ? (
-              <a href={data.arquivo_assinado} target="_blank" rel="noreferrer"><Button type="button"><Download size={16} /> Baixar PDF assinado</Button></a>
+              <a href={data.arquivo_assinado} target="_blank" rel="noreferrer"><Button type="button"><Download size={16} /> {data.assinado_papel_em ? "Baixar termo assinado" : "Baixar PDF assinado"}</Button></a>
             ) : null}
           </div>
           <ul className="grid">
@@ -255,10 +317,13 @@ export function TermoDetailPage() {
           </ul>
           {mensagens}
           <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-4">
-            <Button type="button" variant="secondary" disabled={assinatura.isPending} onClick={() => assinatura.mutate()}><RefreshCw size={16} /> {assinatura.isPending ? "Enviando…" : "Reenviar e-mails de assinatura"}</Button>
+            {!data.assinado_papel_em ? <Button type="button" variant="secondary" disabled={assinatura.isPending} onClick={() => assinatura.mutate()}><RefreshCw size={16} /> {assinatura.isPending ? "Enviando…" : "Reenviar e-mails de assinatura"}</Button> : null}
             <Button type="button" variant="secondary" disabled={escola.isPending} onClick={() => escola.mutate()}><GraduationCap size={16} /> {escola.isPending ? "Enviando…" : "Pedir assinatura da escola"}</Button>
             <Button type="button" variant="secondary" disabled={email.isPending} onClick={() => email.mutate()}><Mail size={16} /> {email.isPending ? "Enviando e-mail…" : "Enviar PDF por e-mail"}</Button>
             {data.status !== "assinado" ? <BotaoPapel id={data.id} onErro={setErro} /> : null}
+            {data.status !== "assinado" || data.assinado_papel_em
+              ? <AnexarPapel id={data.id} trocar={Boolean(data.assinado_papel_em)} onFeito={(mensagem) => void papelAnexado(mensagem)} onErro={setErro} />
+              : null}
           </div>
         </Card>
       )}

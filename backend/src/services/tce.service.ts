@@ -14,6 +14,7 @@ import { preenchimentoDoCandidato, vagaParaTce, type CandidatoTce, type LinhaVag
 import { one } from "../repositories/sql.js";
 import { enviarModelo, textoHtml } from "../lib/email-modelo.js";
 import { criarDocumentoZapSign } from "../lib/zapsign.js";
+import { decodificarBase64, detectarTipo } from "../lib/curriculo/arquivo.js";
 import { enviarEmailMailjet } from "../lib/mailjet.js";
 import type { TermoService } from "./termo.service.js";
 import { condicaoPorPalavras, palavrasDaBusca } from "../lib/busca-texto.js";
@@ -312,8 +313,13 @@ export class TceService {
     } finally {
       client.release();
     }
+    const dir = await pastaGravavel(this.config.PDF_STORAGE_DIR);
     if (pdfPath) {
-      await fs.unlink(path.join(await pastaGravavel(this.config.PDF_STORAGE_DIR), path.basename(pdfPath))).catch(() => undefined);
+      await fs.unlink(path.join(dir, path.basename(pdfPath))).catch(() => undefined);
+    }
+    // Termo assinado em papel anexado, se houver.
+    for (const arquivo of await fs.readdir(dir).catch(() => [] as string[])) {
+      if (arquivo.startsWith(`${id}-assinado-papel.`)) await fs.unlink(path.join(dir, arquivo)).catch(() => undefined);
     }
   }
 
@@ -330,6 +336,61 @@ export class TceService {
     const row = saved.rows[0];
     const partes = partesDoTce(row?.payload?.campos ?? {}, row?.payload?.empresa ?? {});
     return { pdf: await paraAssinaturaEmPapel(pdf, partes), nome: row?.candidato_nome || partes.estagiario.nome };
+  }
+
+  /**
+   * Anexa o TCE assinado em papel (escaneado ou foto): PDF, JPG ou PNG até 10 MB, conferido pelos bytes.
+   * O termo vira "assinado", todos os signatários contam como assinados e "Baixar PDF assinado" abre este arquivo.
+   * Pode trocar o arquivo depois. Termo já assinado pela ZapSign não aceita (o assinado digital vale).
+   */
+  async anexarAssinadoPapel(id: string, arquivo: { nome: string; base64: string }, usuario: string) {
+    const termo = await this.termos.get(id);
+    if (termo.status === "assinado" && !termo.assinado_papel_em) {
+      throw new AppError(409, "TERMO_JA_ASSINADO", "Este termo já foi assinado pela ZapSign. O PDF assinado está em “Baixar PDF assinado”.");
+    }
+    const conteudo = decodificarBase64(arquivo.base64);
+    if (!conteudo.length) throw new AppError(422, "ARQUIVO_INVALIDO", "O arquivo está vazio.");
+    if (conteudo.length > TAMANHO_MAXIMO_PAPEL) throw new AppError(413, "ARQUIVO_GRANDE", "O arquivo passa de 10 MB. Escaneie com resolução menor ou envie em PDF.");
+    const tipo = detectarTipo(conteudo);
+    const formato = FORMATOS_PAPEL[tipo as keyof typeof FORMATOS_PAPEL];
+    if (!formato) throw new AppError(422, "TIPO_NAO_ACEITO", "Envie o termo assinado em PDF, JPG ou PNG.");
+    const dir = await pastaGravavel(this.config.PDF_STORAGE_DIR);
+    const nome = `${id}-assinado-papel.${formato.extensao}`;
+    for (const antigo of await fs.readdir(dir).catch(() => [] as string[])) {
+      if (antigo.startsWith(`${id}-assinado-papel.`) && antigo !== nome) await fs.unlink(path.join(dir, antigo)).catch(() => undefined);
+    }
+    await fs.writeFile(path.join(dir, nome), conteudo);
+    await this.db.query(`
+      UPDATE dna_work.termo_estagio
+      SET status = 'assinado',
+          arquivo_assinado = $2,
+          signatarios = (SELECT coalesce(jsonb_agg(s || '{"status":"signed"}'::jsonb), '[]'::jsonb) FROM jsonb_array_elements(signatarios) s),
+          assinado_papel_arquivo = $3,
+          assinado_papel_tipo = $4,
+          assinado_papel_em = now(),
+          assinado_papel_por = $5,
+          atualizado_em = now()
+      WHERE id = $1
+    `, [id, `/api/v1/tce/${id}/assinado-papel`, nome, formato.mime, usuario.slice(0, 180)]);
+    return this.termos.get(id);
+  }
+
+  async lerAssinadoPapel(id: string): Promise<{ conteudo: Buffer; tipo: string; nome: string }> {
+    const termo = await this.termos.get(id);
+    const row = await this.db.query<{ arquivo: string | null; tipo: string | null }>(
+      "SELECT assinado_papel_arquivo AS arquivo, assinado_papel_tipo AS tipo FROM dna_work.termo_estagio WHERE id = $1",
+      [id],
+    );
+    const arquivo = row.rows[0]?.arquivo;
+    if (!arquivo) throw new AppError(404, "NAO_ENCONTRADO", "Este termo não tem termo assinado em papel anexado.");
+    try {
+      const conteudo = await fs.readFile(path.join(await pastaGravavel(this.config.PDF_STORAGE_DIR), path.basename(arquivo)));
+      const extensao = path.extname(arquivo);
+      const base = (termo.candidato_nome || termo.nome || "termo").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "termo";
+      return { conteudo, tipo: row.rows[0]?.tipo || "application/octet-stream", nome: `TCE-${base}-assinado-papel${extensao}` };
+    } catch {
+      throw new AppError(404, "NAO_ENCONTRADO", "O arquivo do termo assinado em papel não foi encontrado no servidor.");
+    }
   }
 
   async lerPdf(id: string): Promise<Buffer> {
@@ -428,7 +489,9 @@ export class TceService {
     const email = texto(dados.campos.escola_email).toLowerCase();
     if (!email) throw new AppError(422, "EMAIL_AUSENTE", "A instituição de ensino está sem e-mail.");
     const escola = dados.signatarios.find((item) => item.email.toLowerCase() === email);
-    const link = dados.termo.arquivo_assinado || escola?.url || "";
+    // Termo assinado em papel guarda um caminho do sistema (/api/...), que não abre fora dele: aí vai o PDF anexo.
+    const assinadoExterno = dados.termo.arquivo_assinado?.startsWith("http") ? dados.termo.arquivo_assinado : "";
+    const link = assinadoExterno || escola?.url || "";
     const pdf = link ? null : await this.lerPdf(id);
     const nome = dados.campos.nome || "estagiário";
     return enviarModelo(this.db, this.config, "Assinatura manual instituição", {
@@ -513,6 +576,14 @@ function limite(value: string, max = 200) {
 }
 
 let pastaPdf: string | null = null;
+
+/** Tamanho máximo do termo assinado em papel (arquivo já decodificado). */
+const TAMANHO_MAXIMO_PAPEL = 10 * 1024 * 1024;
+const FORMATOS_PAPEL = {
+  pdf: { mime: "application/pdf", extensao: "pdf" },
+  jpeg: { mime: "image/jpeg", extensao: "jpg" },
+  png: { mime: "image/png", extensao: "png" },
+} as const;
 
 async function pastaGravavel(configured: string): Promise<string> {
   if (pastaPdf) return pastaPdf;

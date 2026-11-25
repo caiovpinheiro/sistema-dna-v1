@@ -19,6 +19,8 @@ export type TermoRow = {
   candidato_nome: string | null;
   empresa_nome: string | null;
   zapsign_token: string | null;
+  /** Preenchido quando o termo foi assinado em papel e o arquivo foi anexado na ficha. */
+  assinado_papel_em: Date | string | null;
 };
 
 function signersFromZap(signers: ZapSignerResult[] | undefined): Signatario[] {
@@ -48,7 +50,7 @@ export class TermoService {
     const where = status ? (params.push(status), "WHERE t.status = $1") : "";
     return many<TermoRow>(this.db, `
       SELECT t.id, t.id_contratacao, t.nome, t.status, t.arquivo_assinado, t.signatarios,
-             t.criado_em, t.zapsign_token, coalesce(c.nome, t.candidato_nome) AS candidato_nome,
+             t.criado_em, t.zapsign_token, t.assinado_papel_em, coalesce(c.nome, t.candidato_nome) AS candidato_nome,
              coalesce(e.nome_fantasia, e.razao_social, t.empresa_nome) AS empresa_nome
       FROM dna_work.termo_estagio t
       LEFT JOIN dna_work.conratacaovaga cv ON cv.id_contratacao = t.id_contratacao
@@ -63,7 +65,7 @@ export class TermoService {
   async get(id: string): Promise<TermoRow> {
     const row = await one<TermoRow>(this.db, `
       SELECT t.id, t.id_contratacao, t.nome, t.status, t.arquivo_assinado, t.signatarios,
-             t.criado_em, t.zapsign_token, coalesce(c.nome, t.candidato_nome) AS candidato_nome,
+             t.criado_em, t.zapsign_token, t.assinado_papel_em, coalesce(c.nome, t.candidato_nome) AS candidato_nome,
              coalesce(e.nome_fantasia, e.razao_social, t.empresa_nome) AS empresa_nome
       FROM dna_work.termo_estagio t
       LEFT JOIN dna_work.conratacaovaga cv ON cv.id_contratacao = t.id_contratacao
@@ -88,6 +90,8 @@ export class TermoService {
           signatarios = CASE WHEN $4::jsonb = '[]'::jsonb THEN signatarios ELSE $4::jsonb END,
           atualizado_em = now()
       WHERE zapsign_token = $1
+        -- Assinado em papel vale mais que a ZapSign: eventos que chegam depois não mudam o termo.
+        AND assinado_papel_em IS NULL
     `, [token, status, doc.signed_file ?? null, JSON.stringify(signers)]);
     return { atualizado: (result.rowCount ?? 0) > 0 };
   }

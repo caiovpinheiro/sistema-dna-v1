@@ -546,6 +546,22 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
       .header("Content-Disposition", `attachment; filename="TCE-${simples}-assinatura-em-papel.pdf"`)
       .send(Buffer.from(pdf));
   });
+  // TCE assinado em papel: anexa o arquivo escaneado (PDF, JPG ou PNG, até 10 MB) e devolve o termo atualizado.
+  api.post("/api/v1/tce/:id/assinado-papel", {
+    bodyLimit: 15 * 1024 * 1024,
+    config: { rateLimit: { max: 20, timeWindow: "1 minute" } },
+    schema: {
+      tags: ["termos"],
+      params: z.object({ id: z.string().uuid() }),
+      body: z.object({ arquivo: z.object({ nome: z.string().trim().min(1).max(200), base64: z.string().min(1, "Escolha o arquivo do termo assinado.").max(14_500_000) }) }),
+    },
+  }, async (request) => ok(await services.tce.anexarAssinadoPapel(request.params.id, request.body.arquivo, request.user.email)));
+  api.get("/api/v1/tce/:id/assinado-papel", {
+    schema: { tags: ["termos"], params: z.object({ id: z.string().uuid() }) },
+  }, async (request, reply) => {
+    const { conteudo, tipo, nome } = await services.tce.lerAssinadoPapel(request.params.id);
+    return reply.type(tipo).header("Content-Disposition", `inline; filename="${nome}"`).header("Cache-Control", "no-store").send(conteudo);
+  });
   api.post("/api/v1/tce/:id/enviar", {
     schema: { tags: ["termos"], params: z.object({ id: z.string().uuid() }) },
   }, async (request) => ok(await services.tce.enviar(request.params.id)));
