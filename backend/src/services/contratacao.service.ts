@@ -9,7 +9,7 @@ import { CandidatoRepository } from "../repositories/candidato.repository.js";
 import { ContratacaoRepository } from "../repositories/contratacao.repository.js";
 import { one } from "../repositories/sql.js";
 import { VagaRepository } from "../repositories/vaga.repository.js";
-import type { ContratacaoCreate, ContratacaoEncerrar, ContratacaoListQuery, ContratacaoTrocarVaga } from "../schemas/contratacao.js";
+import type { ContratacaoCreate, ContratacaoEncerrar, ContratacaoListQuery, ContratacaoTrocarVaga, RescisaoEditar } from "../schemas/contratacao.js";
 import { buildRescisaoPdf, type RescisaoPdfDados } from "../lib/rescisao-pdf.js";
 import { consultarDocumentoZapSign, criarDocumentoZapSign, type ZapDoc } from "../lib/zapsign.js";
 import { moneyToNumber } from "../lib/money.js";
@@ -33,6 +33,7 @@ type ParteAssinatura = {
 type DocRescisao = {
   nome: string;
   motivo: string;
+  motivo_interno: string | null;
   avaliacao: string | null;
   resumo: string | null;
   data_demissao: string;
@@ -419,34 +420,7 @@ export class ContratacaoService {
       if (current.id_vaga) await this.vagas.lockById(client, current.id_vaga);
       const data = isoToLegacy(input.data_encerramento);
       await this.repo.encerrar(client, id, this.config.CONTRATACAO_STATUS_ENCERRADO, data);
-      if (input.motivo) {
-        const empresa = current.empresa_fantasia || current.empresa_razao;
-        const nome = current.tipo_vaga === 1 ? "Rescisão de estágio" : "Rescisão CLT";
-        await this.repo.salvarRescisao(client, {
-          idContratacao: id,
-          nome,
-          motivo: input.motivo,
-          motivoInterno: input.motivo_interno || null,
-          avaliacao: input.avaliacao || null,
-          resumo: input.resumo || null,
-          dataDemissao: data,
-          cargo: current.cargo,
-          empresa,
-          texto: [
-            nome,
-            `Candidato: ${current.candidato_nome ?? "—"}`,
-            `Empresa: ${empresa ?? "—"}`,
-            `Cargo: ${current.cargo ?? "—"}`,
-            `Motivo: ${input.motivo}`,
-            `Data de demissão: ${input.data_encerramento.split("-").reverse().join("/")}`,
-            `Avaliação: ${input.avaliacao || "—"}`,
-            "",
-            "Resumo das atividades",
-            input.resumo || "—",
-            input.motivo_interno ? `\nMotivo interno\n${input.motivo_interno}` : "",
-          ].join("\n"),
-        });
-      }
+      if (input.motivo) await this.gravarRescisao(client, current, { ...input, motivo: input.motivo });
       await this.repo.encerrarColaborador(client, id, this.config.COLABORADOR_STATUS_INATIVO);
       if (current.id_candidato) {
         const other = await this.repo.findOtherActive(client, current.id_candidato, this.config.CONTRATACAO_STATUS_ATIVO);
@@ -461,6 +435,85 @@ export class ContratacaoService {
     } finally {
       client.release();
     }
+  }
+
+  /** Monta e grava o documento de rescisão (usado ao demitir e ao editar). */
+  private async gravarRescisao(client: PoolClient, current: NonNullable<Awaited<ReturnType<ContratacaoRepository["findById"]>>>, input: RescisaoEditar) {
+    const empresa = current.empresa_fantasia || current.empresa_razao;
+    const nome = current.tipo_vaga === 1 ? "Rescisão de estágio" : "Rescisão CLT";
+    await this.repo.salvarRescisao(client, {
+      idContratacao: current.id_contratacao,
+      nome,
+      motivo: input.motivo,
+      motivoInterno: input.motivo_interno || null,
+      avaliacao: input.avaliacao || null,
+      resumo: input.resumo || null,
+      dataDemissao: isoToLegacy(input.data_encerramento),
+      cargo: current.cargo,
+      empresa,
+      texto: [
+        nome,
+        `Candidato: ${current.candidato_nome ?? "—"}`,
+        `Empresa: ${empresa ?? "—"}`,
+        `Cargo: ${current.cargo ?? "—"}`,
+        `Motivo: ${input.motivo}`,
+        `Data de demissão: ${input.data_encerramento.split("-").reverse().join("/")}`,
+        `Avaliação: ${input.avaliacao || "—"}`,
+        "",
+        "Resumo das atividades",
+        input.resumo || "—",
+        input.motivo_interno ? `\nMotivo interno\n${input.motivo_interno}` : "",
+      ].join("\n"),
+    });
+  }
+
+  /** Dados da rescisão já gerada, para a tela de edição. */
+  async rescisao(id: number) {
+    this.ensureReady();
+    const doc = await this.rescisaoAtual(id);
+    return {
+      motivo: doc.motivo,
+      motivo_interno: doc.motivo_interno,
+      avaliacao: doc.avaliacao,
+      resumo: doc.resumo,
+      data_demissao: legacyToIso(doc.data_demissao),
+      assinatura: doc.assinatura || "Não assina digitalmente",
+      editavel: doc.assinatura !== "Assinado",
+    };
+  }
+
+  /**
+   * Edita a rescisão já gerada, como o "Editar" do TCE: bloqueada depois de assinada; ao salvar, o documento é refeito
+   * e a assinatura volta para "não enviada" (precisa enviar de novo). O envio antigo na ZapSign não é cancelado lá.
+   */
+  async editarRescisao(id: number, input: RescisaoEditar) {
+    this.ensureReady();
+    const client = await this.db.connect();
+    try {
+      await client.query("BEGIN");
+      const current = await this.repo.lockById(client, id);
+      if (!current) throw new AppError(404, "CONTRATACAO_NAO_ENCONTRADA", "Contratação não encontrada.");
+      const doc = (await this.repo.listarRescisoes(client, id))[0];
+      if (!doc) throw new AppError(404, "RESCISAO_NAO_ENCONTRADA", "Esta contratação ainda não tem rescisão gerada.");
+      if (doc.assinatura === "Assinado") {
+        throw new AppError(409, "RESCISAO_ASSINADA", "A rescisão já foi assinada e não pode mais ser editada.");
+      }
+      const inicio = legacyToIso(current.datainicio || current.data_contratacao);
+      if (inicio && input.data_encerramento < inicio) {
+        throw new AppError(422, "DATA_ANTES_DO_INICIO", "A data de demissão não pode ser antes do início do vínculo.");
+      }
+      const nova = isoToLegacy(input.data_encerramento);
+      if (nova !== current.data_demicao) await this.repo.corrigirDataDemissao(client, id, current.data_demicao, nova);
+      await this.gravarRescisao(client, current, input);
+      await this.repo.zerarAssinaturaRescisao(client, id);
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+    return this.rescisao(id);
   }
 
   private async rescisaoAtual(id: number): Promise<DocRescisao> {

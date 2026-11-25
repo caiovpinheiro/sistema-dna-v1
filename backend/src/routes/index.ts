@@ -7,7 +7,7 @@ import type { AppConfig } from "../config.js";
 import { AppError } from "../lib/errors.js";
 import { many, one } from "../repositories/sql.js";
 import { candidatoCreateSchema, candidatoListSchema, candidatoPatchSchema } from "../schemas/candidato.js";
-import { contratacaoCreateSchema, contratacaoEncerrarSchema, contratacaoTrocarVagaSchema, contratacaoListSchema } from "../schemas/contratacao.js";
+import { contratacaoCreateSchema, contratacaoEncerrarSchema, contratacaoTrocarVagaSchema, contratacaoListSchema, rescisaoEditarSchema } from "../schemas/contratacao.js";
 import { empresaCreateSchema, empresaListSchema, empresaPatchSchema, pagadorasQuerySchema } from "../schemas/empresa.js";
 import { pageSchema } from "../schemas/common.js";
 import { processoCreateSchema, processoListSchema, processoMoverSchema } from "../schemas/processo.js";
@@ -391,6 +391,16 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
       body: contratacaoEncerrarSchema,
     },
   }, async (request) => ok(await services.contratacoes.encerrar(request.params.id, request.body)));
+  api.get("/api/v1/contratacoes/:id/rescisao", {
+    schema: { tags: ["contratacoes"], params: z.object({ id: z.coerce.number().int().positive() }) },
+  }, async (request) => ok(await services.contratacoes.rescisao(request.params.id)));
+  api.patch("/api/v1/contratacoes/:id/rescisao", {
+    schema: {
+      tags: ["contratacoes"],
+      params: z.object({ id: z.coerce.number().int().positive() }),
+      body: rescisaoEditarSchema,
+    },
+  }, async (request) => ok(await services.contratacoes.editarRescisao(request.params.id, request.body)));
   api.get("/api/v1/contratacoes/:id/rescisao.pdf", {
     schema: { tags: ["contratacoes"], params: z.object({ id: z.coerce.number().int().positive() }) },
   }, async (request, reply) => {

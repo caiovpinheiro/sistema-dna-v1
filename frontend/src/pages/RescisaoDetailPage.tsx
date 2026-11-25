@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ChevronRight, ExternalLink, Eye, FileX, Send } from "lucide-react";
+import { AlertTriangle, ChevronRight, ExternalLink, Eye, FileX, Pencil, Save, Send } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { DocumentosContratacao } from "@/components/documentos-contratacao";
 import { Alerta, FiltroChips } from "@/components/pagina";
@@ -51,6 +51,16 @@ type Vaga = {
   atribuicaoes: string | null;
 };
 
+type RescisaoSalva = {
+  motivo: string;
+  motivo_interno: string | null;
+  avaliacao: string | null;
+  resumo: string | null;
+  data_demissao: string | null;
+  assinatura: string;
+  editavel: boolean;
+};
+
 type ContratoFaltante = {
   id: string;
   origem: "historico" | "termo";
@@ -83,6 +93,8 @@ export function RescisaoDetailPage() {
   const [faltantes, setFaltantes] = useState<ContratoFaltante[] | null>(null);
   const [vendo, setVendo] = useState<string | null>(null);
   const [conferindo, setConferindo] = useState(false);
+  const [editando, setEditando] = useState(false);
+  const [salvo, setSalvo] = useState("");
 
   const query = useQuery({
     queryKey: ["rescisao-contratacao", id],
@@ -103,8 +115,17 @@ export function RescisaoDetailPage() {
     retry: false,
   });
 
+  // Vínculo encerrado: a rescisão gravada (404 quando foi encerrado sem rescisão).
+  const rescisao = useQuery({
+    queryKey: ["rescisao-documento", id],
+    queryFn: () => api<RescisaoSalva>(`/api/v1/contratacoes/${id}/rescisao`),
+    enabled: Boolean(data && data.situacao !== "ativa"),
+    retry: false,
+  });
+  const salva = rescisao.data?.data;
+
   useEffect(() => {
-    if (resumoPronto || !vaga.data) return;
+    if (resumoPronto || !vaga.data || data?.situacao !== "ativa") return;
     const texto = textoPlano(vaga.data.data.atribu_contrato || vaga.data.data.atribuicaoes);
     if (texto) setResumo(texto);
     setResumoPronto(true);
@@ -130,6 +151,55 @@ export function RescisaoDetailPage() {
     },
     onError: (error) => setMessage(error instanceof ApiError ? error.message : "Não foi possível demitir."),
   });
+
+  const salvarEdicao = useMutation({
+    mutationFn: () => api<RescisaoSalva>(`/api/v1/contratacoes/${id}/rescisao`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        data_encerramento: dataDemissao,
+        motivo,
+        motivo_interno: motivoInterno,
+        avaliacao: avaliacao || undefined,
+        resumo,
+      }),
+    }),
+    onSuccess: async () => {
+      setEditando(false);
+      setPrevia(false);
+      setMessage("");
+      setSalvo("Rescisão atualizada. O documento foi refeito: envie para assinatura de novo no quadro abaixo.");
+      await client.invalidateQueries({ queryKey: ["rescisao"] });
+      await client.invalidateQueries({ queryKey: ["contratacoes"] });
+      await client.invalidateQueries({ queryKey: ["rescisao-contratacao", id] });
+      await client.invalidateQueries({ queryKey: ["rescisao-documento", id] });
+      await client.invalidateQueries({ queryKey: ["contratacao", id] });
+      await client.invalidateQueries({ queryKey: ["contratacao-documentos", id] });
+      await client.invalidateQueries({ queryKey: ["contratacao-assinatura", id] });
+    },
+    onError: (error) => setMessage(error instanceof ApiError ? error.message : "Não foi possível salvar a rescisão."),
+  });
+
+  function abrirEdicao() {
+    if (!salva) return;
+    setMotivo(salva.motivo);
+    setDataDemissao(salva.data_demissao ?? "");
+    setAvaliacao(AVALIACOES.find((item) => item === salva.avaliacao) ?? "");
+    setResumo(salva.resumo ?? "");
+    setMotivoInterno(salva.motivo_interno ?? "");
+    setMessage("");
+    setSalvo("");
+    setPrevia(false);
+    setEditando(true);
+  }
+
+  function salvarAlteracoes() {
+    setMessage("");
+    if (!motivo || !dataDemissao) {
+      setMessage("Preencha o motivo e a data de demissão.");
+      return;
+    }
+    salvarEdicao.mutate();
+  }
 
   const enviarAssinatura = useMutation({
     mutationFn: () => api(`/api/v1/contratacoes/${id}/assinatura`, { method: "POST" }),
@@ -243,12 +313,23 @@ export function RescisaoDetailPage() {
         </dl>
       </Card>
 
-      {data.situacao === "ativa" ? (
+      {salvo ? <p role="status" className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{salvo}</p> : null}
+
+      {data.situacao === "ativa" || editando ? (
         <Card className="grid max-w-4xl gap-5 md:p-5">
           <div>
-            <h2 className="text-[15px] font-bold text-navy-900">Demitir</h2>
-            <p className="text-sm text-slate-500">Preencha os dados da rescisão. Ao confirmar, o documento é gerado e o vínculo é encerrado.</p>
+            <h2 className="text-[15px] font-bold text-navy-900">{editando ? "Editar rescisão" : "Demitir"}</h2>
+            <p className="text-sm text-slate-500">
+              {editando
+                ? "Corrija os dados e salve. O documento é refeito e precisa ser enviado para assinatura de novo."
+                : "Preencha os dados da rescisão. Ao confirmar, o documento é gerado e o vínculo é encerrado."}
+            </p>
           </div>
+          {editando && salva?.assinatura === "Aguardando" ? (
+            <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              Esta rescisão já foi enviada para assinatura. Ao salvar, o link enviado deixa de valer aqui: avise a pessoa e envie o documento novo.
+            </p>
+          ) : null}
 
           <div className="grid gap-3 sm:grid-cols-6">
             <div className="sm:col-span-4">
@@ -256,6 +337,7 @@ export function RescisaoDetailPage() {
                 <Select aria-label="Motivo da demissão" value={motivo} onChange={(event) => setMotivo(event.target.value)}>
                   <option value="">Selecione</option>
                   {MOTIVOS.map((item) => <option key={item} value={item}>{item}</option>)}
+                  {motivo && !MOTIVOS.some((item) => item === motivo) ? <option value={motivo}>{motivo}</option> : null}
                 </Select>
               </Field>
             </div>
@@ -287,9 +369,18 @@ export function RescisaoDetailPage() {
           {erroForm ? <Alerta>{message}</Alerta> : null}
 
           <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4">
-            <Button variant="danger" disabled={demitir.isPending || conferindo} onClick={() => void confirmarDemissao()}>
-              <FileX size={16} /> {demitir.isPending ? "Gerando…" : conferindo ? "Conferindo contratos…" : "Gerar rescisão e demitir"}
-            </Button>
+            {editando ? (
+              <>
+                <Button disabled={salvarEdicao.isPending} onClick={salvarAlteracoes}>
+                  <Save size={16} /> {salvarEdicao.isPending ? "Salvando…" : "Salvar alterações"}
+                </Button>
+                <Button variant="secondary" type="button" disabled={salvarEdicao.isPending} onClick={() => { setEditando(false); setMessage(""); setPrevia(false); }}>Cancelar</Button>
+              </>
+            ) : (
+              <Button variant="danger" disabled={demitir.isPending || conferindo} onClick={() => void confirmarDemissao()}>
+                <FileX size={16} /> {demitir.isPending ? "Gerando…" : conferindo ? "Conferindo contratos…" : "Gerar rescisão e demitir"}
+              </Button>
+            )}
             <Button variant="secondary" type="button" onClick={gerarPrevia}>
               <Eye size={16} /> Ver prévia
             </Button>
@@ -321,12 +412,18 @@ export function RescisaoDetailPage() {
           ) : null}
         </Card>
       ) : (
-        <Card className="grid gap-1">
-          <h2 className="text-[15px] font-bold text-navy-900">Demissão</h2>
-          <p className="text-sm text-slate-500">
-            Este vínculo já está encerrado em {dateBr(data.data_encerramento)}.{" "}
-            <Link className="font-semibold text-cyan-700 hover:underline" to={`/contratacoes/${data.id_contratacao}`}>Abrir nas informações da contratação</Link>
-          </p>
+        <Card className="flex flex-wrap items-center justify-between gap-3">
+          <div className="grid gap-1">
+            <h2 className="text-[15px] font-bold text-navy-900">Demissão</h2>
+            <p className="text-sm text-slate-500">
+              Este vínculo já está encerrado em {dateBr(data.data_encerramento)}.{" "}
+              <Link className="font-semibold text-cyan-700 hover:underline" to={`/contratacoes/${data.id_contratacao}`}>Abrir nas informações da contratação</Link>
+            </p>
+            {salva && !salva.editavel ? <p className="text-sm text-slate-500">A rescisão já foi assinada e não pode mais ser editada.</p> : null}
+          </div>
+          {salva?.editavel ? (
+            <Button variant="secondary" onClick={abrirEdicao}><Pencil size={16} /> Editar rescisão</Button>
+          ) : null}
         </Card>
       )}
 

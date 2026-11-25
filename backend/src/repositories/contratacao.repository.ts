@@ -222,6 +222,26 @@ export class ContratacaoRepository {
     `, [idContratacao]);
   }
 
+  /** Rescisão editada: o documento mudou, então a assinatura volta do zero (o envio antigo deixa de valer aqui). */
+  async zerarAssinaturaRescisao(db: Db, idContratacao: number): Promise<void> {
+    await db.query(`
+      UPDATE dna_work.rescisao_documento
+      SET assinatura = 'Não assina digitalmente', zapsign_token = NULL, sign_url = NULL, signatarios = NULL,
+          preview_url = NULL, enviado_em = NULL
+      WHERE id_contratacao = $1
+    `, [idContratacao]);
+  }
+
+  /** Nova data de demissão; o fim previsto só acompanha quando tinha sido preenchido com a data antiga. */
+  async corrigirDataDemissao(db: Db, id: number, antiga: string | null, nova: string): Promise<void> {
+    await db.query(`
+      UPDATE dna_work.conratacaovaga
+      SET data_demicao = $2::varchar,
+          datafim = CASE WHEN $3::varchar IS NOT NULL AND btrim(coalesce(datafim, '')) = $3::varchar THEN $2::varchar ELSE datafim END
+      WHERE id_contratacao = $1
+    `, [id, nova, antiga]);
+  }
+
   async gravarAssinatura(db: Db, idContratacao: number, values: {
     assinatura: string;
     token: string;

@@ -323,7 +323,7 @@ test("encerra contratação e preserva o histórico", async () => {
   assert.equal(candidate.statusCode, 200);
 });
 
-test("aba Rescisão: quem foi demitido com rescisão continua na busca, com a situação da assinatura", async () => {
+test("aba Rescisão: quem foi demitido com rescisão continua na busca e a rescisão pode ser editada até ser assinada", async () => {
   const company = await call("POST", "/api/v1/empresas", {
     razao_social: "Empresa Rescisão Ltda", cnpj: cnpj(7), email: "resc@example.com",
   });
@@ -357,6 +357,32 @@ test("aba Rescisão: quem foi demitido com rescisão continua na busca, com a si
   // Sem rescisao=1 continua só com os ativos.
   const ativos = await call("GET", `/api/v1/contratacoes?status=1&q=${encodeURIComponent("Rescisão Teste")}`);
   assert.deepEqual(ativos.json().data.map((item: { id_contratacao: number }) => item.id_contratacao), [ativo]);
+
+  // Editar a rescisão: refaz o documento, muda a data de demissão e zera a assinatura.
+  await db.query("UPDATE dna_work.rescisao_documento SET assinatura = 'Aguardando', zapsign_token = 'tok-antigo', sign_url = 'https://exemplo' WHERE id_contratacao = $1", [demitida]);
+  const editada = await call("PATCH", `/api/v1/contratacoes/${demitida}/rescisao`, {
+    data_encerramento: "2026-12-12", motivo: "Empresa solicitou o desligamento", avaliacao: "Regular", resumo: "Atendimento ao cliente",
+  });
+  assert.equal(editada.statusCode, 200);
+  assert.equal(editada.json().data.data_demissao, "2026-12-12");
+  assert.equal(editada.json().data.assinatura, "Não assina digitalmente");
+  const doc = await db.query("SELECT motivo, avaliacao, zapsign_token, sign_url, texto FROM dna_work.rescisao_documento WHERE id_contratacao = $1", [demitida]);
+  assert.equal(doc.rows[0].motivo, "Empresa solicitou o desligamento");
+  assert.equal(doc.rows[0].avaliacao, "Regular");
+  assert.equal(doc.rows[0].zapsign_token, null);
+  assert.equal(doc.rows[0].sign_url, null);
+  assert.match(doc.rows[0].texto, /12\/12\/2026/);
+  const contratacao = await call("GET", `/api/v1/contratacoes/${demitida}`);
+  assert.equal(contratacao.json().data.data_encerramento, "2026-12-12");
+  const antesDoInicio = await call("PATCH", `/api/v1/contratacoes/${demitida}/rescisao`, { data_encerramento: "2026-10-01", motivo: "Término" });
+  assert.equal(antesDoInicio.statusCode, 422);
+  await db.query("UPDATE dna_work.rescisao_documento SET assinatura = 'Assinado' WHERE id_contratacao = $1", [demitida]);
+  const assinada = await call("PATCH", `/api/v1/contratacoes/${demitida}/rescisao`, { data_encerramento: "2026-12-13", motivo: "Término" });
+  assert.equal(assinada.statusCode, 409);
+  assert.equal(assinada.json().error.code, "RESCISAO_ASSINADA");
+  assert.equal((await call("GET", `/api/v1/contratacoes/${demitida}/rescisao`)).json().data.editavel, false);
+  const semDoc = await call("PATCH", `/api/v1/contratacoes/${semRescisao}/rescisao`, { data_encerramento: "2026-12-13", motivo: "Término" });
+  assert.equal(semDoc.statusCode, 404);
 });
 
 test("pesquisa candidatos e empresas com filtro e paginação", async () => {

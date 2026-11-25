@@ -18,6 +18,15 @@ export const contratacaoEncerrarSchema = z.object({
   resumo: z.string().trim().max(8000).optional(),
 });
 
+/** Editar a rescisão já gerada: mesmos campos da tela, com motivo e data obrigatórios. */
+export const rescisaoEditarSchema = z.object({
+  data_encerramento: isoDateSchema,
+  motivo: z.string().trim().min(1).max(200),
+  motivo_interno: z.string().trim().max(8000).optional(),
+  avaliacao: z.enum(["Excelente", "Muito bom", "Bom", "Regular", "Insuficiente"]).optional(),
+  resumo: z.string().trim().max(8000).optional(),
+});
+
 export const contratacaoTrocarVagaSchema = z.object({
   id_vaga: z.string().trim().min(1),
 });
@@ -38,5 +47,6 @@ export const contratacaoListSchema = z.object({
 
 export type ContratacaoCreate = z.infer<typeof contratacaoCreateSchema>;
 export type ContratacaoEncerrar = z.infer<typeof contratacaoEncerrarSchema>;
+export type RescisaoEditar = z.infer<typeof rescisaoEditarSchema>;
 export type ContratacaoTrocarVaga = z.infer<typeof contratacaoTrocarVagaSchema>;
 export type ContratacaoListQuery = z.infer<typeof contratacaoListSchema>;
