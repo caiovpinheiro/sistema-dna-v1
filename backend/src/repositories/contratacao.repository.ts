@@ -27,6 +27,9 @@ export type ContratacaoRow = {
   tipo_vaga: number | null;
   modalidade: string | null;
   carga_horaria: string | null;
+  /** Só na listagem com rescisao=1. */
+  rescisao_assinatura?: string | null;
+  rescisao_data?: string | null;
 };
 
 const SELECT = `
@@ -431,7 +434,9 @@ export class ContratacaoRepository {
     if (query.id_empresa) add("cv.id_empresa = $#", query.id_empresa);
     if (query.id_vaga) add("cv.id_vaga = $#", query.id_vaga);
     if (query.id_candidato) add("cv.id_candidato = $#", query.id_candidato);
-    if (query.status !== undefined) add("cv.status = $#", query.status);
+    // rescisao=1: o status pedido OU uma rescisão já gerada (quem foi demitido some dos ativos, mas a rescisão continua aqui).
+    if (query.status !== undefined) add(query.rescisao ? "(cv.status = $# OR rd.id_contratacao IS NOT NULL)" : "cv.status = $#", query.status);
+    else if (query.rescisao) where.push("rd.id_contratacao IS NOT NULL");
     if (query.regime) {
       params.push(`%${query.regime}%`);
       where.push(`${REGIME_SQL} LIKE $${params.length}`);
@@ -440,6 +445,8 @@ export class ContratacaoRepository {
     if (query.inicio_de) add(`${periodo} >= $#`, isoToLegacy(query.inicio_de));
     if (query.inicio_ate) add(`${periodo} <= $#`, isoToLegacy(query.inicio_ate));
     const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
+    const joinRescisao = query.rescisao ? "LEFT JOIN dna_work.rescisao_documento rd ON rd.id_contratacao = cv.id_contratacao" : "";
+    const camposRescisao = query.rescisao ? ", rd.assinatura AS rescisao_assinatura, rd.data_demissao AS rescisao_data" : "";
     const order = query.sort
       ? sortClause(query.sort, query.order, SORTS, "cv.id_contratacao")
       : "cv.id_contratacao DESC";
@@ -450,10 +457,12 @@ export class ContratacaoRepository {
       LEFT JOIN dna_work.empresa e ON e.id_empresa = cv.id_empresa
       LEFT JOIN dna_work.vaga v ON v.id_vaga = cv.id_vaga
       LEFT JOIN dna_work.modalidade_vaga m ON m.id = v.tipo_vaga
+      ${joinRescisao}
       ${clause}
     `, params);
     const rows = await many<ContratacaoRow>(db, `
-      ${SELECT}
+      ${SELECT.replace("\n  FROM dna_work.conratacaovaga cv", `${camposRescisao}\n  FROM dna_work.conratacaovaga cv`)}
+      ${joinRescisao}
       ${clause}
       ORDER BY ${order}
       LIMIT $${params.length + 1} OFFSET $${params.length + 2}

@@ -323,6 +323,42 @@ test("encerra contratação e preserva o histórico", async () => {
   assert.equal(candidate.statusCode, 200);
 });
 
+test("aba Rescisão: quem foi demitido com rescisão continua na busca, com a situação da assinatura", async () => {
+  const company = await call("POST", "/api/v1/empresas", {
+    razao_social: "Empresa Rescisão Ltda", cnpj: cnpj(7), email: "resc@example.com",
+  });
+  const vaga = await call("POST", "/api/v1/vagas", {
+    id_empresa: company.json().data.id_empresa, cargo: "Estágio", tipo_vaga: 1, quantidade_posicoes: 3,
+  });
+  const contratar = async (nome: string, numero: number) => {
+    const person = await call("POST", "/api/v1/candidatos", { nome, cpf: cpf(numero), email: `resc${numero}@example.com` });
+    const hired = await call("POST", "/api/v1/contratacoes", {
+      id_candidato: person.json().data.id_candidato, id_vaga: vaga.json().data.id_vaga, data_inicio: "2026-11-01",
+    }, { "idempotency-key": `resc-${numero}-${Date.now()}` });
+    return hired.json().data.id_contratacao as number;
+  };
+  const ativo = await contratar("Rescisão Ativa Teste", 401);
+  const demitida = await contratar("Rescisão Demitida Teste", 402);
+  const semRescisao = await contratar("Rescisão Sem Documento Teste", 403);
+  const comRescisao = await call("POST", `/api/v1/contratacoes/${demitida}/encerrar`, {
+    data_encerramento: "2026-12-10", motivo: "Término do contrato", avaliacao: "Bom",
+  });
+  assert.equal(comRescisao.statusCode, 200);
+  await call("POST", `/api/v1/contratacoes/${semRescisao}/encerrar`, { data_encerramento: "2026-12-10" });
+
+  const lista = await call("GET", `/api/v1/contratacoes?status=1&rescisao=1&q=${encodeURIComponent("Rescisão Teste")}`);
+  assert.equal(lista.statusCode, 200);
+  const porId = new Map((lista.json().data as Array<{ id_contratacao: number; rescisao: { assinatura: string } | null }>).map((item) => [item.id_contratacao, item]));
+  assert.equal(porId.get(ativo)?.rescisao, null);
+  assert.equal(porId.get(demitida)?.rescisao?.assinatura, "Não assina digitalmente");
+  assert.equal(porId.has(semRescisao), false);
+  assert.equal(lista.json().meta.total, 2);
+
+  // Sem rescisao=1 continua só com os ativos.
+  const ativos = await call("GET", `/api/v1/contratacoes?status=1&q=${encodeURIComponent("Rescisão Teste")}`);
+  assert.deepEqual(ativos.json().data.map((item: { id_contratacao: number }) => item.id_contratacao), [ativo]);
+});
+
 test("pesquisa candidatos e empresas com filtro e paginação", async () => {
   const candidates = await call("GET", "/api/v1/candidatos?nome=Ana&page=1&pageSize=10");
   assert.equal(candidates.statusCode, 200);

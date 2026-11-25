@@ -39,10 +39,11 @@ export async function sugerirCandidatos(texto: string, signal: AbortSignal): Pro
 }
 
 /** Contratações (e Rescisão, que é a mesma lista com status ativo e outro destino). */
-export async function sugerirContratacoes(texto: string, signal: AbortSignal, opcoes: { status?: string; rota?: (id: number) => string } = {}): Promise<Sugestao[]> {
+export async function sugerirContratacoes(texto: string, signal: AbortSignal, opcoes: { status?: string; rescisao?: boolean; rota?: (id: number) => string } = {}): Promise<Sugestao[]> {
   type Linha = { id_contratacao: number; candidato_nome: string | null; empresa_fantasia: string | null; empresa_razao: string | null; cargo: string | null };
   const filtro = new URLSearchParams({ q: texto, pageSize: QTD });
   if (opcoes.status) filtro.set("status", opcoes.status);
+  if (opcoes.rescisao) filtro.set("rescisao", "1");
   const resposta = await api<Linha[]>(`/api/v1/contratacoes?${filtro}`, { signal });
   const rota = opcoes.rota ?? ((id: number) => `/contratacoes/${id}`);
   return resposta.data.map((contratacao) => ({

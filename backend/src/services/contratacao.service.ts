@@ -63,9 +63,12 @@ export class ContratacaoService {
   }
 
   async list(query: ContratacaoListQuery) {
+    if (query.rescisao) await this.repo.garantirRescisao(this.db);
     const result = await this.repo.list(this.db, query);
     return {
-      data: result.rows.map((row) => this.present(row)),
+      data: result.rows.map((row) => query.rescisao
+        ? { ...this.present(row), rescisao: row.rescisao_assinatura === undefined || row.rescisao_data == null ? null : { assinatura: row.rescisao_assinatura || "Não assina digitalmente", data: legacyToIso(row.rescisao_data) ?? row.rescisao_data } }
+        : this.present(row)),
       meta: { page: query.page, pageSize: query.pageSize, total: result.total },
     };
   }

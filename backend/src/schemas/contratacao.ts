@@ -30,6 +30,8 @@ export const contratacaoListSchema = z.object({
   id_candidato: z.string().trim().optional(),
   regime: z.enum(["clt", "estagio"]).optional(),
   status: z.coerce.number().int().optional(),
+  /** "1": além do status pedido, traz também quem já tem rescisão gerada (aba Rescisão), com a situação da assinatura. */
+  rescisao: z.enum(["1"]).optional(),
   inicio_de: isoDateSchema.optional(),
   inicio_ate: isoDateSchema.optional(),
 });

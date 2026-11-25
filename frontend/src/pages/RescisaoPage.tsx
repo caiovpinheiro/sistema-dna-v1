@@ -6,7 +6,7 @@ import { Paginacao, numeroPagina } from "@/components/paginacao";
 import { CabecalhoPagina, CampoFiltro, ResumoResultados } from "@/components/pagina";
 import { Badge, Card, Empty, Select, Skeleton } from "@/components/ui";
 import { api } from "@/lib/api";
-import { dateBr, formatCpf, regimeLabel, situacaoLabel, textoPlano } from "@/lib/format";
+import { dateBr, formatCpf, regimeLabel, textoPlano } from "@/lib/format";
 import { BuscaInteligente } from "@/components/busca-inteligente";
 import { sugerirContratacoes } from "@/lib/sugestoes";
 
@@ -22,7 +22,28 @@ type Row = {
   data_inicio: string | null;
   data_fim_prevista?: string | null;
   status: number;
+  /** Rescisão já gerada (o vínculo fica encerrado) e a situação da assinatura. */
+  rescisao: { assinatura: string; data: string | null } | null;
 };
+
+/** Situação da assinatura da rescisão, como a ZapSign devolve, em texto para a equipe. */
+function assinaturaRescisao(valor: string) {
+  if (valor === "Assinado") return "Assinada";
+  if (valor === "Recusado") return "Recusada";
+  if (valor === "Aguardando") return "Aguardando assinatura";
+  return "Não enviada para assinatura";
+}
+
+function SituacaoRescisao({ item }: { item: Row }) {
+  if (!item.rescisao) return <Badge value="ativa">Ativo</Badge>;
+  const assinatura = assinaturaRescisao(item.rescisao.assinatura);
+  return (
+    <div className="grid justify-items-start gap-1">
+      <Badge value="encerrada">Rescisão gerada{item.rescisao.data ? ` · ${dateBr(item.rescisao.data)}` : ""}</Badge>
+      <span className="text-xs text-slate-500">{assinatura}</span>
+    </div>
+  );
+}
 
 export function RescisaoPage() {
   const [params, setParams] = useSearchParams();
@@ -35,6 +56,7 @@ export function RescisaoPage() {
     queryKey: ["rescisao", q, regime, pagina],
     queryFn: () => api<Row[]>(`/api/v1/contratacoes?${new URLSearchParams({
       status: "1",
+      rescisao: "1",
       page: String(pagina),
       pageSize: "20",
       ...(q ? { q } : {}),
@@ -63,7 +85,7 @@ export function RescisaoPage() {
     <div className="grid grid-cols-[minmax(0,1fr)] gap-5">
       <CabecalhoPagina
         titulo="Rescisão"
-        descricao="Pessoas com vínculo ativo. Abra o registro para gerar a rescisão, demitir e enviar o documento para assinatura."
+        descricao="Pessoas com vínculo ativo e quem já teve a rescisão gerada. Abra o registro para gerar a rescisão ou, se já foi gerada, para enviar e copiar o link de assinatura."
       />
       <Card key={limpeza} className="grid gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] lg:max-w-3xl">
         <CampoFiltro rotulo="Buscar">
@@ -71,7 +93,7 @@ export function RescisaoPage() {
             ariaLabel="Busca"
             placeholder="Candidato, CPF, empresa ou cargo"
             defaultValue={q}
-            sugerir={(texto, sinal) => sugerirContratacoes(texto, sinal, { status: "1", rota: (id) => `/contratacoes/rescisao/${id}` })}
+            sugerir={(texto, sinal) => sugerirContratacoes(texto, sinal, { status: "1", rescisao: true, rota: (id) => `/contratacoes/rescisao/${id}` })}
             onBuscar={(texto) => update("q", texto.trim())}
             aoSair={(texto) => { if (texto.trim() !== q) update("q", texto.trim()); }}
           />
@@ -84,9 +106,9 @@ export function RescisaoPage() {
           </Select>
         </CampoFiltro>
       </Card>
-      <ResumoResultados total={total} singular="vínculo ativo" plural="vínculos ativos" filtrando={filtrando} carregando={result.isLoading} onLimpar={() => { setParams(new URLSearchParams()); setLimpeza((valor) => valor + 1); }} />
+      <ResumoResultados total={total} singular="vínculo" plural="vínculos" filtrando={filtrando} carregando={result.isLoading} onLimpar={() => { setParams(new URLSearchParams()); setLimpeza((valor) => valor + 1); }} />
       {result.isLoading ? <Skeleton className="h-64" /> : result.isError ? (
-        <p role="alert" className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">Não foi possível listar os vínculos ativos. Atualize a página; se continuar, avise o suporte.</p>
+        <p role="alert" className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">Não foi possível listar os vínculos. Atualize a página; se continuar, avise o suporte.</p>
       ) : lista && (lista.data.length || Number(lista.meta?.total ?? 0) > 0) ? (
         <Card className="p-0">
           <div className="relative hidden overflow-x-auto lg:block">
@@ -115,10 +137,10 @@ export function RescisaoPage() {
                     <td className="whitespace-nowrap"><Badge value={item.regime}>{regimeLabel[item.regime] ?? item.regime}</Badge></td>
                     <td className="whitespace-nowrap tabular-nums text-slate-600">{dateBr(item.data_inicio)}</td>
                     <td className="whitespace-nowrap tabular-nums text-slate-600">{dateBr(item.data_fim_prevista)}</td>
-                    <td className="whitespace-nowrap"><Badge value={item.situacao}>{situacaoLabel[item.situacao] ?? item.situacao}</Badge></td>
+                    <td className="whitespace-nowrap"><SituacaoRescisao item={item} /></td>
                     <td className="w-px whitespace-nowrap text-right">
                       <Link to={`/contratacoes/rescisao/${item.id_contratacao}`} aria-label={`Abrir rescisão de ${textoPlano(item.candidato_nome) || item.id_contratacao}`} className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs">
-                        Abrir <ChevronRight size={14} />
+                        {item.rescisao ? "Ver rescisão" : "Abrir"} <ChevronRight size={14} />
                       </Link>
                     </td>
                   </tr>
@@ -137,9 +159,10 @@ export function RescisaoPage() {
                   </div>
                   <Badge value={item.regime}>{regimeLabel[item.regime] ?? item.regime}</Badge>
                 </div>
+                <SituacaoRescisao item={item} />
                 <div className="flex items-end justify-between gap-3 text-sm">
                   <p className="text-slate-600">Início <span className="tabular-nums">{dateBr(item.data_inicio)}</span></p>
-                  <Link to={`/contratacoes/rescisao/${item.id_contratacao}`} className="inline-flex items-center gap-1 text-xs font-semibold text-cyan-700">Abrir <ChevronRight size={14} /></Link>
+                  <Link to={`/contratacoes/rescisao/${item.id_contratacao}`} className="inline-flex items-center gap-1 text-xs font-semibold text-cyan-700">{item.rescisao ? "Ver rescisão" : "Abrir"} <ChevronRight size={14} /></Link>
                 </div>
               </li>
             ))}
@@ -149,7 +172,7 @@ export function RescisaoPage() {
           </div>
         </Card>
       ) : filtrando ? (
-        <Empty title="Nenhum vínculo ativo com esses filtros" text="Confira o nome digitado ou limpe os filtros para ver todos." />
+        <Empty title="Nenhum vínculo com esses filtros" text="Confira o nome digitado ou limpe os filtros para ver todos." />
       ) : (
         <Empty title="Nenhum vínculo ativo" text="Quando houver pessoas contratadas, elas aparecem aqui para consulta e demissão." />
       )}
