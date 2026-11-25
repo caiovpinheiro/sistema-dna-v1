@@ -10,6 +10,7 @@ import type { CargoService } from "./cargo.service.js";
 import { chaveCargo } from "../lib/cargo.js";
 import { reagruparVagaIds } from "../lib/vaga-id.js";
 import { geocodeEndereco } from "../lib/empresa-endereco.js";
+import { cobrarPela } from "../lib/cobranca-pela-matriz.js";
 import type { EmpresaCadastro, GrupoCreate, ModeloVaga, VagaCadastro } from "../schemas/cadastro.js";
 
 type GrupoRow = { id: string; nome: string; email: string | null; telefone: string | null; criado_em: string };
@@ -533,6 +534,7 @@ export class CadastroService {
       longitude: geo.lng,
     };
 
+    let cobrancaPor: { id: string; nome: string; cnpj: string | null } | null = null;
     const pg = await this.db.connect();
     try {
       await pg.query("BEGIN");
@@ -546,6 +548,10 @@ export class CadastroService {
         ],
       );
       await this.gravarEmpresaNoCadastro(pg, payload, masked);
+      // Cobrada pelo CNPJ de outra: liga à empresa que paga e copia as condições de cobrança dela.
+      if (input.cobranca_por) {
+        cobrancaPor = await cobrarPela(pg, id, input.cobranca_por, payload.nome_fantasia || payload.razao_social);
+      }
       await pg.query("COMMIT");
     } catch (error) {
       await pg.query("ROLLBACK").catch(() => undefined);
@@ -555,7 +561,7 @@ export class CadastroService {
       pg.release();
     }
 
-    return { ...payload, reativada: reativar };
+    return { ...payload, reativada: reativar, cobranca_por: cobrancaPor };
   }
 
   /** Sem CNPJ não dá para achar a duplicada pelo documento: compara nome + CEP com as empresas desta tela e as ativas do espelho. */

@@ -28,11 +28,16 @@ test("empresa: número e complemento opcionais e basta e-mail ou telefone", () =
 
 test("empresa: CNPJ opcional, mas válido quando informado", () => {
   const { cnpj: _cnpj, ...semCnpj } = empresa;
-  const semCampo = empresaCadastroSchema.safeParse(semCnpj);
+  // Sem CNPJ, a empresa precisa ser cobrada pelo CNPJ de outra.
+  const pagadora = "44444444-4444-4444-4444-444444444444";
+  assert.ok(mensagens(empresaCadastroSchema.safeParse(semCnpj)).includes("Empresa sem CNPJ: escolha por qual CNPJ ela vai ser cobrada."));
+  const semCampo = empresaCadastroSchema.safeParse({ ...semCnpj, cobranca_por: pagadora });
   assert.equal(semCampo.success, true);
   assert.equal(semCampo.success && semCampo.data.cnpj, undefined);
-  const emBranco = empresaCadastroSchema.safeParse({ ...empresa, cnpj: "  " });
+  assert.equal(semCampo.success && semCampo.data.cobranca_por, pagadora);
+  const emBranco = empresaCadastroSchema.safeParse({ ...empresa, cnpj: "  ", cobranca_por: pagadora });
   assert.equal(emBranco.success && emBranco.data.cnpj, undefined);
+  assert.equal(empresaCadastroSchema.safeParse({ ...empresa, cnpj: "  ", cobranca_por: "" }).success, false);
   const comCnpj = empresaCadastroSchema.safeParse(empresa);
   assert.equal(comCnpj.success && comCnpj.data.cnpj, "11222333000181");
   assert.ok(mensagens(empresaCadastroSchema.safeParse({ ...empresa, cnpj: "11.222.333/0001-00" })).includes("CNPJ inválido."));

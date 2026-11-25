@@ -2,9 +2,10 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Save } from "lucide-react";
 import { useEffect, useRef, type ReactNode } from "react";
-import { useForm } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { z } from "zod";
+import { EscolherPagadora } from "@/components/escolher-pagadora";
 import { Alerta, CabecalhoPagina } from "@/components/pagina";
 import { Button, Card, Field, Input, Skeleton, Textarea } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
@@ -23,8 +24,12 @@ const schema = z.object({
   cidade: z.string().optional(),
   uf: z.string().optional(),
   responsavel: z.string().optional(),
-  matriz: z.string().optional(),
+  /** Id da empresa que paga por esta; vazio = a própria empresa é cobrada. */
+  cobranca_por: z.string().optional(),
   obs: z.string().optional(),
+}).refine((values) => Boolean((values.cnpj ?? "").replace(/\D/g, "")) || Boolean(values.cobranca_por), {
+  message: "Empresa sem CNPJ precisa ser cobrada pelo CNPJ de outra empresa.",
+  path: ["cobranca_por"],
 });
 type Form = z.infer<typeof schema>;
 
@@ -66,15 +71,22 @@ function mensagemErro(error: unknown) {
 export function EmpresaFormPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const current = useQuery({ queryKey: ["empresa", id], enabled: Boolean(id), queryFn: () => api<Form>(`/api/v1/empresas/${id}`) });
+  const current = useQuery({
+    queryKey: ["empresa", id],
+    enabled: Boolean(id),
+    queryFn: () => api<Omit<Form, "cobranca_por"> & { cobranca_por?: { id: string } | null; matriz?: string | null }>(`/api/v1/empresas/${id}`),
+  });
   const form = useForm<Form>({ resolver: zodResolver(schema) });
   const base = useRef<Form | null>(null);
   useEffect(() => {
     if (!current.data || base.current) return;
+    const { cobranca_por: pagadora, matriz: _matriz, ...resto } = current.data.data;
+    void _matriz;
     const data = Object.fromEntries(
-      Object.entries(current.data.data).map(([key, value]) => [key, value ?? ""]),
+      Object.entries(resto).map(([key, value]) => [key, value ?? ""]),
     ) as Form;
-    if (id && data.matriz === id) data.matriz = "";
+    // Quem paga vem como objeto; o formulário guarda só o id (vazio = a própria empresa).
+    data.cobranca_por = pagadora?.id ?? "";
     // A base guarda o valor do banco; o formulário mostra o nome limpo. Assim, salvar já grava a versão sem "&amp;".
     base.current = data;
     const limpo = { ...data } as Record<string, unknown>;
@@ -105,7 +117,18 @@ export function EmpresaFormPage() {
         <Col span={4}><Field label="Razão social" error={erros.razao_social?.message}><Input {...form.register("razao_social")} /></Field></Col>
         <Col span={2}><Field label="CNPJ (opcional)" error={erros.cnpj?.message}><Input placeholder="00.000.000/0000-00" {...form.register("cnpj")} /></Field></Col>
         <Col span={4}><Field label="Nome fantasia"><Input {...form.register("nome_fantasia")} /></Field></Col>
-        <Col span={2}><Field label="Matriz (ID existente)"><Input {...form.register("matriz")} /></Field></Col>
+      </Secao>
+      <Secao titulo="Cobrança" texto="Por qual CNPJ esta empresa é cobrada. Escolher outra empresa faz o boleto sair no CNPJ dela, junto com as unidades dela, e copia as condições de cobrança que faltarem. As vagas continuam com o endereço desta empresa.">
+        <Col span={4}>
+          <Field label="Cobrar pelo CNPJ de" error={erros.cobranca_por?.message}>
+            <Controller
+              control={form.control}
+              name="cobranca_por"
+              render={({ field }) => <EscolherPagadora value={field.value ?? ""} onChange={field.onChange} excluir={id} />}
+            />
+          </Field>
+          <p className="mt-1 text-xs text-slate-500">Em branco, a própria empresa é cobrada (precisa ter CNPJ).</p>
+        </Col>
       </Secao>
       <Secao titulo="Contato" texto="Quem fala pela empresa e como falar com ela.">
         <Col span={3}><Field label="Responsável"><Input {...form.register("responsavel")} /></Field></Col>

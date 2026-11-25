@@ -8,7 +8,7 @@ import { AppError } from "../lib/errors.js";
 import { many, one } from "../repositories/sql.js";
 import { candidatoCreateSchema, candidatoListSchema, candidatoPatchSchema } from "../schemas/candidato.js";
 import { contratacaoCreateSchema, contratacaoEncerrarSchema, contratacaoTrocarVagaSchema, contratacaoListSchema } from "../schemas/contratacao.js";
-import { empresaCreateSchema, empresaListSchema, empresaPatchSchema } from "../schemas/empresa.js";
+import { empresaCreateSchema, empresaListSchema, empresaPatchSchema, pagadorasQuerySchema } from "../schemas/empresa.js";
 import { pageSchema } from "../schemas/common.js";
 import { processoCreateSchema, processoListSchema, processoMoverSchema } from "../schemas/processo.js";
 import { vagaCreateSchema, vagaListSchema, vagaPatchSchema, vagaPrioridadeSchema } from "../schemas/vaga.js";
@@ -277,7 +277,10 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
     const result = await services.empresas.list(request.query);
     return ok(result.data, result.meta);
   });
-  api.get("/api/v1/empresas/:id", { schema: { tags: ["empresas"], params: z.object({ id: z.string().min(1) }) } }, async (request) => {
+  api.get("/api/v1/empresas/pagadoras", { schema: { tags: ["empresas"], querystring: pagadorasQuerySchema } }, async (request) => {
+    return ok(await services.empresas.pagadoras(request.query));
+  });
+  api.get("/api/v1/empresas/:id", { schema:{ tags: ["empresas"], params: z.object({ id: z.string().min(1) }) } }, async (request) => {
     return ok(await services.empresas.get(request.params.id));
   });
   api.get("/api/v1/empresas/:id/cobranca", { schema: { tags: ["empresas"], params: z.object({ id: z.string().min(1) }) } }, async (request) => {

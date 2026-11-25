@@ -1,6 +1,6 @@
 # Agente — Empresas
 
-> Última revisão: 2026-11-24 (acesso ao portal grava só o Argon2id; `senha_u` (MD5) fica vazio)
+> Última revisão: 2026-11-25 (empresa cobrada pelo CNPJ de outra: campo "Cobrar pelo CNPJ de", cópia das condições de cobrança e CNPJ de quem paga nos documentos)
 
 ## Para que serve
 
@@ -42,7 +42,8 @@ Backend
 | Método | Caminho | O que faz | Onde está no backend |
 |---|---|---|---|
 | GET | `/api/v1/empresas` | Lista paginada; filtros `q`, `razao_social`, `nome_fantasia`, `cnpj`, `cidade`, `uf`, `status`, `acesso` (`acessou`/`nunca`/`sem`), `sort`, `order` | `routes/index.ts:194` → `EmpresaService.list` |
-| GET | `/api/v1/empresas/:id` | Ficha + `acesso_portal`, `portal` (e-mail e nome; **sem senha**) e `uso_portal` | `routes/index.ts:198` → `EmpresaService.get` |
+| GET | `/api/v1/empresas/pagadoras?grupo&excluir&q` | Empresas que podem pagar por outra (ativas, com CNPJ, faturadas por elas mesmas), as do grupo primeiro | `routes/index.ts` → `EmpresaService.pagadoras` |
+| GET | `/api/v1/empresas/:id` | Ficha + `acesso_portal`, `cobranca_por` (quem paga, ou null), `portal` (e-mail e nome; **sem senha**) e `uso_portal` | `routes/index.ts:198` → `EmpresaService.get` |
 | PATCH | `/api/v1/empresas/:id` | Edita campos permitidos | `routes/index.ts:211` → `EmpresaService.update` |
 | POST | `/api/v1/empresas` | Cria empresa só em `dna_work.empresa` (não usado pela UI atual) | `routes/index.ts:191` → `EmpresaService.create` |
 | GET | `/api/v1/empresas/:id/cobranca` | Condições de cobrança da empresa (ou `null`) | `routes/index.ts:201` → `valorDaEmpresa` |
@@ -70,13 +71,14 @@ Serviços externos: nenhum.
 
 ## Regras e comportamentos importantes
 
+- **Cobrada pelo CNPJ de outra empresa** (`backend/src/lib/cobranca-pela-matriz.ts`): é o esquema de filial cobrada pela matriz que o sistema antigo já usava (Confiança, Flex, Enxuto). Escolher a empresa que paga grava na unidade `matriz` = id de quem paga, `usa_asaas` = 2, `tipo_empresa` = 2, `sede` = 10 e o `datafechamento` de quem paga, e copia as condições de cobrança que a unidade ainda não tem: as linhas de `dna_work.faturamento_empresa` (por modalidade; `id` = max + 1 com a tabela travada) e a linha de `public.valor_empresas` (com o CNPJ de quem paga e `tipo` "Filial"). As que a unidade já tem não são trocadas. O faturamento junta a unidade na matriz, o boleto sai no CNPJ dela, o relatório consolidado mostra a coluna Unidade e a régua manda para o e-mail da matriz; as vagas continuam com o endereço da própria unidade. Só pode pagar empresa ativa, com CNPJ e faturada por ela mesma (`usa_asaas` 1, ou 2 sendo a própria matriz): senão 422 `COBRANCA_NAO_FATURADA`, `COBRANCA_SEM_CNPJ` ou `COBRANCA_INVALIDA`. Lista das opções: `GET /api/v1/empresas/pagadoras?grupo&excluir&q` (as do mesmo grupo primeiro). Na edição, o bloco "Cobrança" tem o campo "Cobrar pelo CNPJ de" (`EscolherPagadora`, `frontend/src/components/escolher-pagadora.tsx`) no lugar do antigo "Matriz (ID existente)"; o PATCH manda `cobranca_por` (id, ou vazio/null para voltar a cobrar a própria empresa: `matriz` = ela mesma, `usa_asaas` 1, `tipo_empresa` 1; recusado com 422 `COBRANCA_OBRIGATORIA` se ela não tiver CNPJ). Com `cobranca_por` no PATCH, o campo `matriz` é ignorado. A ficha mostra "Cobrança: Pelo CNPJ de X" (o GET traz `cobranca_por` { id, nome, cnpj } ou null).
 - **Tamanho dos campos** (`schemas/empresa.ts`, 2026-11-18): `numero` até 10, `bairro` até 50, `ie` até 20 e `responsavel` até 150, o tamanho das colunas de `dna_work.empresa`. Antes o formulário aceitava mais e a gravação falhava no banco; agora volta 422 com a mensagem do campo.
 - **Pesquisa inteligente** (campo Buscar, `q`): procura em razão social e nome fantasia; número acha pedaço do CNPJ; o `id_empresa` exato continua valendo. No servidor, cada palavra digitada precisa aparecer, em qualquer ordem e sem diferenciar acento e maiúscula; uma palavra só de números (ou um documento com pontuação) vale contra os dígitos do documento (`condicaoPorPalavras`/`palavrasDaBusca` em `backend/src/lib/busca-texto.ts`, sem a extensão unaccent). Na tela, o campo é o `BuscaInteligente` (`frontend/src/components/busca-inteligente.tsx`): a partir de 2 letras mostra até 6 sugestões do próprio sistema (`frontend/src/lib/sugestoes.ts`), navegáveis com ↑/↓ e Enter; Enter sem sugestão marcada (ou "Pesquisar … na lista") faz a busca normal. O histórico do navegador fica desligado (`autoComplete="off"` no campo e no formulário). A sugestão abre a ficha (`/empresas/:id`).
 - **Pesquisar sempre tem efeito:** com os mesmos filtros, recarrega a lista (`refetch`, ou a chave `rodada` no Financeiro); o botão mostra "Pesquisando…" com ícone girando enquanto carrega. Todo botão do sistema afunda e muda o tom ao ser pressionado (`index.css`, `.app-canvas button:active`).
 - **Nomes com entidades HTML** (`&amp;`, `&quot;`… gravados pelo sistema antigo): os schemas de empresa e do cadastro em Grupos limpam razão social, nome fantasia e responsável ao gravar (`semEntidades` em `lib/normalize.ts`). O formulário de edição mostra os nomes já limpos e compara com o valor do banco, então salvar grava a versão limpa. Mensagens de tamanho da razão social/nome fantasia em português (antes vinha o texto padrão do zod, em inglês).
 - **CNPJ opcional** (`optionalCnpj`): em branco é aceito (empresa sem CNPJ); preenchido tem que ser válido e **único** (só dígitos): create e update → 409 `CNPJ_DUPLICADO` com `details.id_empresa`. No PATCH, CNPJ em branco é ignorado (não apaga o CNPJ que já existe). O formulário aceita o campo vazio ou com 14 dígitos.
 - **E-mail obrigatório no create** do backend (`empresaCreateSchema`); opcional no PATCH.
-- **Matriz**: tem que ser um `id_empresa` existente (422 `MATRIZ_INVALIDA`); a empresa não pode ser matriz de si mesma. No PATCH, `matriz === id` é descartado em silêncio; no formulário, se `matriz` for o próprio id, o campo aparece vazio (`EmpresaFormPage.tsx:59`).
+- **Matriz** (campo `matriz` da API): tem que ser um `id_empresa` existente (422 `MATRIZ_INVALIDA`); a empresa não pode ser matriz de si mesma. O formulário não mostra mais esse campo: quem paga é escolhido em "Cobrar pelo CNPJ de" (`cobranca_por`), que grava a matriz junto com o resto da cobrança.
 - **Campos editáveis**: lista `PATCHABLE` (`empresa.service.ts:27`). Sem campo → 400 `NADA_PARA_ATUALIZAR` (o formulário avisa antes, "Nenhum campo foi alterado.").
 - **Ordem da lista**: ativas (`status = 1`) primeiro, depois a ordenação pedida (padrão `razao_social`).
 - **Filtro `q`**: razão social ou fantasia (ILIKE), `id_empresa` exato, ou CNPJ pelos dígitos.

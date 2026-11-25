@@ -17,6 +17,7 @@ import { contratosFaltantes } from "../lib/contrato-faltante.js";
 import { CODIGOS_POR_STATUS, statusDaVaga } from "../lib/vaga-status.js";
 import { presentContratacao } from "./presenters.js";
 import type { ProcessoService } from "./processo.service.js";
+import { cnpjParaDocumento } from "../lib/cobranca-pela-matriz.js";
 
 type StoredResponse = { statusCode: number; body: unknown };
 
@@ -562,7 +563,7 @@ export class ContratacaoService {
       nome_escola: string | null;
     }>(this.db, `
       SELECT c.nome AS candidato_nome, c.cpf AS candidato_cpf, c.email AS candidato_email, c.celular,
-             coalesce(e.nome_fantasia, e.razao_social) AS empresa_nome, e.cnpj, e.responsavel, e.cidade,
+             coalesce(e.nome_fantasia, e.razao_social) AS empresa_nome, ${cnpjParaDocumento("e")} AS cnpj, e.responsavel, e.cidade,
              v.cargo, v.salario, m.descricao AS modalidade, v.carga_horaria, cv.datainicio, cv.datafim,
              c.escola::text AS escola_id, c.nome_escola
       FROM dna_work.conratacaovaga cv

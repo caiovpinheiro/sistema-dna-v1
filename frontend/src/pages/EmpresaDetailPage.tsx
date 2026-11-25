@@ -13,6 +13,8 @@ type Company = {
   telefone: string | null; celular: string | null; cep: string | null; logradouro: string | null; numero: string | null;
   complemento: string | null; bairro: string | null; cidade: string | null; uf: string | null; responsavel: string | null;
   matriz: string | null; ie: string | null; site: string | null; obs: string | null; status: number | null;
+  /** Empresa que paga por esta (o boleto sai no CNPJ dela); null = a própria empresa é cobrada. */
+  cobranca_por?: { id: string; nome: string; cnpj: string } | null;
   acesso_portal?: boolean;
   portal?: { ativo: boolean; email: string | null; nome: string | null };
   uso_portal?: { ultimo_login: string | null; ultimo_uso: string | null; logins: number; email: string | null } | null;
@@ -89,7 +91,11 @@ export function EmpresaDetailPage() {
           <Dado rotulo="Responsável">{data.responsavel || "Não informado"}</Dado>
           <Dado rotulo="E-mail">{data.email || "Não informado"}</Dado>
           <Dado rotulo="Telefone">{telefones || "Não informado"}</Dado>
-          <Dado rotulo="Matriz">{data.matriz || "Sem matriz"}</Dado>
+          <Dado rotulo="Cobrança">
+            {data.cobranca_por ? (
+              <>Pelo CNPJ de <Link className="font-semibold text-cyan-700 hover:underline" to={`/empresas/${data.cobranca_por.id}`}>{textoPlano(data.cobranca_por.nome)}</Link> · {formatCnpj(data.cobranca_por.cnpj)}</>
+            ) : "Pela própria empresa"}
+          </Dado>
           <Dado rotulo="IE / site">{[data.ie ? `IE ${data.ie}` : "", data.site || ""].filter(Boolean).join(" · ") || "Não informados"}</Dado>
         </dl>
       </Card>

@@ -9,6 +9,7 @@ import { Button, Card, Empty, Field, Input, Select, Skeleton, Textarea, cn } fro
 import { ApiError, api } from "@/lib/api";
 import { STATUS_VAGA, dateBr, formatCnpj, regimeLabel, situacaoLabel } from "@/lib/format";
 import { Paginacao } from "@/components/paginacao";
+import { EscolherPagadora } from "@/components/escolher-pagadora";
 import { cargoDoModelo, type CargoOpcao } from "@/lib/cargo";
 import { DIAS_ESCALA, textoDoHorario, type DiaEscala, type ModoDia } from "@/lib/horario-escala";
 
@@ -385,12 +386,13 @@ function AbaEmpresa({ grupoInicial }: { grupoInicial: string }) {
   const grupos = useQuery({ queryKey: ["grupos"], queryFn: () => api<Grupo[]>("/api/v1/grupos") });
   const [form, setForm] = useState({
     grupo_id: grupoInicial, cnpj: "", razao_social: "", nome_fantasia: "", cep: "", logradouro: "", numero: "",
-    complemento: "", bairro: "", cidade: "", uf: "", email: "", telefone: "",
+    complemento: "", bairro: "", cidade: "", uf: "", email: "", telefone: "", cobranca_por: "",
   });
   const [aviso, setAviso] = useState("");
   const [avisoCep, setAvisoCep] = useState("");
+  const semCnpj = !form.cnpj.replace(/\D/g, "");
   const save = useMutation({
-    mutationFn: () => api<{ id: string; reativada: boolean }>("/api/v1/grupos-empresas/empresas", { method: "POST", body: JSON.stringify(limpar(form)) }),
+    mutationFn: () => api<{ id: string; reativada: boolean; cobranca_por: { nome: string; cnpj: string | null } | null }>("/api/v1/grupos-empresas/empresas", { method: "POST", body: JSON.stringify(limpar(form)) }),
     onSuccess: async () => {
       await client.invalidateQueries({ queryKey: ["grupo"] });
       await client.invalidateQueries({ queryKey: ["empresas-tela"] });
@@ -416,10 +418,16 @@ function AbaEmpresa({ grupoInicial }: { grupoInicial: string }) {
     }));
   }
   return (
-    <form className="grid w-full gap-4" onSubmit={(event) => { event.preventDefault(); if (!form.grupo_id) { setAviso("Escolha o grupo da empresa."); return; } setAviso(""); save.mutate(); }}>
+    <form className="grid w-full gap-4" onSubmit={(event) => {
+      event.preventDefault();
+      if (!form.grupo_id) { setAviso("Escolha o grupo da empresa."); return; }
+      if (semCnpj && !form.cobranca_por) { setAviso("Empresa sem CNPJ: escolha em \"Cobrar pelo CNPJ de\" a empresa que vai pagar por ela."); return; }
+      setAviso("");
+      save.mutate();
+    }}>
       <Erro error={save.error} />
       <Aviso texto={aviso} />
-      {save.isSuccess ? <Sucesso>{save.data.data.reativada ? "Empresa reativada e copiada para o grupo." : "Empresa gravada."}</Sucesso> : null}
+      {save.isSuccess ? <Sucesso>{save.data.data.reativada ? "Empresa reativada e copiada para o grupo." : "Empresa gravada."}{save.data.data.cobranca_por ? ` Cobrada pelo CNPJ de ${save.data.data.cobranca_por.nome}.` : ""}</Sucesso> : null}
       <Bloco numero={1} titulo="Grupo e identificação" texto="O grupo da empresa e os nomes como aparecem no contrato.">
         <Grade>
           <Celula span={4}>
@@ -435,6 +443,15 @@ function AbaEmpresa({ grupoInicial }: { grupoInicial: string }) {
           <Celula span={2}><Field label="CNPJ (opcional)"><Input value={form.cnpj} placeholder="Em branco se não tiver CNPJ" onChange={(event) => setForm({ ...form, cnpj: event.target.value })} /></Field></Celula>
           <Celula span={3}><Field label="Razão social"><Input required value={form.razao_social} onChange={(event) => setForm({ ...form, razao_social: event.target.value })} /></Field></Celula>
           <Celula span={3}><Field label="Nome fantasia"><Input required value={form.nome_fantasia} onChange={(event) => setForm({ ...form, nome_fantasia: event.target.value })} /></Field></Celula>
+          <Celula span={6}>
+            <Field label={semCnpj ? "Cobrar pelo CNPJ de (obrigatório sem CNPJ)" : "Cobrar pelo CNPJ de (opcional)"}>
+              <EscolherPagadora value={form.cobranca_por} grupoId={form.grupo_id || undefined} onChange={(id) => setForm((atual) => ({ ...atual, cobranca_por: id }))} />
+            </Field>
+            <p className="mt-1 text-xs text-slate-500">
+              O boleto sai no CNPJ da empresa escolhida, junto com as unidades dela, e a cobrança segue as mesmas condições. As vagas usam o endereço desta empresa.
+              {semCnpj ? null : " Em branco, a própria empresa é cobrada."}
+            </p>
+          </Celula>
         </Grade>
       </Bloco>
       <Bloco numero={2} titulo="Endereço" texto="Digite o CEP e saia do campo: rua, bairro, cidade e UF são preenchidos sozinhos.">

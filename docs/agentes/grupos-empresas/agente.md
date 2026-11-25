@@ -1,6 +1,6 @@
 # Agente — Grupos (Grupos, Empresas e Vagas)
 
-> Última revisão: 2026-11-23 (abrir vaga: CNPJ na lista e abaixo do campo Empresa)
+> Última revisão: 2026-11-25 (empresa cobrada pelo CNPJ de outra: campo "Cobrar pelo CNPJ de", cópia das condições de cobrança e CNPJ de quem paga nos documentos)
 
 ## Para que serve
 
@@ -87,6 +87,7 @@ Serviços externos:
 
 ## Regras e comportamentos importantes
 
+- **Cobrada pelo CNPJ de outra empresa** (`backend/src/lib/cobranca-pela-matriz.ts`): é o esquema de filial cobrada pela matriz que o sistema antigo já usava (Confiança, Flex, Enxuto). Escolher a empresa que paga grava na unidade `matriz` = id de quem paga, `usa_asaas` = 2, `tipo_empresa` = 2, `sede` = 10 e o `datafechamento` de quem paga, e copia as condições de cobrança que a unidade ainda não tem: as linhas de `dna_work.faturamento_empresa` (por modalidade; `id` = max + 1 com a tabela travada) e a linha de `public.valor_empresas` (com o CNPJ de quem paga e `tipo` "Filial"). As que a unidade já tem não são trocadas. O faturamento junta a unidade na matriz, o boleto sai no CNPJ dela, o relatório consolidado mostra a coluna Unidade e a régua manda para o e-mail da matriz; as vagas continuam com o endereço da própria unidade. Só pode pagar empresa ativa, com CNPJ e faturada por ela mesma (`usa_asaas` 1, ou 2 sendo a própria matriz): senão 422 `COBRANCA_NAO_FATURADA`, `COBRANCA_SEM_CNPJ` ou `COBRANCA_INVALIDA`. Lista das opções: `GET /api/v1/empresas/pagadoras?grupo&excluir&q` (as do mesmo grupo primeiro). Na "Nova empresa", o bloco 1 tem "Cobrar pelo CNPJ de" (`EscolherPagadora`), **obrigatório quando o CNPJ fica em branco** (no schema: `cobranca_por`, mensagem "Empresa sem CNPJ: escolha por qual CNPJ ela vai ser cobrada."). `criarEmpresa` liga a unidade a quem paga na mesma transação do cadastro e devolve `cobranca_por`. Empresa nova sem esse campo continua sem `usa_asaas` (não entra no faturamento até alguém configurar a cobrança).
 - **Tamanho dos campos** (2026-11-18): `dna_work.log_diversos.usuario` e `.acao` são `varchar(40)`. O `criarVaga` grava `usuario.slice(0, 40)` e `acao.slice(0, 40)`. Antes gravava até 120 e, com e-mail longo (portal: `Portal empresa: <e-mail>` passa de 40 com e-mail de mais de 24 letras), o Postgres recusava, a transação inteira era desfeita e a vaga não abria. No cadastro de empresa, `numero` vai até 10 e `bairro` até 50 (`schemas/cadastro.ts`), o tamanho das colunas de `dna_work.empresa` e `dna_work.vaga_endereco`; texto maior dá 422 com mensagem, em vez de falhar na gravação.
 - **Erro 502 vira 500** (`app.ts`, `setErrorHandler`): o Easypanel troca toda resposta 502 pela página "Service is not reachable" e a mensagem real se perde. Os `AppError(502, …)` (gravação, OpenAI, CRM, Asaas, ZapSign…) saem como 500, com o mesmo código e mensagem.
 - **Busca de grupos** (lista da aba Grupo): usa `combinaBusca` (cada palavra em nome, e-mail ou telefone, em qualquer ordem e sem acento).

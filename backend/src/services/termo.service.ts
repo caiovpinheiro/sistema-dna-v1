@@ -5,6 +5,7 @@ import { type ZapDoc, type ZapSignerResult } from "../lib/zapsign.js";
 import { legacyToIso } from "../lib/dates.js";
 import { one, many } from "../repositories/sql.js";
 import { condicaoPorPalavras, palavrasDaBusca } from "../lib/busca-texto.js";
+import { cnpjParaDocumento } from "../lib/cobranca-pela-matriz.js";
 
 export type Signatario = { nome: string; email: string; status: string; url: string | null };
 
@@ -138,7 +139,7 @@ export class TermoService {
              c.curso, c.ano_escolar, c.periodo, c.celular, c.email,
              coalesce(nullif(c.nome_responsavel, ''), nullif(c.nomepai, ''), nullif(c.nomemae, '')) AS responsavel_nome,
              c.cpf_responsavel, c.celular_responsavel, c.email_responsavel,
-             e.razao_social, e.cnpj, e.logradouro AS emp_logradouro, e.numero AS emp_numero, e.complemento AS emp_complemento,
+             e.razao_social, ${cnpjParaDocumento("e")} AS cnpj, e.logradouro AS emp_logradouro, e.numero AS emp_numero, e.complemento AS emp_complemento,
              e.bairro AS emp_bairro, e.cidade AS emp_cidade, e.uf AS emp_uf, e.cep AS emp_cep, e.email AS emp_email, e.responsavel,
              c.escola::text AS escola_id, c.nome_escola, v.atribuicaoes,
              cv.datainicio, cv.datafim, cv.data_demicao, ${motivo} AS motivo, ${avaliacao} AS avaliacao, ${resumo} AS resumo, ${demissaoDoc} AS data_doc

@@ -31,7 +31,17 @@ export const empresaCreateSchema = z.object({
   email: z.string().email(),
 });
 
-export const empresaPatchSchema = z.object(fields).partial();
+export const empresaPatchSchema = z.object({
+  ...fields,
+  /** Empresa que paga por esta (id) ou null para voltar a cobrar a própria empresa. */
+  cobranca_por: z.preprocess((value) => (value === "" ? null : value), z.string().trim().min(1).max(40).nullable()),
+}).partial();
+
+export const pagadorasQuerySchema = z.object({
+  q: z.string().trim().optional(),
+  grupo: z.string().trim().optional(),
+  excluir: z.string().trim().optional(),
+});
 
 export const empresaListSchema = z.object({
   ...pageSchema,

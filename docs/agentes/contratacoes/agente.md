@@ -1,6 +1,6 @@
 # Agente — Contratações
 
-> Última revisão: 2026-11-25 ("Trocar vaga" na ficha da contratação ativa)
+> Última revisão: 2026-11-25 ("Trocar vaga" na ficha da contratação ativa; CNPJ de quem paga nos documentos da empresa sem CNPJ)
 
 ## Para que serve
 
@@ -74,6 +74,7 @@ Serviço externo: **ZapSign** (`lib/zapsign.ts`), variáveis `ZAPSIGN_API_URL`, 
 
 ## Regras e comportamentos importantes
 
+- **CNPJ nos documentos da contratação**: empresa sem CNPJ sai com o CNPJ da empresa que paga por ela (`cnpjParaDocumento` em `contratacao.service.ts`).
 - **Voltar das fichas** (`VoltarLink`, `frontend/src/components/voltar.tsx`, regras em `frontend/src/lib/voltar.ts`): o link "←" do topo leva para a página de onde a pessoa veio (ex.: da ficha da empresa para a vaga, volta para a empresa; da consulta filtrada, volta com os filtros). O Shell guarda o caminho da aba no `sessionStorage` (`dnawork-caminho`) como pilha; formulários (`/novo`, `/nova`, `/editar`, `/gerar`) e a própria ficha não são destino. Aberta direto, sem histórico, o link vai para a lista padrão da seção. Teste: `frontend/test/voltar.test.ts`.
 - **Pesquisa inteligente** (Contratações e Rescisão, campo Buscar, `q`): cada palavra em candidato, empresa (razão ou fantasia) ou cargo; número acha pedaço do CPF. No servidor, cada palavra digitada precisa aparecer, em qualquer ordem e sem diferenciar acento e maiúscula; uma palavra só de números (ou um documento com pontuação) vale contra os dígitos do documento (`condicaoPorPalavras`/`palavrasDaBusca` em `backend/src/lib/busca-texto.ts`, sem a extensão unaccent). Na tela, o campo é o `BuscaInteligente` (`frontend/src/components/busca-inteligente.tsx`): a partir de 2 letras mostra até 6 sugestões do próprio sistema (`frontend/src/lib/sugestoes.ts`), navegáveis com ↑/↓ e Enter; Enter sem sugestão marcada (ou "Pesquisar … na lista") faz a busca normal. O histórico do navegador fica desligado (`autoComplete="off"` no campo e no formulário). A sugestão abre a ficha (`/contratacoes/:id`; na Rescisão, `/contratacoes/rescisao/:id`, só vínculos ativos). A busca continua acontecendo também ao sair do campo (`aoSair`).
 - **Cadastro rápido de candidato na Nova contratação:** e-mail opcional e a caixa "Candidato da própria empresa (…), não da DNA Work", que grava o candidato com a empresa do passo 1 (`id_empresa`). Erro de validação mostra a mensagem do campo.

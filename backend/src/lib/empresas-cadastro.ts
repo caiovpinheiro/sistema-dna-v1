@@ -1,4 +1,5 @@
 import type { Pool } from "pg";
+import { cnpjParaDocumento } from "./cobranca-pela-matriz.js";
 
 /** Empresas cadastradas (public.empresa) no formato que o gerador de TCE usa. */
 export type EmpresaCadastro = {
@@ -63,7 +64,7 @@ function mapRow(row: EmpresaRow): EmpresaCadastro {
 /** Empresas do cadastro do sistema (dna_work.empresa, a mesma tela de Empresas), com cidade, UF e responsável. */
 type EmpresaSistemaRow = EmpresaRow & { bairro: string | null; cidade: string | null; uf: string | null; responsavel: string | null };
 
-const COLUNAS_SISTEMA = `id_empresa::text AS id, razao_social, nome_fantasia, cnpj::text AS cnpj, email, cep::text AS cep,
+const COLUNAS_SISTEMA = `id_empresa::text AS id, razao_social, nome_fantasia, ${cnpjParaDocumento("empresa")} AS cnpj, email, cep::text AS cep,
   logradouro, numero::text AS numero, complemento, bairro, cidade, uf, responsavel`;
 
 /** Tira entidades HTML que o sistema antigo gravava ("Freire &amp; Pinho"). */

@@ -28,8 +28,15 @@ export const empresaCadastroSchema = z.object({
   bairro: z.string().trim().min(2).max(50, "O bairro pode ter até 50 letras."),
   cidade: z.string().trim().min(2).max(80),
   uf: z.string().trim().length(2),
+  /** Empresa que paga por esta (o boleto sai no CNPJ dela). Obrigatório quando a empresa não tem CNPJ. */
+  cobranca_por: z.preprocess((value) => (value === "" || value === null ? undefined : value), z.string().trim().min(1).max(40).optional()),
   ...contato,
-}).superRefine(exigeContato);
+}).superRefine((value, ctx) => {
+  exigeContato(value, ctx);
+  if (!value.cnpj && !value.cobranca_por) {
+    ctx.addIssue({ code: "custom", message: "Empresa sem CNPJ: escolha por qual CNPJ ela vai ser cobrada.", path: ["cobranca_por"] });
+  }
+});
 
 const hora = z.string().regex(/^\d{2}:\d{2}$/, "Use HH:MM.");
 

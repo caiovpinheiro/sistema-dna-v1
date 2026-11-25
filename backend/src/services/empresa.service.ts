@@ -6,6 +6,7 @@ import { EmpresaRepository } from "../repositories/empresa.repository.js";
 import type { EmpresaCreate, EmpresaListQuery, EmpresaPatch } from "../schemas/empresa.js";
 import { presentEmpresa } from "./presenters.js";
 import { sincronizarEnderecoEmpresas } from "../lib/empresa-endereco.js";
+import { cobrarDaPropria, cobrarPela, listarPagadoras, pagadoraDe } from "../lib/cobranca-pela-matriz.js";
 import type { Logger } from "./notion-sync.service.js";
 
 const MENU_PORTAL = "9%34%35%37";
@@ -75,6 +76,13 @@ export class EmpresaService {
       if (!PATCHABLE.has(key) || value === undefined) continue;
       (patch as Record<string, unknown>)[key] = value;
     }
+    const mudaCobranca = input.cobranca_por !== undefined;
+    if (mudaCobranca) {
+      // Quem cobra a empresa decide a matriz: o campo antigo de matriz não vale junto.
+      delete patch.matriz;
+      await this.trocarCobranca(id, input.cobranca_por ?? null, current.nome_fantasia || current.razao_social || "Unidade");
+      if (Object.keys(patch).length === 0) return this.get(id);
+    }
     if (Object.keys(patch).length === 0) {
       throw new AppError(400, "NADA_PARA_ATUALIZAR", "Nenhum campo informado para atualização.");
     }
@@ -100,7 +108,33 @@ export class EmpresaService {
   async get(id: string) {
     const row = await this.repo.findById(this.db, id);
     if (!row) throw new AppError(404, "EMPRESA_NAO_ENCONTRADA", "Empresa não encontrada.");
-    return { ...presentEmpresa(row), ...(await this.portalDe(id)), uso_portal: await this.usoDe(id) };
+    return {
+      ...presentEmpresa(row),
+      cobranca_por: await pagadoraDe(this.db, id),
+      ...(await this.portalDe(id)),
+      uso_portal: await this.usoDe(id),
+    };
+  }
+
+  /** Empresas que podem pagar por outra (com CNPJ e faturadas por elas mesmas), as do grupo primeiro. */
+  async pagadoras(filtro: { q?: string; grupo?: string; excluir?: string }) {
+    return listarPagadoras(this.db, filtro);
+  }
+
+  /** Liga a empresa à que paga por ela (copiando as condições de cobrança que faltarem) ou volta a cobrar a própria. */
+  private async trocarCobranca(id: string, pagadora: string | null, nome: string) {
+    const client = await this.db.connect();
+    try {
+      await client.query("BEGIN");
+      if (pagadora) await cobrarPela(client, id, pagadora, nome);
+      else await cobrarDaPropria(client, id);
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   async list(query: EmpresaListQuery) {

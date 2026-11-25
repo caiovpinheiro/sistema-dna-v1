@@ -17,6 +17,7 @@ import { criarDocumentoZapSign } from "../lib/zapsign.js";
 import { enviarEmailMailjet } from "../lib/mailjet.js";
 import type { TermoService } from "./termo.service.js";
 import { condicaoPorPalavras, palavrasDaBusca } from "../lib/busca-texto.js";
+import { cnpjParaDocumento } from "../lib/cobranca-pela-matriz.js";
 
 export type GerarTceInput = {
   empresaId: string;
@@ -102,7 +103,7 @@ export class TceService {
     const escola = await this.escolaDoCandidato(candidato.escola, candidato.nome_escola);
     const filtro = idContratacao ? "cv.id_contratacao = $3" : "cv.id_candidato = $1";
     const contrato = await one<Record<string, string | null>>(this.db, `
-      SELECT cv.id_contratacao::text AS id_contratacao, e.id_empresa, e.razao_social, e.nome_fantasia, e.cnpj, e.email AS emp_email, e.responsavel,
+      SELECT cv.id_contratacao::text AS id_contratacao, e.id_empresa, e.razao_social, e.nome_fantasia, ${cnpjParaDocumento("e")} AS cnpj, e.email AS emp_email, e.responsavel,
              e.logradouro AS emp_logradouro, e.numero AS emp_numero, e.complemento AS emp_complemento,
              e.bairro AS emp_bairro, e.cidade AS emp_cidade, e.uf AS emp_uf, e.cep AS emp_cep,
              v.salario, v.carga_horaria, v.texto_carga, v.atribuicaoes, cv.datainicio, cv.datafim
