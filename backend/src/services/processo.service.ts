@@ -327,6 +327,10 @@ export class ProcessoService {
     return this.get(id);
   }
 
+  moverContratacao(db: Db, idContratacao: number, idVaga: string, idEmpresa: string, observacao: string) {
+    return this.repo.moverContratacao(db, idContratacao, idVaga, idEmpresa, observacao);
+  }
+
   async vincularContratacao(db: Db, input: { idProcesso?: string; idCandidato: string; idVaga: string; idContratacao: number }) {
     if (input.idProcesso) {
       const processo = await this.repo.findById(db, input.idProcesso);

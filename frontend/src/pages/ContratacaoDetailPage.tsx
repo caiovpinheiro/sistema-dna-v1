@@ -1,12 +1,12 @@
-import { useQuery } from "@tanstack/react-query";
-import type { ReactNode } from "react";
-import { FileText, UserMinus } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState, type ReactNode } from "react";
+import { ArrowLeftRight, FileText, Search, UserMinus } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { DocumentosContratacao } from "@/components/documentos-contratacao";
 import { Alerta } from "@/components/pagina";
-import { Badge, Button, Card, Skeleton } from "@/components/ui";
-import { api } from "@/lib/api";
-import { dateBr, formatCpf, money, regimeLabel, situacaoLabel, textoPlano } from "@/lib/format";
+import { Badge, Button, Card, Input, Skeleton, cn } from "@/components/ui";
+import { ApiError, api } from "@/lib/api";
+import { dateBr, formatCnpj, formatCpf, money, regimeLabel, situacaoLabel, textoPlano } from "@/lib/format";
 import { VoltarLink } from "../components/voltar";
 
 type Detail = {
@@ -78,6 +78,8 @@ export function ContratacaoDetailPage() {
 
       <DocumentosContratacao id={String(data.id_contratacao)} />
 
+      {data.situacao === "ativa" ? <TrocarVaga data={data} /> : null}
+
       {data.situacao === "ativa" ? (
         <Card className="grid gap-4 md:max-w-2xl">
           <div>
@@ -92,6 +94,133 @@ export function ContratacaoDetailPage() {
         </Card>
       ) : null}
     </div>
+  );
+}
+
+type EmpresaOpcao = { id_empresa: string; razao_social: string; nome_fantasia: string | null; cnpj: string | null; cidade: string | null; uf: string | null };
+type VagaOpcao = { id_vaga: string; cargo: string; regime: string; situacao: string; disponiveis: number | null; quantidade_posicoes: number | null; ocupadas: number; salario: number | null };
+
+/** Corrige a vaga de uma contratação ativa (ex.: foi escolhida a vaga de outra unidade com o mesmo cargo). */
+function TrocarVaga({ data }: { data: Detail }) {
+  const client = useQueryClient();
+  const [aberto, setAberto] = useState(false);
+  const [busca, setBusca] = useState("");
+  const [empresa, setEmpresa] = useState<EmpresaOpcao | null>(null);
+  const [vagaId, setVagaId] = useState("");
+  const [erro, setErro] = useState("");
+  const [feito, setFeito] = useState("");
+  const empresas = useQuery({
+    queryKey: ["trocar-vaga-empresas", busca],
+    enabled: aberto && !empresa && busca.trim().length >= 2,
+    queryFn: () => api<EmpresaOpcao[]>(`/api/v1/empresas?pageSize=8&q=${encodeURIComponent(busca.trim())}`),
+  });
+  const vagas = useQuery({
+    queryKey: ["vagas-empresa", empresa?.id_empresa],
+    enabled: Boolean(empresa),
+    queryFn: () => api<VagaOpcao[]>(`/api/v1/empresas/${empresa!.id_empresa}/vagas?pageSize=100&situacao=aberta`),
+  });
+  const opcoes = (vagas.data?.data ?? []).filter((vaga) =>
+    vaga.id_vaga !== data.id_vaga && vaga.situacao === "aberta" && (vaga.disponiveis ?? 0) > 0 && vaga.regime === data.regime);
+  const escolhida = opcoes.find((vaga) => vaga.id_vaga === vagaId);
+  const trocar = useMutation({
+    mutationFn: () => api(`/api/v1/contratacoes/${data.id_contratacao}/trocar-vaga`, { method: "POST", body: JSON.stringify({ id_vaga: vagaId }) }),
+    onSuccess: async () => {
+      const nome = empresa ? textoPlano(empresa.nome_fantasia) || textoPlano(empresa.razao_social) : "";
+      setFeito(`Vaga trocada para ${textoPlano(escolhida?.cargo) || "a vaga escolhida"}${nome ? ` em ${nome}` : ""}.`);
+      setAberto(false);
+      setEmpresa(null);
+      setBusca("");
+      setVagaId("");
+      await Promise.all([
+        client.invalidateQueries({ queryKey: ["contratacao", String(data.id_contratacao)] }),
+        client.invalidateQueries({ queryKey: ["vagas-empresa"] }),
+      ]);
+    },
+    onError: (error) => setErro(error instanceof ApiError ? error.message : "Não foi possível trocar a vaga."),
+  });
+  function fechar() {
+    setAberto(false);
+    setEmpresa(null);
+    setBusca("");
+    setVagaId("");
+    setErro("");
+  }
+  return (
+    <Card className="grid gap-4 md:max-w-2xl">
+      <div>
+        <h2 className="text-[15px] font-bold text-navy-900">Trocar vaga</h2>
+        <p className="text-sm text-slate-500">
+          Use quando a contratação foi registrada na vaga errada (por exemplo, a mesma vaga de outra unidade). A posição sai da vaga atual e passa a contar na nova; empresa, colaborador e processo seletivo seguem a nova vaga.
+        </p>
+      </div>
+      {feito ? <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{feito}</p> : null}
+      {!aberto ? (
+        <Button variant="secondary" className="h-10 justify-self-start" onClick={() => { setAberto(true); setFeito(""); }}><ArrowLeftRight size={16} /> Trocar vaga</Button>
+      ) : (
+        <div className="grid gap-3">
+          {!empresa ? (
+            <>
+              <label className="relative block">
+                <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <Input aria-label="Buscar empresa da nova vaga" className="pl-9" placeholder="Empresa da vaga certa: nome, razão social ou CNPJ" value={busca} onChange={(event) => setBusca(event.target.value)} autoFocus />
+              </label>
+              {empresas.isFetching && !empresas.data ? <p className="text-sm text-slate-500">Buscando…</p> : null}
+              {busca.trim().length >= 2 && empresas.data && empresas.data.data.length === 0 ? <p className="text-sm text-slate-500">Nenhuma empresa encontrada.</p> : null}
+              {empresas.data?.data.length ? (
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {empresas.data.data.map((item) => {
+                    const nome = textoPlano(item.nome_fantasia) || textoPlano(item.razao_social);
+                    const local = [item.cidade, item.uf].filter(Boolean).join(" / ");
+                    return (
+                      <button key={item.id_empresa} type="button" title={[nome, textoPlano(item.razao_social), local].filter(Boolean).join(" · ")}
+                        className="rounded-lg border border-slate-200 px-3 py-2 text-left hover:border-cyan-600"
+                        onClick={() => { setEmpresa(item); setVagaId(""); setErro(""); }}>
+                        <span className="block truncate font-semibold text-navy-900">{nome}</span>
+                        <span className="block truncate text-xs tabular-nums text-slate-500">{[formatCnpj(item.cnpj), local].filter(Boolean).join(" · ")}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
+            </>
+          ) : (
+            <>
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <span className="text-slate-500">Empresa:</span>
+                <span className="font-semibold text-navy-900">{textoPlano(empresa.nome_fantasia) || textoPlano(empresa.razao_social)}</span>
+                <span className="text-xs tabular-nums text-slate-500">{formatCnpj(empresa.cnpj)}</span>
+                <button type="button" className="font-semibold text-cyan-700 hover:underline" onClick={() => { setEmpresa(null); setVagaId(""); }}>Trocar</button>
+              </div>
+              {vagas.isLoading ? <p className="text-sm text-slate-500">Carregando vagas…</p> : null}
+              {vagas.data && opcoes.length === 0 ? (
+                <p className="text-sm text-slate-500">Esta empresa não tem vaga aberta, com posição livre e do mesmo regime ({regimeLabel[data.regime] ?? data.regime}).</p>
+              ) : null}
+              {opcoes.length ? (
+                <div className="grid gap-2">
+                  {opcoes.map((vaga) => (
+                    <button key={vaga.id_vaga} type="button" aria-pressed={vagaId === vaga.id_vaga}
+                      className={cn("rounded-lg border px-3 py-2 text-left", vagaId === vaga.id_vaga ? "border-cyan-600 bg-cyan-50" : "border-slate-200 hover:border-cyan-600")}
+                      onClick={() => { setVagaId(vaga.id_vaga); setErro(""); }}>
+                      <span className="block font-semibold text-navy-900">{textoPlano(vaga.cargo)}</span>
+                      <span className="block text-xs text-slate-500">
+                        <span className="tabular-nums">{vaga.ocupadas}</span>/<span className="tabular-nums">{vaga.quantidade_posicoes ?? 1}</span> preenchidas · <span className="tabular-nums">{vaga.disponiveis}</span> disponíveis{vaga.salario != null ? ` · ${money(vaga.salario)}` : ""}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </>
+          )}
+          {erro ? <Alerta>{erro}</Alerta> : null}
+          <div className="flex flex-wrap gap-2">
+            <Button className="h-10" disabled={!escolhida || trocar.isPending} onClick={() => { setErro(""); trocar.mutate(); }}>
+              <ArrowLeftRight size={16} /> {trocar.isPending ? "Trocando…" : "Confirmar troca"}
+            </Button>
+            <Button variant="secondary" className="h-10" onClick={fechar}>Cancelar</Button>
+          </div>
+        </div>
+      )}
+    </Card>
   );
 }
 

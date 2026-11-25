@@ -260,6 +260,44 @@ test("duas contratações concorrentes não ultrapassam a última posição", as
   assert.equal(detail.json().data.regime, "estagio");
 });
 
+test("troca a vaga de uma contratação ativa: a posição sai da antiga e entra na nova", async () => {
+  const unidadeA = await call("POST", "/api/v1/empresas", { razao_social: "Polo Unidade A Ltda", cnpj: cnpj(20), email: "a@example.com" });
+  const unidadeB = await call("POST", "/api/v1/empresas", { razao_social: "Polo Unidade B Ltda", cnpj: cnpj(21), email: "b@example.com" });
+  const idA = unidadeA.json().data.id_empresa as string;
+  const idB = unidadeB.json().data.id_empresa as string;
+  const errada = await call("POST", "/api/v1/vagas", { id_empresa: idA, cargo: "Suporte Comercial", tipo_vaga: 2, quantidade_posicoes: 1, salario: "2000" });
+  const certa = await call("POST", "/api/v1/vagas", { id_empresa: idB, cargo: "Suporte Comercial", tipo_vaga: 2, quantidade_posicoes: 2, salario: "2100" });
+  const estagio = await call("POST", "/api/v1/vagas", { id_empresa: idB, cargo: "Estágio Comercial", tipo_vaga: 1, quantidade_posicoes: 1 });
+  const idErrada = errada.json().data.id_vaga as string;
+  const idCerta = certa.json().data.id_vaga as string;
+  const person = await call("POST", "/api/v1/candidatos", { nome: "Troca Candidata", cpf: cpf(400), email: "troca@example.com" });
+  const hired = await call("POST", "/api/v1/contratacoes", {
+    id_candidato: person.json().data.id_candidato, id_vaga: idErrada, data_inicio: "2026-11-30",
+  }, { "idempotency-key": `troca-${Date.now()}` });
+  assert.equal(hired.statusCode, 201, hired.body);
+  const id = hired.json().data.id_contratacao as number;
+  assert.equal((await call("GET", `/api/v1/vagas/${idErrada}`)).json().data.situacao, "preenchida");
+
+  const regime = await call("POST", `/api/v1/contratacoes/${id}/trocar-vaga`, { id_vaga: estagio.json().data.id_vaga });
+  assert.equal(regime.statusCode, 409);
+  assert.equal(regime.json().error.code, "REGIME_DIVERGENTE");
+  const mesma = await call("POST", `/api/v1/contratacoes/${id}/trocar-vaga`, { id_vaga: idErrada });
+  assert.equal(mesma.json().error.code, "MESMA_VAGA");
+
+  const trocada = await call("POST", `/api/v1/contratacoes/${id}/trocar-vaga`, { id_vaga: idCerta });
+  assert.equal(trocada.statusCode, 200, trocada.body);
+  assert.equal(trocada.json().data.id_vaga, idCerta);
+  assert.equal(trocada.json().data.id_empresa, idB);
+  const antiga = (await call("GET", `/api/v1/vagas/${idErrada}`)).json().data;
+  assert.equal(antiga.ocupadas, 0);
+  assert.equal(antiga.situacao, "aberta");
+  const nova = (await call("GET", `/api/v1/vagas/${idCerta}`)).json().data;
+  assert.equal(nova.ocupadas, 1);
+  assert.equal(nova.disponiveis, 1);
+  const colaborador = await db.query("SELECT id_empresa, cargo FROM dna_work.colaborador WHERE id_contratacao = $1", [id]);
+  assert.equal(colaborador.rows[0].id_empresa, idB);
+});
+
 test("encerra contratação e preserva o histórico", async () => {
   const company = await call("POST", "/api/v1/empresas", {
     razao_social: "Empresa Histórico Ltda", cnpj: cnpj(6), email: "hist@example.com",

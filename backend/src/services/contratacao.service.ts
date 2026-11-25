@@ -9,12 +9,12 @@ import { CandidatoRepository } from "../repositories/candidato.repository.js";
 import { ContratacaoRepository } from "../repositories/contratacao.repository.js";
 import { one } from "../repositories/sql.js";
 import { VagaRepository } from "../repositories/vaga.repository.js";
-import type { ContratacaoCreate, ContratacaoEncerrar, ContratacaoListQuery } from "../schemas/contratacao.js";
+import type { ContratacaoCreate, ContratacaoEncerrar, ContratacaoListQuery, ContratacaoTrocarVaga } from "../schemas/contratacao.js";
 import { buildRescisaoPdf, type RescisaoPdfDados } from "../lib/rescisao-pdf.js";
 import { consultarDocumentoZapSign, criarDocumentoZapSign, type ZapDoc } from "../lib/zapsign.js";
 import { moneyToNumber } from "../lib/money.js";
 import { contratosFaltantes } from "../lib/contrato-faltante.js";
-import { statusDaVaga } from "../lib/vaga-status.js";
+import { CODIGOS_POR_STATUS, statusDaVaga } from "../lib/vaga-status.js";
 import { presentContratacao } from "./presenters.js";
 import type { ProcessoService } from "./processo.service.js";
 
@@ -318,6 +318,85 @@ export class ContratacaoService {
     const assinatura = status.includes("refus") ? "Recusado" : status.includes("signed") ? "Assinado" : "";
     if (!assinatura) return false;
     return this.repo.marcarAssinaturaPorToken(this.db, token, assinatura);
+  }
+
+  /**
+   * Corrige a vaga de uma contratação ativa (ex.: escolheram a vaga de outra unidade com o mesmo cargo).
+   * A posição sai da vaga antiga e entra na nova; empresa, colaborador e processo seguem a nova vaga.
+   */
+  async trocarVaga(id: number, input: ContratacaoTrocarVaga) {
+    this.ensureReady();
+    const client = await this.db.connect();
+    try {
+      await client.query("BEGIN");
+      const current = await this.repo.lockById(client, id);
+      if (!current) throw new AppError(404, "CONTRATACAO_NAO_ENCONTRADA", "Contratação não encontrada.");
+      if (current.status !== this.config.CONTRATACAO_STATUS_ATIVO || current.data_demicao) {
+        throw new AppError(409, "CONTRATACAO_NAO_ATIVA", "Só dá para trocar a vaga de uma contratação ativa.");
+      }
+      if (current.id_vaga === input.id_vaga) {
+        throw new AppError(409, "MESMA_VAGA", "A contratação já está nesta vaga.");
+      }
+      // Trava as duas vagas sempre na mesma ordem, para duas trocas cruzadas não se bloquearem.
+      const ids = [current.id_vaga, input.id_vaga].filter((valor): valor is string => Boolean(valor)).sort();
+      const travadas = new Map<string, Awaited<ReturnType<VagaRepository["lockById"]>>>();
+      for (const idVaga of ids) travadas.set(idVaga, await this.vagas.lockById(client, idVaga));
+      const nova = travadas.get(input.id_vaga);
+      if (!nova || !nova.id_empresa) throw new AppError(404, "VAGA_NAO_ENCONTRADA", "Vaga não encontrada.");
+      if (statusDaVaga(nova.status) !== "aberta") {
+        throw new AppError(409, "VAGA_ENCERRADA", "A nova vaga não está aberta para contratação.");
+      }
+      const regimeNovo = classifyRegime(nova.modalidade);
+      if (regimeNovo !== classifyRegime(current.modalidade)) {
+        throw new AppError(409, "REGIME_DIVERGENTE", "A nova vaga precisa ter o mesmo regime (CLT ou estágio) da contratação.");
+      }
+      if (current.id_candidato) {
+        const duplicate = await this.repo.findActiveDuplicate(client, nova.id_vaga, current.id_candidato, this.config.CONTRATACAO_STATUS_ATIVO);
+        if (duplicate) {
+          throw new AppError(409, "VINCULO_DUPLICADO", "O candidato já possui vínculo ativo nesta vaga.", { id_contratacao: duplicate.id_contratacao });
+        }
+      }
+      const ocupadas = await this.repo.countActiveByVaga(client, nova.id_vaga, this.config.CONTRATACAO_STATUS_ATIVO);
+      const capacidade = nova.quantidade_posicoes ?? 1;
+      if (ocupadas.total >= capacidade) {
+        throw new AppError(409, "VAGA_SEM_POSICAO", "Todas as posições da nova vaga já estão ocupadas.");
+      }
+      if (nova.quantidade_posicoes == null) {
+        await client.query("UPDATE dna_work.vaga SET quantidade_posicoes = 1 WHERE id_vaga = $1 AND quantidade_posicoes IS NULL", [nova.id_vaga]);
+      }
+      await this.repo.trocarVaga(client, id, {
+        idVaga: nova.id_vaga,
+        idEmpresa: nova.id_empresa,
+        comparador: nova.comparador,
+        cargo: nova.cargo,
+        tipoVaga: nova.tipo_vaga,
+        salario: nova.salario,
+        cargaHoraria: nova.carga_horaria,
+      });
+      if (current.id_candidato && current.id_empresa !== nova.id_empresa) {
+        await this.repo.atualizarFlagCandidato(client, current.id_candidato, nova.id_empresa, true, legacyToday());
+      }
+      await this.processos.moverContratacao(client, id, nova.id_vaga, nova.id_empresa, "Contratação movida para outra vaga.");
+      if (ocupadas.total + 1 >= capacidade) {
+        await this.vagas.setStatus(client, nova.id_vaga, this.config.VAGA_STATUS_OCUPADA);
+      }
+      // A vaga antiga volta a ficar aberta se tinha sido marcada como ocupada e agora tem posição livre.
+      const antiga = current.id_vaga ? travadas.get(current.id_vaga) : null;
+      if (antiga && CODIGOS_POR_STATUS.contratada.includes(Number(antiga.status))) {
+        const restantes = await this.repo.countActiveByVaga(client, antiga.id_vaga, this.config.CONTRATACAO_STATUS_ATIVO);
+        if (restantes.total < (antiga.quantidade_posicoes ?? 1)) {
+          await this.vagas.setStatus(client, antiga.id_vaga, CODIGOS_POR_STATUS.aberta[0]);
+        }
+      }
+      const saved = await this.repo.findById(client, id);
+      await client.query("COMMIT");
+      return this.present(saved!);
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   async encerrar(id: number, input: ContratacaoEncerrar) {

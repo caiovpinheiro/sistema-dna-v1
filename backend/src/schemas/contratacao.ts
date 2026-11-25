@@ -18,6 +18,10 @@ export const contratacaoEncerrarSchema = z.object({
   resumo: z.string().trim().max(8000).optional(),
 });
 
+export const contratacaoTrocarVagaSchema = z.object({
+  id_vaga: z.string().trim().min(1),
+});
+
 export const contratacaoListSchema = z.object({
   ...pageSchema,
   q: z.string().trim().optional(),
@@ -32,4 +36,5 @@ export const contratacaoListSchema = z.object({
 
 export type ContratacaoCreate = z.infer<typeof contratacaoCreateSchema>;
 export type ContratacaoEncerrar = z.infer<typeof contratacaoEncerrarSchema>;
+export type ContratacaoTrocarVaga = z.infer<typeof contratacaoTrocarVagaSchema>;
 export type ContratacaoListQuery = z.infer<typeof contratacaoListSchema>;

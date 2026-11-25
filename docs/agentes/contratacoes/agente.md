@@ -1,6 +1,6 @@
 # Agente — Contratações
 
-> Última revisão: 2026-11-24 (rescisão avisa "Contrato faltante" quando um contrato da entrada não voltou assinado, sem impedir a demissão)
+> Última revisão: 2026-11-25 ("Trocar vaga" na ficha da contratação ativa)
 
 ## Para que serve
 
@@ -12,7 +12,7 @@ Registra o vínculo (contratação) de um candidato numa vaga aberta com posiç�
 | --- | --- | --- | --- |
 | `/contratacoes` (menu "Consultar") | `ContratacoesPage` | `frontend/src/pages/ContratacoesPage.tsx` | Título "Contratações" com o botão "Nova contratação". Filtros com rótulo (Buscar, Regime, Situação, Início a partir de, Início até) gravados na URL (`q`, `regime`, `status`, `inicio_de`, `inicio_ate`); a busca aplica ao sair do campo ou com Enter. Contador + "Limpar filtros". Tabela `data-table` (lg+): candidato (link, CPF e nº embaixo), empresa (fantasia e razão), vaga (modalidade embaixo só se diferente do regime), regime em selo, início, fim (encerramento ou previsão), situação em selo e "Abrir". Em tela estreita vira lista em blocos. Paginação fixa de 20. |
 | `/contratacoes/nova` | `NovaContratacaoPage` | `frontend/src/pages/NovaContratacaoPage.tsx` | Blocos numerados (1 Empresa, 2 Vaga disponível, 3 Candidato com "Criar candidato") e painel lateral "Registrar a contratação" com o resumo do que foi escolhido, a data de início e o botão "Registrar contratação". Tela de sucesso com links para candidato, vaga e empresa e "Abrir contratação". Aceita `?empresa=&vaga=&candidato=&processo=` (vem de `ProcessoDetailPage` e `VagaDetailPage`). |
-| `/contratacoes/:id` | `ContratacaoDetailPage` | `frontend/src/pages/ContratacaoDetailPage.tsx` | Cabeçalho com nome, selos de situação e regime e o botão "Gerar TCE" (só regime estágio). Cards "Vínculo" (candidato, empresa e vaga como links) e "Datas", tabela "Documentos gerados" e card "Encerrar vínculo" (só se ativa) com o botão "Fazer a rescisão", que leva a `/contratacoes/rescisao/:id`: o encerramento passa sempre pela rescisão (data, motivo, avaliação e prévia), que gera o documento. A ficha não encerra mais só com a data. |
+| `/contratacoes/:id` | `ContratacaoDetailPage` | `frontend/src/pages/ContratacaoDetailPage.tsx` | Cabeçalho com nome, selos de situação e regime e o botão "Gerar TCE" (só regime estágio). Cards "Vínculo" (candidato, empresa e vaga como links) e "Datas", tabela "Documentos gerados" card "Trocar vaga" (só se ativa: busca a empresa, lista as vagas abertas com posição livre e do mesmo regime, "Confirmar troca") e card "Encerrar vínculo" (só se ativa) com o botão "Fazer a rescisão", que leva a `/contratacoes/rescisao/:id`: o encerramento passa sempre pela rescisão (data, motivo, avaliação e prévia), que gera o documento. A ficha não encerra mais só com a data. |
 | `/contratacoes/rescisao` (menu "Rescisão") | `RescisaoPage` | `frontend/src/pages/RescisaoPage.tsx` | Só vínculos ativos (`status=1` fixo na query). Filtros com rótulo (Buscar, Regime), contador, tabela `data-table` com "Abrir" (lista em blocos em tela estreita). |
 | `/contratacoes/rescisao/:id` | `RescisaoDetailPage` | `frontend/src/pages/RescisaoDetailPage.tsx` | Cabeçalho com nome, selos e "Abrir contratação"; card "Dados do contratado"; formulário "Demitir" (motivo, data, avaliação em chips `FiltroChips`, resumo das atividades, motivo interno), botões "Gerar rescisão e demitir" e "Ver prévia" (só na tela); se faltar contrato da entrada assinado, antes abre o aviso "Contrato faltante" (nome do contrato, "Ver contrato", "Seguir com rescisão", "Cancelar"); depois modal perguntando se envia para assinatura digital ("Sim, enviar" / "Não, agora não"). |
 Permissão de menu/página: id `contratacoes` (`frontend/src/components/shell.tsx:24-27`, `:79-80`).
@@ -42,6 +42,7 @@ Backend
 | GET | `/api/v1/contratacoes` | Lista com filtros `q`, `regime`, `status`, `inicio_de`, `inicio_ate`, `id_empresa`, `id_vaga`, `id_candidato`, paginação | `routes/index.ts:279` → `ContratacaoService.list` → `ContratacaoRepository.list` |
 | GET | `/api/v1/contratacoes/:id` | Detalhe | `routes/index.ts:283` → `ContratacaoService.get` |
 | POST | `/api/v1/contratacoes` | Cria vínculo. Exige cabeçalho `Idempotency-Key` (8–120 chars) | `routes/index.ts:275` → `ContratacaoService.create` |
+| POST | `/api/v1/contratacoes/:id/trocar-vaga` | Corpo `{ id_vaga }`. Move a contratação ativa para outra vaga (ver "Troca de vaga") | `routes/index.ts` → `ContratacaoService.trocarVaga` |
 | POST | `/api/v1/contratacoes/:id/encerrar` | Encerra; se vier `motivo`, grava o documento de rescisão | `routes/index.ts:289` → `ContratacaoService.encerrar` |
 | GET | `/api/v1/contratacoes/:id/documentos` | Rescisão gerada + contratos do sistema antigo | `routes/index.ts:286` → `ContratacaoService.documentos` |
 | GET | `/api/v1/contratacoes/:id/contratos-faltantes` | Contratos da entrada que não voltaram assinados (aviso da rescisão) | `routes/index.ts` → `ContratacaoService.contratosFaltantes` → `lib/contrato-faltante.ts` |
@@ -87,6 +88,13 @@ Criação (`contratacao.service.ts:93-207`, tudo numa transação):
 - Com `id_processo`, o processo precisa ser do mesmo candidato/vaga e não estar encerrado (409 `PROCESSO_DIVERGENTE`/`PROCESSO_ENCERRADO`); sem `id_processo`, vincula o processo aberto mais recente do par candidato+vaga, se houver.
 - Se faltar migration (`vaga.quantidade_posicoes`, sequence, `colaborador.id_contratacao`, `api_idempotencia`), `create/encerrar/documentos/assinatura` respondem erro de migration pendente (`ensureReady`).
 
+Troca de vaga (`ContratacaoService.trocarVaga`; para quando registraram a contratação na vaga errada, ex.: o mesmo cargo em outra unidade):
+- Só contratação ativa (409 `CONTRATACAO_NAO_ATIVA`); mesma vaga → 409 `MESMA_VAGA`.
+- Trava as duas vagas (`FOR UPDATE`, em ordem de id). A nova precisa existir com empresa (404), estar "aberta" (409 `VAGA_ENCERRADA`), ter o mesmo regime da atual (409 `REGIME_DIVERGENTE`), não ter o candidato já ativo nela (409 `VINCULO_DUPLICADO`) e ter posição livre (409 `VAGA_SEM_POSICAO`).
+- Grava em `conratacaovaga` o novo `id_vaga`, `id_empresa` e `comparador`; no `colaborador` da contratação, empresa, cargo, tipo, salário e carga horária da nova vaga; `candidato.id_empresa` se a empresa mudou; processos `contratado` desta contratação passam para a nova vaga/empresa, com movimento "Contratação movida para outra vaga.".
+- Nova vaga cheia → `VAGA_STATUS_OCUPADA`. A vaga antiga, se estava "contratada" (código 1) e ficou com posição livre, volta para aberta (código 0).
+- Datas, documentos gerados e rescisões não mudam.
+
 Encerramento (`contratacao.service.ts:311-369`):
 - Só status ativo; já encerrada ou com `data_demicao` → 409 `JA_ENCERRADA`.
 - Grava `status` encerrado, `data_demicao` e preenche `datafim` se estava vazia. Colaborador fica inativo; `candidato.colaborador = 0` só se não houver outro vínculo ativo.
@@ -130,5 +138,5 @@ Listagem:
 
 - Contrato faltante: abrir a rescisão de uma contratação ativa com contrato da entrada não devolvido, preencher motivo e data e clicar "Gerar rescisão e demitir" → aparece o aviso. No banco de produção, não clique "Seguir com rescisão" com pessoa real.
 - Tela: abrir `/contratacoes`, filtrar; `/contratacoes/nova`, escolher empresa (≥2 letras), vaga com posição livre, candidato e registrar; abrir a ficha e clicar "Fazer a rescisão" (abre a rescisão da mesma contratação). Em `/contratacoes/rescisao/:id`, preencher motivo/data, "Gerar rescisão e demitir", responder o modal e abrir "Imprimir original" (PDF). Envio real à ZapSign só com `ZAPSIGN_API_TOKEN` configurado.
-- Testes: `backend/test/escopo.test.ts` (Postgres embutido) cobre contratar até o limite, sexta bloqueada, duplicada, sem vaga, empresa divergente, concorrência na última posição e encerramento preservando histórico. Não há teste para rescisão/ZapSign (não encontrado).
+- Testes: `backend/test/escopo.test.ts` (Postgres embutido) cobre contratar até o limite, sexta bloqueada, duplicada, sem vaga, empresa divergente, concorrência na última posição e encerramento preservando histórico, troca de vaga (regime diferente, mesma vaga, posição saindo da antiga e entrando na nova, colaborador com a nova empresa). Não há teste para rescisão/ZapSign (não encontrado).
 - Comandos: `npm run lint -w frontend`, `npm run lint -w backend`, `npm test -w backend`, `npm run agentes:conferir`.

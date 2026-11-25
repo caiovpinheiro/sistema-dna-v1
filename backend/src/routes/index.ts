@@ -7,7 +7,7 @@ import type { AppConfig } from "../config.js";
 import { AppError } from "../lib/errors.js";
 import { many, one } from "../repositories/sql.js";
 import { candidatoCreateSchema, candidatoListSchema, candidatoPatchSchema } from "../schemas/candidato.js";
-import { contratacaoCreateSchema, contratacaoEncerrarSchema, contratacaoListSchema } from "../schemas/contratacao.js";
+import { contratacaoCreateSchema, contratacaoEncerrarSchema, contratacaoTrocarVagaSchema, contratacaoListSchema } from "../schemas/contratacao.js";
 import { empresaCreateSchema, empresaListSchema, empresaPatchSchema } from "../schemas/empresa.js";
 import { pageSchema } from "../schemas/common.js";
 import { processoCreateSchema, processoListSchema, processoMoverSchema } from "../schemas/processo.js";
@@ -374,6 +374,13 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
   api.get("/api/v1/contratacoes/:id/contratos-faltantes", {
     schema: { tags: ["contratacoes"], params: z.object({ id: z.coerce.number().int().positive() }) },
   }, async (request) => ok(await services.contratacoes.contratosFaltantes(request.params.id)));
+  api.post("/api/v1/contratacoes/:id/trocar-vaga", {
+    schema: {
+      tags: ["contratacoes"],
+      params: z.object({ id: z.coerce.number().int().positive() }),
+      body: contratacaoTrocarVagaSchema,
+    },
+  }, async (request) => ok(await services.contratacoes.trocarVaga(request.params.id, request.body)));
   api.post("/api/v1/contratacoes/:id/encerrar", {
     schema: {
       tags: ["contratacoes"],

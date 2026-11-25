@@ -350,6 +350,23 @@ export class ContratacaoRepository {
     `, [id, status, dataDemissao]);
   }
 
+  /** Move a contratação para outra vaga: vaga, empresa e comparador da contratação e os dados do colaborador ligado a ela. */
+  async trocarVaga(db: Db, id: number, vaga: {
+    idVaga: string; idEmpresa: string; comparador: string | null;
+    cargo: string | null; tipoVaga: number | null; salario: string | null; cargaHoraria: string | null;
+  }): Promise<void> {
+    await db.query(`
+      UPDATE dna_work.conratacaovaga
+      SET id_vaga = $2, id_empresa = $3, comparador = $4
+      WHERE id_contratacao = $1
+    `, [id, vaga.idVaga, vaga.idEmpresa, vaga.comparador]);
+    await db.query(`
+      UPDATE dna_work.colaborador
+      SET id_empresa = $2, cargo = $3, tipo_vaga = $4, salario = $5, carga_horaria = $6
+      WHERE id_contratacao = $1
+    `, [id, vaga.idEmpresa, vaga.cargo, vaga.tipoVaga, vaga.salario, vaga.cargaHoraria]);
+  }
+
   async insertColaborador(db: Db, values: {
     idColaborador: string;
     idCandidato: string;

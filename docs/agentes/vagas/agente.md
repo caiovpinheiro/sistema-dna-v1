@@ -83,7 +83,7 @@ Menu: `vagaLinks` em `frontend/src/components/shell.tsx` (linhas 36-39). Para li
   - horário: `texto_carga`, `horabase`, `hora_saida_base`, `segunda_entrada` … `domindo_saida` (assim mesmo, "domindo"), `semanas_inicio`, `semanas_fim`, `periodo`, `tempo_refeicao`;
   - `prioridade` (migration `prisma/migrations/20261112200000_vaga_prioridade`): `varchar(5)`, `NOT NULL DEFAULT 'media'`, CHECK `vaga_prioridade_valida` (`alta`, `media`, `baixa`). O padrão faz toda vaga, existente ou nova, começar como média. Só existe no Postgres; o Lightsail não tem a coluna;
   - outros: `beneficios_texto`, `sexo`, `idade`, `idadeate`, `km`, `atribuicaoes`, `atribu_contrato`, `requisitos_desejaveis`, `destaque`, `obs`.
-- `dna_work.empresa`, `dna_work.modalidade_vaga`, `dna_work.conratacaovaga` (ocupadas = contratações com status `CONTRATACAO_STATUS_ATIVO`), `dna_work.vaga_endereco` e `dna_work.beneficio_vaga` / `dna_work.beneficio`.
+- `dna_work.empresa`, `dna_work.modalidade_vaga`, `dna_work.conratacaovaga` (ocupadas = contratações com status `CONTRATACAO_STATUS_ATIVO`; uma contratação registrada na vaga errada é corrigida em "Trocar vaga", na ficha da contratação), `dna_work.vaga_endereco` e `dna_work.beneficio_vaga` / `dna_work.beneficio`.
 - Funil e inscritos: `dna_work.chamado_emtrevista`, `emcaminhamento`, `selecionado_vaga`, `candidatura`, `candidatos_incluidos_vaga`. Cada uma só é usada se existir.
 - Sugeridos: `dna_work.candidato`, `cargos_candidato`, `exp_proficional`, `flex`.
 - `dna_work.vaga_modelo` (modelos legados).

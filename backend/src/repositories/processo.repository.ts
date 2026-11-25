@@ -138,6 +138,17 @@ export class ProcessoRepository {
     `, [idCandidato, idVaga]);
   }
 
+  /** Processos já marcados como contratados nesta contratação passam para a nova vaga (e empresa). */
+  async moverContratacao(db: Db, idContratacao: number, idVaga: string, idEmpresa: string, observacao: string): Promise<void> {
+    const processos = await many<{ id: string }>(db, `
+      UPDATE dna_work.processo_seletivo
+      SET id_vaga = $2, id_empresa = $3
+      WHERE id_contratacao = $1 AND etapa = 'contratado'
+      RETURNING id
+    `, [idContratacao, idVaga, idEmpresa]);
+    for (const processo of processos) await this.movimento(db, processo.id, "contratado", observacao);
+  }
+
   async vincular(db: Db, id: string, idContratacao: number): Promise<void> {
     await db.query(
       "UPDATE dna_work.processo_seletivo SET etapa = 'contratado', id_contratacao = $2 WHERE id = $1",
