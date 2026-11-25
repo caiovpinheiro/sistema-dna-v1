@@ -717,6 +717,10 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
     const dry = request.query.dry === "1" || request.query.dry === "true" || config.NOTION_SYNC_DRY;
     return ok(await services.sync.executar(dry, "manual"));
   });
+  // Refaz o PDF dos TCEs ainda não enviados com o layout atual (só administrador, pelo prefixo /configuracoes).
+  api.post("/api/v1/configuracoes/tce/refazer-pdfs", {
+    schema: { tags: ["configuracoes"], body: z.object({ aplicar: z.boolean().default(false) }) },
+  }, async (request) => ok(await services.tce.refazerPdfs(request.body.aplicar)));
   api.get("/api/v1/configuracoes/acessos", { schema: { tags: ["configuracoes"] } }, async () => ok(await services.acesso.listar()));
   api.patch("/api/v1/configuracoes/usuarios/:id", {
     schema: {

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, ChevronDown, ChevronRight, Copy, Pencil, Plus, Trash2 } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Copy, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { GeradorTce } from "@/components/gerador-tce";
@@ -95,6 +95,82 @@ function dataDoTermo(valor: string) {
   return Number.isNaN(data.getTime()) ? dateBr(valor) : data.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
 }
 
+type RefazerPdfs = {
+  aplicado: boolean;
+  gerados: number;
+  refeitos: number;
+  falhas: Array<{ id: string; nome: string; erro: string }>;
+  enviados: Array<{ id: string; nome: string }>;
+};
+
+/**
+ * Só administrador: refaz com o layout atual o PDF dos TCEs ainda não enviados (texto que saía cortado).
+ * Primeiro conta, pede confirmação e só então grava. Os já enviados aparecem na lista para editar e reenviar.
+ */
+function CorrigirPdfsAntigos() {
+  const me = useQuery({ queryKey: ["me"], queryFn: () => api<{ admin: boolean }>("/api/v1/auth/me"), retry: false });
+  const [resultado, setResultado] = useState<RefazerPdfs | null>(null);
+  const [erro, setErro] = useState("");
+  const refazer = useMutation({
+    mutationFn: (aplicar: boolean) => api<RefazerPdfs>("/api/v1/configuracoes/tce/refazer-pdfs", { method: "POST", body: JSON.stringify({ aplicar }) }),
+  });
+  if (!me.data?.data.admin) return null;
+
+  async function corrigir() {
+    setErro("");
+    setResultado(null);
+    try {
+      const contagem = (await refazer.mutateAsync(false)).data;
+      if (!contagem.gerados) {
+        setResultado(contagem);
+        return;
+      }
+      const ok = window.confirm(
+        `Refazer o PDF de ${contagem.gerados} ${contagem.gerados === 1 ? "termo ainda não enviado" : "termos ainda não enviados"} com o layout novo (sem texto cortado)? `
+        + "Os dados, a situação e as datas não mudam.",
+      );
+      if (!ok) return;
+      setResultado((await refazer.mutateAsync(true)).data);
+    } catch (error) {
+      setErro(error instanceof ApiError ? error.message : "Não foi possível refazer os PDFs.");
+    }
+  }
+
+  return (
+    <div className="grid gap-2">
+      <div>
+        <Button variant="secondary" disabled={refazer.isPending} onClick={() => void corrigir()}>
+          <RefreshCw size={16} className={refazer.isPending ? "animate-spin" : undefined} /> {refazer.isPending ? "Refazendo PDFs…" : "Corrigir PDFs antigos"}
+        </Button>
+      </div>
+      {erro ? <Alerta>{erro}</Alerta> : null}
+      {resultado ? (
+        <div role="status" className="grid gap-2 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+          <p>
+            {resultado.aplicado
+              ? <><b>{resultado.refeitos}</b> {resultado.refeitos === 1 ? "PDF refeito" : "PDFs refeitos"} dos termos ainda não enviados.</>
+              : "Nenhum termo ainda não enviado para corrigir."}
+            {resultado.falhas.length ? ` ${resultado.falhas.length} não ${resultado.falhas.length === 1 ? "pôde" : "puderam"} ser refeito${resultado.falhas.length === 1 ? "" : "s"}: ${resultado.falhas.map((item) => item.nome || item.id).join(", ")}.` : ""}
+          </p>
+          {resultado.enviados.length ? (
+            <div className="grid gap-1">
+              <p>
+                {resultado.enviados.length === 1 ? "Este termo já foi enviado" : `Estes ${resultado.enviados.length} termos já foram enviados`} para assinatura e não mudam sozinhos
+                (a ZapSign guarda o documento antigo). Para corrigir, abra, clique em <b>Editar dados</b>, salve e envie de novo:
+              </p>
+              <ul className="flex flex-wrap gap-x-4 gap-y-1">
+                {resultado.enviados.map((item) => (
+                  <li key={item.id}><Link className="font-semibold text-cyan-700 hover:underline" to={`/termos/${item.id}`}>{textoPlano(item.nome) || "Termo"}</Link></li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function TermosPage() {
   const [params, setParams] = useSearchParams();
   const [erro, setErro] = useState("");
@@ -146,6 +222,7 @@ export function TermosPage() {
           )}
         </p>
       </div>
+      <CorrigirPdfsAntigos />
       {erro ? <Alerta>{erro}</Alerta> : null}
       {query.isLoading ? <Skeleton className="h-64" /> : query.isError ? (
         <Alerta>Não foi possível carregar os termos. Atualize a página; se continuar, avise o suporte.</Alerta>
