@@ -19,9 +19,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { nome: base, sha: 8f60e80 }
-          - { nome: fase-2b, sha: 1fed368 }
-          - { nome: fase-3, sha: 3c2e32c }
+          - { nome: base, sha: 8f60e806ad9a37c3e8e3674c5edb2e4168a74266 }
+          - { nome: fase-2b, sha: 1fed368b3b1c2e0e20325089c6e534ce80a0eb29 }
+          - { nome: fase-3, sha: 3c2e32c86e0a9ba36f6c80289c6ab7c92353403a }
     services:
       postgres:
         image: postgres:16

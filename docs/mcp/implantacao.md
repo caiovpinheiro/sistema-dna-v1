@@ -61,7 +61,7 @@ Ordem segura: **migrations e mudanças de contrato vão sempre no monólito prim
 | Monólito | `deploy.yml` (existente, inalterado) a cada push na `main` | `deploy-independente.yml` **não** dispara o webhook do monólito: o job `aguardar-monolito` espera o `deploy.yml` do mesmo commit e o monólito saudável, e só então implanta o MCP |
 | Gateway MCP | `deploy-independente.yml` (manual com aprovação, ou push em `mcp-server/**` com `MCP_DEPLOY_AUTOMATICO=true`) | `deploy.yml` não o toca |
 
-A titularidade do monólito só muda com **autorização expressa**: defina `MONOLITO_DEPLOY_DONO=deploy-independente` e, **no mesmo momento**, desative o gatilho do `deploy.yml`. Enquanto a variável não existir, o alvo manual `monolito` é recusado. Atenção: o `deploy.yml` não filtra por pasta, então todo push na `main` (inclusive só em `mcp-server/`) redeploya o monólito até essa troca.
+A titularidade do monólito só muda com **autorização expressa**: defina `MONOLITO_DEPLOY_DONO=deploy-independente` e, **no mesmo momento**, desative o gatilho do `deploy.yml`. Enquanto a variável não existir, o alvo manual `monolito` é recusado. O `deploy.yml` agora tem `paths-ignore` (`mcp-server/**`, `docs/mcp/**` e os workflows do MCP): um push na `main` que mexe só no gateway **não** redeploya o monólito; qualquer push que toque outro arquivo continua implantando como sempre. Cobertura por `scripts/workflows.test.mjs`. A mudança só vale depois do merge na `main` (que depende da sua decisão).
 
 ## Go-live (sequência)
 

@@ -77,3 +77,14 @@ test("CI imprime o resumo das falhas do monólito", () => {
   assert.match(ci, /Resumo das falhas do monólito/);
   assert.match(ci, /GITHUB_STEP_SUMMARY/);
 });
+
+test("deploy.yml (monólito) ignora push que mexe só no gateway MCP: serviços independentes", () => {
+  const legado = readFileSync(new URL("../.github/workflows/deploy.yml", import.meta.url), "utf8");
+  const ignorados = legado.match(/paths-ignore:\n((?:\s+- .*\n)+)/)?.[1] ?? "";
+  assert.match(ignorados, /"mcp-server\/\*\*"/);
+  assert.doesNotMatch(legado, /\n    paths:\n/, "paths (permissivo) junto com paths-ignore não é permitido");
+  // O que o monólito precisa para construir nunca pode estar na lista de ignorados.
+  for (const necessario of ["backend/", "frontend/", "prisma/", "templates/", "Dockerfile", "package.json", "docker-entrypoint.sh", "scripts/migrate-production.mjs"]) {
+    assert.ok(!ignorados.includes(necessario), `${necessario} não pode ser ignorado`);
+  }
+});

@@ -3,6 +3,14 @@ name: Build and deploy
 on:
   push:
     branches: [main]
+    # Independência dos serviços: um push que mexe SÓ no gateway MCP (ou nos arquivos dele) não redeploya o monólito.
+    # Se o push tocar qualquer outro arquivo, o deploy acontece normalmente.
+    paths-ignore:
+      - "mcp-server/**"
+      - "docs/mcp/**"
+      - ".github/workflows/deploy-independente.yml"
+      - ".github/workflows/mcp-ci.yml"
+      - ".github/workflows/diagnostico-testes.yml"
   workflow_dispatch:
 
 permissions:
