@@ -44,6 +44,20 @@ Conclusão: **`contratada` é a regra vigente**; os dois testes estavam desatual
 
 Observação (não alterado): `vagaSituacao` em `presenters.ts` e o rótulo `preenchida` no frontend são resíduos do vocabulário antigo; podem ser removidos numa limpeza separada.
 
+### Inconsistência encontrada depois da correção (NÃO alterada — aguarda decisão)
+
+Com a expectativa `contratada` corrigida, o teste "contrata até o limite" avançou e falhou na asserção seguinte (CI de `3b9903f`: 390 testes, 386 passam, **1 falha**):
+
+- O teste espera que a 6ª contratação numa vaga de 5 posições cheia seja recusada com `409 VAGA_SEM_POSICAO` ("Todas as posições desta vaga já estão ocupadas").
+- O sistema recusa com `409 VAGA_ENCERRADA` ("A vaga não está aberta para contratação").
+- Causa: ao ocupar a última posição a vaga vira `contratada` (código 1); em `ContratacaoService`, a checagem "a vaga está aberta?" vem **antes** da checagem de capacidade. Então, numa vaga lotada pelo próprio sistema, `VAGA_SEM_POSICAO` nunca é alcançado; ele só aparece em vaga ainda "aberta" sem posição livre (ex.: corrida entre duas contratações, coberta por outro teste que passa).
+
+O resultado de negócio é o mesmo (a contratação é recusada com 409); muda o código e a mensagem para o operador. Opções:
+1. Manter o comportamento e atualizar o teste para `VAGA_ENCERRADA` (a regra vigente é "só contrata em vaga aberta").
+2. Ajustar o serviço: se a vaga está `contratada` e todas as posições estão ocupadas, responder `VAGA_SEM_POSICAO` (mensagem mais clara para o operador), mantendo `VAGA_ENCERRADA` para pausada/fechada.
+
+Como é uma decisão de comportamento (mensagem ao operador), nada foi alterado.
+
 ## Os 22 testes locais (`hookFailed`)
 
 Falham só aqui porque o `embedded-postgres` não inicia como root. Na CI rodam normalmente. Para rodar localmente use um usuário não root ou `MCP_TEST_DATABASE_URL`.
