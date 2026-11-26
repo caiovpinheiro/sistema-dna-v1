@@ -24,7 +24,25 @@ As 10 (todas em `escopo.test.ts` e `vaga-prioridade.test.ts`): cadastra candidat
 
 `backend/test/esquema-legado.ts` completa o banco de teste (causa 1) e fornece `INICIAR_UTF8` (causa 2), usados por `escopo.test.ts` e `vaga-prioridade.test.ts`. Nenhuma regra de negócio, asserção ou critério mudou. Resultado na CI: **10 → 3** (verificado também localmente com Postgres 16: as mesmas 2 que sobram).
 
-Sobram 2 (causa 3). Proposta, **aguardando decisão**: trocar a expectativa `"preenchida"` por `"contratada"` nas duas asserções (linhas de `escopo.test.ts`), pois o código já devolve o vocabulário novo; é decisão de produto confirmar que `contratada` é o valor correto quando todas as posições estão ocupadas. Não foi alterado para não ajustar critério só para passar.
+CI do commit `62ddde3`: 390 testes, 385 passam, **2 falham** (exatamente os da causa 3).
+
+### Causa 3 — investigação e correção (Fase 5)
+
+Investigado antes de mudar qualquer expectativa:
+
+| Fonte | O que diz |
+|---|---|
+| `backend/src/services/contratacao.service.ts` | Ao ocupar a última posição, grava `VAGA_STATUS_OCUPADA` (padrão `1`, `config.ts`/`.env.example`). "Trocar vaga" devolve a antiga para `aberta` (código 0) e marca a nova como ocupada. Só contrata em vaga `aberta`. |
+| `backend/src/lib/vaga-status.ts` | Quatro status do sistema novo: aberta (0,3,4,5,9), pausada (8), **contratada (1)**, fechada (2,6,7). |
+| `backend/src/services/presenters.ts` | `presentVaga` devolve `situacao = statusDaVaga(status)`. A função `vagaSituacao` (que devolvia `preenchida`) **não é usada em nenhum lugar** (código morto). |
+| Banco | `dna_work.vaga.status` guarda o código do Lightsail; o código 1 é o "contratada". |
+| Frontend | `STATUS_VAGA` (filtros e selo editável) só tem aberta, pausada, contratada, fechada. `preenchida` sobra apenas no mapa de rótulos (`situacaoLabel`) e no estilo do selo, sem origem na API. |
+| Filtros e indicadores | `?situacao=` e a contagem por situação dos grupos usam os quatro status (`vaga.repository.ts`, `vaga-prioridade.test.ts` conta `contratada`). |
+| Documentação | `docs/agentes/vagas/agente.md` (4 status, contratada = 1) e `docs/agentes/contratacoes/agente.md` ("status vira `VAGA_STATUS_OCUPADA` quando a última posição é preenchida"). |
+
+Conclusão: **`contratada` é a regra vigente**; os dois testes estavam desatualizados (escritos para o rótulo antigo `preenchida`). Não há inconsistência de regra de negócio. As duas expectativas foram trocadas para `"contratada"`, com comentário apontando esta justificativa. Nada mais mudou no teste.
+
+Observação (não alterado): `vagaSituacao` em `presenters.ts` e o rótulo `preenchida` no frontend são resíduos do vocabulário antigo; podem ser removidos numa limpeza separada.
 
 ## Os 22 testes locais (`hookFailed`)
 

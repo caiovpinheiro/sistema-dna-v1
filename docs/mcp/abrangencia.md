@@ -48,3 +48,21 @@ Para liberar "próprios" ou "equipe" no futuro é preciso primeiro registrar o r
 | Apoio | listar_registros_autorizados | — | qualquer | mostra só os registros autorizados do próprio usuário |
 
 Testes: `backend/test/mcp-abrangencia.test.ts` e `backend/test/mcp-admin.test.ts`.
+
+## Futuro (não implementado): abrangência pelo responsável do lead no CRM Bwipo
+
+Decisão da Fase 4: vagas, empresas e triagem seguem como catálogos amplos (com as proteções de campos); candidatos, processos, contratações e dossiês mantêm a abrangência acima.
+
+Possibilidade avaliada para depois: usar o **responsável do lead no Bwipo** para definir "meus candidatos" de cada colaborador.
+
+Requisitos:
+- Vínculo confiável colaborador do painel ↔ usuário do Bwipo (mapeamento explícito feito pelo administrador; nunca por nome ou e-mail parecido).
+- Vínculo confiável lead ↔ candidato: só pelo `deal_id` exato gravado no candidato (o mesmo critério de `localizar_candidato_por_deal`).
+- Fonte do responsável: API/MCP oficial do Bwipo com credencial própria do monólito (nunca o token do usuário do ChatGPT), com cache curto e data de atualização.
+- Nova abrangência "meus leads no CRM", desligada por padrão e concedida por colaborador, avaliada a cada chamada como as demais.
+
+Riscos:
+- Troca de responsável no CRM muda o acesso: precisa refletir rápido (cache curto) e ser auditada.
+- CRM fora do ar: falhar fechado (negar), nunca abrir para "todos".
+- Leads sem `deal_id` no painel ficam de fora; não completar com correspondência aproximada.
+- O CRM passa a fazer parte da decisão de autorização: qualquer comprometimento dele afetaria o MCP; limitar ao mínimo (só o responsável).

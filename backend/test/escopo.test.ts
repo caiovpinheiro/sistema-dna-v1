@@ -214,7 +214,8 @@ test("contrata até o limite, bloqueia a sexta, a duplicada, a sem vaga e a empr
   const full = await call("GET", `/api/v1/vagas/${idVaga}`);
   assert.equal(full.json().data.ocupadas, 5);
   assert.equal(full.json().data.disponiveis, 0);
-  assert.equal(full.json().data.situacao, "preenchida");
+  // Regra vigente: ao ocupar a última posição, ContratacaoService grava VAGA_STATUS_OCUPADA (1) e statusDaVaga(1) = "contratada" (docs/mcp/diagnostico-ci.md).
+  assert.equal(full.json().data.situacao, "contratada");
   const sixth = await call("POST", "/api/v1/contratacoes", {
     id_candidato: ids[5], id_vaga: idVaga, data_inicio: "2026-11-01",
   }, { "idempotency-key": `sexta-${Date.now()}` });
@@ -278,7 +279,8 @@ test("troca a vaga de uma contratação ativa: a posição sai da antiga e entra
   }, { "idempotency-key": `troca-${Date.now()}` });
   assert.equal(hired.statusCode, 201, hired.body);
   const id = hired.json().data.id_contratacao as number;
-  assert.equal((await call("GET", `/api/v1/vagas/${idErrada}`)).json().data.situacao, "preenchida");
+  // Regra vigente: ao ocupar a última posição, ContratacaoService grava VAGA_STATUS_OCUPADA (1) e statusDaVaga(1) = "contratada" (docs/mcp/diagnostico-ci.md).
+  assert.equal((await call("GET", `/api/v1/vagas/${idErrada}`)).json().data.situacao, "contratada");
 
   const regime = await call("POST", `/api/v1/contratacoes/${id}/trocar-vaga`, { id_vaga: estagio.json().data.id_vaga });
   assert.equal(regime.statusCode, 409);
