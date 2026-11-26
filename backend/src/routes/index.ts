@@ -290,7 +290,7 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
     schema: {
       tags: ["empresas"],
       params: z.object({ id: z.string().min(1) }),
-      body: z.object({ email: z.string().trim().max(255).optional(), redefinir: z.boolean().optional() }),
+      body: z.object({ email: z.string().trim().max(255).optional(), redefinir: z.boolean().optional(), juntar: z.boolean().optional() }),
     },
   }, async (request) => ok(await services.empresas.gerarAcessoPortal(request.params.id, request.body)));
   api.patch("/api/v1/empresas/:id", {

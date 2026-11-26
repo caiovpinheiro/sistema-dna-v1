@@ -1,6 +1,6 @@
 # Agente — Empresas
 
-> Última revisão: 2026-11-25 (empresa cobrada pelo CNPJ de outra: campo "Cobrar pelo CNPJ de", cópia das condições de cobrança e CNPJ de quem paga nos documentos)
+> Última revisão: 2026-11-26 (commit "Editar o e-mail da empresa troca o login do portal e junta empresas num login só")
 
 ## Para que serve
 
@@ -44,7 +44,7 @@ Backend
 | GET | `/api/v1/empresas` | Lista paginada; filtros `q`, `razao_social`, `nome_fantasia`, `cnpj`, `cidade`, `uf`, `status`, `acesso` (`acessou`/`nunca`/`sem`), `sort`, `order` | `routes/index.ts:194` → `EmpresaService.list` |
 | GET | `/api/v1/empresas/pagadoras?grupo&excluir&q` | Empresas que podem pagar por outra (ativas, com CNPJ, faturadas por elas mesmas), as do grupo primeiro | `routes/index.ts` → `EmpresaService.pagadoras` |
 | GET | `/api/v1/empresas/:id` | Ficha + `acesso_portal`, `cobranca_por` (quem paga, ou null), `portal` (e-mail e nome; **sem senha**) e `uso_portal` | `routes/index.ts:198` → `EmpresaService.get` |
-| PATCH | `/api/v1/empresas/:id` | Edita campos permitidos | `routes/index.ts:211` → `EmpresaService.update` |
+| PATCH | `/api/v1/empresas/:id` | Edita campos permitidos. Com e-mail novo, devolve `login_portal` { acao, email, empresas? }; `juntar_login: true` confirma juntar com um login que já existe | `routes/index.ts:211` → `EmpresaService.update` |
 | POST | `/api/v1/empresas` | Cria empresa só em `dna_work.empresa` (não usado pela UI atual) | `routes/index.ts:191` → `EmpresaService.create` |
 | GET | `/api/v1/empresas/:id/cobranca` | Condições de cobrança da empresa (ou `null`) | `routes/index.ts:201` → `valorDaEmpresa` |
 | POST | `/api/v1/empresas/:id/acesso-portal` | Cria o login do portal (`{ email }`) ou gera nova senha (`{ redefinir: true }`). Só esta resposta traz a `senha` | `routes/index.ts:204` → `EmpresaService.gerarAcessoPortal` |
@@ -78,6 +78,9 @@ Serviços externos: nenhum.
 - **Nomes com entidades HTML** (`&amp;`, `&quot;`… gravados pelo sistema antigo): os schemas de empresa e do cadastro em Grupos limpam razão social, nome fantasia e responsável ao gravar (`semEntidades` em `lib/normalize.ts`). O formulário de edição mostra os nomes já limpos e compara com o valor do banco, então salvar grava a versão limpa. Mensagens de tamanho da razão social/nome fantasia em português (antes vinha o texto padrão do zod, em inglês).
 - **CNPJ opcional** (`optionalCnpj`): em branco é aceito (empresa sem CNPJ); preenchido tem que ser válido e **único** (só dígitos): create e update → 409 `CNPJ_DUPLICADO` com `details.id_empresa`. No PATCH, CNPJ em branco é ignorado (não apaga o CNPJ que já existe). O formulário aceita o campo vazio ou com 14 dígitos.
 - **E-mail obrigatório no create** do backend (`empresaCreateSchema`); opcional no PATCH.
+- **Editar o e-mail leva o login do portal junto** (`EmpresaService.update` → `planoLogin`/`aplicarLogin`): grava em `dna_work.empresa` e em `public.empresa.email` (se a linha existir). No portal, muda os logins ativos desta empresa (`empresa_u` ou vínculo) cujo `email_u` era o e-mail antigo; se nenhum era, e a empresa tem um login só, muda esse. A senha não muda. `login_portal.acao`: `trocado`, `igual` (o login já era o e-mail novo), `mantido` (vários logins e nenhum com o e-mail antigo: nada muda), `sem_acesso`, ou `juntado`.
+  - Se o e-mail novo já é login ativo de **outra** empresa: 409 `LOGIN_EM_USO` (com `details.empresas`) **antes** de gravar qualquer coisa. A edição pergunta e reenvia com `juntar_login: true`: esta empresa ganha vínculo no login existente (a pessoa entra com a senha dele e escolhe a empresa no portal), sai do login antigo e o login antigo, se ficar sem empresa, vai a `status = 0`. Login compartilhado: trocar o e-mail de uma das empresas troca o login de todas.
+  - A ficha mostra o resultado num aviso (estado da navegação, `avisoLogin` em `EmpresaFormPage`).
 - **Matriz** (campo `matriz` da API): tem que ser um `id_empresa` existente (422 `MATRIZ_INVALIDA`); a empresa não pode ser matriz de si mesma. O formulário não mostra mais esse campo: quem paga é escolhido em "Cobrar pelo CNPJ de" (`cobranca_por`), que grava a matriz junto com o resto da cobrança.
 - **Campos editáveis**: lista `PATCHABLE` (`empresa.service.ts:27`). Sem campo → 400 `NADA_PARA_ATUALIZAR` (o formulário avisa antes, "Nenhum campo foi alterado.").
 - **Ordem da lista**: ativas (`status = 1`) primeiro, depois a ordenação pedida (padrão `razao_social`).
@@ -86,7 +89,7 @@ Serviços externos: nenhum.
 - **Gerar acesso ao portal** (`empresa.service.ts:105`):
   - Já tem usuário ativo e não pediu `redefinir` → 409 `ACESSO_EXISTENTE`.
   - `redefinir: true` → nova senha (12 caracteres: 8 letras + 4 números, sem caracteres ambíguos) no mesmo usuário; a anterior deixa de valer. A tela pede confirmação (`window.confirm`).
-  - Novo acesso: e-mail do corpo ou o da empresa; inválido → 422 `EMAIL_INVALIDO`; e-mail já usado por usuário de outra empresa → 409 `EMAIL_EM_USO`. Nome do usuário: responsável, fantasia ou razão social (o primeiro com 2+ letras). Insert/updates em transação.
+  - Novo acesso: e-mail do corpo ou o da empresa; inválido → 422 `EMAIL_INVALIDO`; e-mail já usado por login ativo de outra empresa → 409 `EMAIL_EM_USO` (mensagem com as empresas do login); a tela pergunta e reenvia com `juntar: true`, que só cria o vínculo da empresa nesse login (sem senha nova, resposta com `juntado: true` e `empresas`). Nome do usuário: responsável, fantasia ou razão social (o primeiro com 2+ letras). Insert/updates em transação.
   - A senha **só volta na resposta do POST**: a tela mostra a senha a partir dessa resposta, em estado local, com "Copie agora. Por segurança, ela não fica salva." Ao reabrir a ficha, aparecem só o e-mail e "Gerar nova senha".
   - No banco fica só `senha_hash` (Argon2id); `senha_u` (MD5) é gravado vazio, porque o portal confere o Argon2id primeiro. Fica com `atualiza_senha = 1` (no update e no insert): logo depois do login, o portal de empresas mostra "Crie uma senha nova" e volta `atualiza_senha` para 0.
 - **Efeito colateral de leitura**: `GET /empresas` e `GET /empresas/:id` executam DDL — `CREATE TABLE IF NOT EXISTS dna_work.portal_empresa_acesso` e, uma vez por processo, `UPDATE dna_work.usuario_empresa SET senha_envio = NULL` (`limparSenhaEnvio`). Se `usuario_empresa` não existir (42P01), a ficha mostra "sem acesso" em vez de falhar.
@@ -96,7 +99,7 @@ Serviços externos: nenhum.
 
 ## Cuidados ao mudar
 
-- Esta tela e a aba Empresa de `/grupos-empresas` gravam em lugares **diferentes**: aqui só `dna_work.empresa`; lá Lightsail + `public.empresa` + `dna_work.empresa`. Editar aqui não atualiza o Lightsail. Em `public.empresa` só o endereço e a coordenada acompanham a ficha (nome, CNPJ e contato não). Se o Google falhar, a edição é salva mesmo assim e a triagem corrige na próxima busca ou no próximo sync.
+- Esta tela e a aba Empresa de `/grupos-empresas` gravam em lugares **diferentes**: aqui só `dna_work.empresa`; lá Lightsail + `public.empresa` + `dna_work.empresa`. Editar aqui não atualiza o Lightsail. Em `public.empresa` acompanham a ficha o endereço, a coordenada e o e-mail (nome, CNPJ e telefone não). Se o Google falhar, a edição é salva mesmo assim e a triagem corrige na próxima busca ou no próximo sync.
 - `GET /api/v1/empresas?q=` também é usado pelo formulário de candidato (busca de empresa) — não mude o formato de resposta.
 - `CobrancaEmpresa` é compartilhado com a aba Grupo (e o visual dele muda nas duas telas). Valor ativo em `text-cyan-700`, selos com `Badge`.
 - O formulário de edição mostra razão social/fantasia como estão gravadas: se vierem com `&amp;`, o campo mostra `&amp;` (decodificar mudaria o que é salvo).

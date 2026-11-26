@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronRight, Copy, KeyRound, Pencil, Plus } from "lucide-react";
 import { useState, type ReactNode } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useLocation, useParams } from "react-router-dom";
 import { CobrancaEmpresa, type ValorEmpresa } from "@/components/cobranca-empresa";
 import { Alerta, CabecalhoPagina } from "@/components/pagina";
 import { Badge, Button, Card, Input, Skeleton } from "@/components/ui";
@@ -36,6 +36,8 @@ type Contract = { id_contratacao: number; candidato_nome: string | null; cargo: 
 
 export function EmpresaDetailPage() {
   const { id } = useParams();
+  // Aviso que a edição manda ao salvar (o que aconteceu com o login do portal).
+  const avisoEdicao = (useLocation().state as { aviso?: string } | null)?.aviso ?? "";
   const company = useQuery({ queryKey: ["empresa", id], queryFn: () => api<Company>(`/api/v1/empresas/${id}`) });
   // Todas as vagas da empresa (a API devolve 20 por página por padrão): de 100 em 100, até 1.000.
   const jobs = useQuery({
@@ -69,6 +71,7 @@ export function EmpresaDetailPage() {
   const listaContratos = contracts.data?.data ?? [];
   return (
     <div className="grid gap-5">
+      {avisoEdicao ? <p role="status" className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{avisoEdicao}</p> : null}
       <CabecalhoPagina
         titulo={nome}
         descricao={[data.nome_fantasia ? textoPlano(data.razao_social) : null, formatCnpj(data.cnpj)].filter(Boolean).join(" · ")}
@@ -215,15 +218,28 @@ function AcessoPortal({ empresaId, emailEmpresa, portal, uso }: { empresaId: str
   const [gerada, setGerada] = useState<{ empresaId: string; senha: string } | null>(null);
   const senhaGerada = gerada?.empresaId === empresaId ? gerada.senha : "";
   const acesso = portal ?? { ativo: false, email: null, nome: null };
+  type Gerado = NonNullable<Company["portal"]> & { senha: string; criado: boolean; juntado?: boolean; empresas?: string[] };
   const gerar = useMutation({
-    mutationFn: (redefinir: boolean) => api<NonNullable<Company["portal"]> & { senha: string; criado: boolean }>(`/api/v1/empresas/${empresaId}/acesso-portal`, {
-      method: "POST",
-      body: JSON.stringify({ email: email.trim(), redefinir }),
-    }),
+    mutationFn: async (redefinir: boolean) => {
+      const enviar = (juntar: boolean) => api<Gerado>(`/api/v1/empresas/${empresaId}/acesso-portal`, {
+        method: "POST",
+        body: JSON.stringify({ email: email.trim(), redefinir, ...(juntar ? { juntar: true } : {}) }),
+      });
+      try {
+        return await enviar(false);
+      } catch (error) {
+        // E-mail que já é login de outra empresa: com a confirmação, esta empresa entra pelo mesmo login.
+        if (!(error instanceof ApiError) || error.code !== "EMAIL_EM_USO") throw error;
+        if (!window.confirm(`${error.message}\n\nA empresa vai entrar no portal com o mesmo login e a mesma senha. Continuar?`)) throw error;
+        return enviar(true);
+      }
+    },
     onSuccess: async (resposta) => {
       setErro("");
       setGerada(resposta.data?.senha ? { empresaId, senha: resposta.data.senha } : null);
-      setAviso(resposta.data?.criado ? "Acesso criado. Envie o e-mail e a senha para a empresa." : "Nova senha gerada. A anterior deixa de funcionar.");
+      setAviso(resposta.data?.juntado
+        ? `Pronto: a empresa entra no portal pelo login ${resposta.data.email}, junto com ${(resposta.data.empresas ?? []).join(", ")}. A senha é a desse login.`
+        : resposta.data?.criado ? "Acesso criado. Envie o e-mail e a senha para a empresa." : "Nova senha gerada. A anterior deixa de funcionar.");
       await queryClient.invalidateQueries({ queryKey: ["empresa", empresaId] });
       await queryClient.invalidateQueries({ queryKey: ["empresas"] });
     },

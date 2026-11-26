@@ -35,6 +35,8 @@ export const empresaPatchSchema = z.object({
   ...fields,
   /** Empresa que paga por esta (id) ou null para voltar a cobrar a própria empresa. */
   cobranca_por: z.preprocess((value) => (value === "" ? null : value), z.string().trim().min(1).max(40).nullable()),
+  /** Confirmação de que o e-mail novo, já login de outra empresa no portal, passa a abrir esta também. */
+  juntar_login: z.boolean(),
 }).partial();
 
 export const pagadorasQuerySchema = z.object({

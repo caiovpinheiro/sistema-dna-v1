@@ -1,5 +1,5 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Save } from "lucide-react";
 import { useEffect, useRef, type ReactNode } from "react";
 import { Controller, useForm } from "react-hook-form";
@@ -58,6 +58,17 @@ function diferencas<T extends Record<string, unknown>>(values: T, base: T | null
   return Object.fromEntries(Object.entries(values).filter(([key, value]) => String(value ?? "") !== String(base[key] ?? "")));
 }
 
+type LoginPortal = { acao: "trocado" | "juntado" | "igual" | "mantido" | "sem_acesso"; email: string; empresas?: string[] };
+
+/** O que aconteceu com o login do portal quando o e-mail da empresa mudou. */
+function avisoLogin(login: LoginPortal) {
+  if (login.acao === "trocado") return `E-mail salvo. O login do portal agora é ${login.email}; a senha continua a mesma.`;
+  if (login.acao === "juntado") return `E-mail salvo. A empresa passou a entrar no portal pelo login ${login.email}, junto com ${(login.empresas ?? []).join(", ")}. A senha é a desse login.`;
+  if (login.acao === "igual") return `E-mail salvo. O login do portal já é ${login.email}.`;
+  if (login.acao === "mantido") return "E-mail salvo. O login do portal não mudou: esta empresa tem mais de um usuário no portal e nenhum usava o e-mail antigo.";
+  return "E-mail salvo. Esta empresa ainda não tem acesso ao portal.";
+}
+
 function mensagemErro(error: unknown) {
   if (!(error instanceof ApiError)) return "";
   const details = error.details;
@@ -93,15 +104,30 @@ export function EmpresaFormPage() {
     for (const campo of CAMPOS_COM_ENTIDADES) if (typeof limpo[campo] === "string") limpo[campo] = semEntidades(limpo[campo] as string);
     form.reset(limpo as Form);
   }, [current.data, form, id]);
+  const queryClient = useQueryClient();
   const save = useMutation({
-    mutationFn: (values: Form) => {
-      const payload = id ? diferencas(values, base.current) : compact(values);
+    mutationFn: async (values: Form) => {
+      const payload: Record<string, unknown> = id ? diferencas(values, base.current) : compact(values);
       if (id && Object.keys(payload).length === 0) throw new ApiError(400, "NADA_PARA_ATUALIZAR", "Nenhum campo foi alterado.");
-      return id
-        ? api(`/api/v1/empresas/${id}`, { method: "PATCH", body: JSON.stringify(payload) })
-        : api<{ id_empresa: string }>("/api/v1/empresas", { method: "POST", body: JSON.stringify(payload) });
+      if (!id) return api<{ id_empresa: string }>("/api/v1/empresas", { method: "POST", body: JSON.stringify(payload) });
+      try {
+        return await api<{ id_empresa: string; login_portal?: LoginPortal }>(`/api/v1/empresas/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
+      } catch (error) {
+        // O e-mail novo já é login de outra empresa no portal: só junta com a confirmação de quem está editando.
+        if (!(error instanceof ApiError) || error.code !== "LOGIN_EM_USO") throw error;
+        if (!window.confirm(`${error.message}\n\nA empresa vai entrar no portal com o mesmo login e a mesma senha. Continuar?`)) {
+          throw new ApiError(409, "LOGIN_EM_USO", "E-mail não alterado: o login do portal continua o mesmo.");
+        }
+        return api<{ id_empresa: string; login_portal?: LoginPortal }>(`/api/v1/empresas/${id}`, { method: "PATCH", body: JSON.stringify({ ...payload, juntar_login: true }) });
+      }
     },
-    onSuccess: (result) => navigate(`/empresas/${id ?? (result.data as { id_empresa: string }).id_empresa}`),
+    onSuccess: async (result) => {
+      const destino = id ?? (result.data as { id_empresa: string }).id_empresa;
+      await queryClient.invalidateQueries({ queryKey: ["empresa", destino] });
+      await queryClient.invalidateQueries({ queryKey: ["empresas"] });
+      const login = (result.data as { login_portal?: LoginPortal }).login_portal;
+      navigate(`/empresas/${destino}`, { state: login ? { aviso: avisoLogin(login) } : undefined });
+    },
   });
   const erro = mensagemErro(save.error) || (form.formState.submitCount > 0 && !form.formState.isValid ? "Revise os campos marcados antes de salvar." : "");
   const erros = form.formState.errors;
