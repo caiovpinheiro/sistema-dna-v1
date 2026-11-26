@@ -93,10 +93,10 @@ test("filtra a lista pela prioridade", async () => {
 test("vagas do grupo: vagas e posições disponíveis por situação somando as empresas, e lista filtrada", async () => {
   await db.query(`
     INSERT INTO public.grupo (id, nome) VALUES ('11111111-1111-1111-1111-111111111111', 'Grupo A'), ('22222222-2222-2222-2222-222222222222', 'Grupo B');
-    INSERT INTO public.empresa (id, grupo_id, nome_fantasia) VALUES
-      ('aaaaaaaa-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'Empresa A1'),
-      ('aaaaaaaa-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 'Empresa A2'),
-      ('bbbbbbbb-0000-0000-0000-000000000001', '22222222-2222-2222-2222-222222222222', 'Empresa B1');
+    INSERT INTO public.empresa (id, grupo_id, nome_fantasia, razao_social) VALUES
+      ('aaaaaaaa-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'Empresa A1', 'Empresa A1 Ltda'),
+      ('aaaaaaaa-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 'Empresa A2', 'Empresa A2 Ltda'),
+      ('bbbbbbbb-0000-0000-0000-000000000001', '22222222-2222-2222-2222-222222222222', 'Empresa B1', 'Empresa B1 Ltda');
     INSERT INTO dna_work.vaga (id_vaga, id_empresa, cargo, status, dataabertura) VALUES
       ('ga1', 'aaaaaaaa-0000-0000-0000-000000000001', 'Caixa', 0, '2026-11-01'),
       ('ga2', 'aaaaaaaa-0000-0000-0000-000000000002', 'Repositor', 3, '2026-11-02'),

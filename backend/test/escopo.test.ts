@@ -78,6 +78,11 @@ before(async () => {
   const client = new pg.Client({ host: "127.0.0.1", port, user: "postgres", password, database });
   await client.connect();
   await client.query(fs.readFileSync(path.join(root, "database/schema/local-dev.sql"), "utf8"));
+  // Por cima do esquema base, as mesmas migrations da produção: assim a base de teste acompanha as tabelas novas.
+  const migrations = path.join(root, "prisma/migrations");
+  for (const nome of fs.readdirSync(migrations).filter((item) => /^\d/.test(item)).sort()) {
+    await client.query(fs.readFileSync(path.join(migrations, nome, "migration.sql"), "utf8"));
+  }
   await client.end();
 
   const { loadConfig } = await import("../src/config.js");
@@ -208,22 +213,25 @@ test("contrata até o limite, bloqueia a sexta, a duplicada, a sem vaga e a empr
     assert.equal(hired.statusCode, 201, hired.body);
     assert.equal(hired.json().data.id_empresa, idEmpresa);
     assert.ok(hired.json().data.id_contratacao);
+    if (index === 0) {
+      // Com a vaga ainda aberta: o mesmo candidato não entra duas vezes.
+      const again = await call("POST", "/api/v1/contratacoes", {
+        id_candidato: ids[0], id_vaga: idVaga, data_inicio: "2026-11-02",
+      }, { "idempotency-key": `dup-${Date.now()}` });
+      assert.equal(again.statusCode, 409);
+      assert.equal(again.json().error.code, "VINCULO_DUPLICADO");
+    }
   }
   const full = await call("GET", `/api/v1/vagas/${idVaga}`);
   assert.equal(full.json().data.ocupadas, 5);
   assert.equal(full.json().data.disponiveis, 0);
-  assert.equal(full.json().data.situacao, "preenchida");
+  assert.equal(full.json().data.situacao, "contratada");
   const sixth = await call("POST", "/api/v1/contratacoes", {
     id_candidato: ids[5], id_vaga: idVaga, data_inicio: "2026-11-01",
   }, { "idempotency-key": `sexta-${Date.now()}` });
   assert.equal(sixth.statusCode, 409);
-  assert.equal(sixth.json().error.code, "VAGA_SEM_POSICAO");
-
-  const again = await call("POST", "/api/v1/contratacoes", {
-    id_candidato: ids[0], id_vaga: idVaga, data_inicio: "2026-11-02",
-  }, { "idempotency-key": `dup-${Date.now()}` });
-  assert.equal(again.statusCode, 409);
-  assert.equal(again.json().error.code, "VINCULO_DUPLICADO");
+  // Cheia, a vaga passa a "contratada" e deixa de aceitar contratação.
+  assert.equal(sixth.json().error.code, "VAGA_ENCERRADA");
 
   const missing = await call("POST", "/api/v1/contratacoes", {
     id_candidato: ids[5], data_inicio: "2026-11-01",
@@ -276,7 +284,7 @@ test("troca a vaga de uma contratação ativa: a posição sai da antiga e entra
   }, { "idempotency-key": `troca-${Date.now()}` });
   assert.equal(hired.statusCode, 201, hired.body);
   const id = hired.json().data.id_contratacao as number;
-  assert.equal((await call("GET", `/api/v1/vagas/${idErrada}`)).json().data.situacao, "preenchida");
+  assert.equal((await call("GET", `/api/v1/vagas/${idErrada}`)).json().data.situacao, "contratada");
 
   const regime = await call("POST", `/api/v1/contratacoes/${id}/trocar-vaga`, { id_vaga: estagio.json().data.id_vaga });
   assert.equal(regime.statusCode, 409);
