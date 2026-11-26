@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import test, { after, before } from "node:test";
 import EmbeddedPostgres from "embedded-postgres";
 import pg from "pg";
+import { ligarBancoEmbutido } from "./apoio/banco-embutido.js";
 import { cnpjParaDocumento, cobrarDaPropria, cobrarPela, listarPagadoras, pagadoraDe } from "../src/lib/cobranca-pela-matriz.js";
 
 const port = 55441;
@@ -25,8 +26,7 @@ const UNIDADE = "aaaaaaaa-0000-0000-0000-000000000004";
 const COM_CNPJ = "aaaaaaaa-0000-0000-0000-000000000005";
 
 before(async () => {
-  await embedded.initialise();
-  await embedded.start();
+  await ligarBancoEmbutido(embedded, { port, user: "postgres", password: "postgres" });
   db = new pg.Pool({ host: "127.0.0.1", port, user: "postgres", password: "postgres", database: "postgres" });
   // Só as colunas que a cobrança usa (em produção vêm do cadastro antigo).
   await db.query(`

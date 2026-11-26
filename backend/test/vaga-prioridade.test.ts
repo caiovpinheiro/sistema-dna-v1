@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import test, { after, before } from "node:test";
 import EmbeddedPostgres from "embedded-postgres";
 import pg from "pg";
+import { ligarBancoEmbutido } from "./apoio/banco-embutido.js";
 import { VagaRepository } from "../src/repositories/vaga.repository.js";
 import { vagaListSchema, vagaPrioridadeSchema } from "../src/schemas/vaga.js";
 import { presentVaga } from "../src/services/presenters.js";
@@ -21,8 +22,7 @@ const repo = new VagaRepository(1, [2]);
 const consulta = { page: 1, pageSize: 20 } as Parameters<VagaRepository["list"]>[1];
 
 before(async () => {
-  await embedded.initialise();
-  await embedded.start();
+  await ligarBancoEmbutido(embedded, { port, user: "postgres", password: "postgres" });
   db = new pg.Pool({ host: "127.0.0.1", port, user: "postgres", password: "postgres", database: "postgres" });
   await db.query(fs.readFileSync(path.join(root, "database/schema/local-dev.sql"), "utf8"));
   // O que a lista de /vagas lê e o schema local não tem (em produção vem do espelho do Lightsail e do MIRROR_SQL).

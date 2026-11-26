@@ -232,42 +232,6 @@ export class TceService {
     return this.termos.get(id);
   }
 
-  /**
-   * Refaz, com o layout atual, o PDF dos TCEs ainda não enviados (status "gerado"), a partir dos dados salvos
-   * (public.tces.payload). Não muda status, datas nem dados. Os enviados não são tocados: o documento que está na
-   * ZapSign não muda; eles voltam na lista para editar e reenviar. Assinados, recusados e cancelados ficam como estão.
-   * `aplicar = false` só conta.
-   */
-  async refazerPdfs(aplicar: boolean) {
-    const rows = await this.db.query<{ id: string; status: string; nome: string | null; payload: { campos?: ManualData; empresa?: Concedente } | null; pdf_path: string | null }>(`
-      SELECT te.id::text AS id, te.status, coalesce(te.candidato_nome, t.candidato_nome) AS nome, t.payload, t.pdf_path
-      FROM dna_work.termo_estagio te
-      JOIN public.tces t ON t.id::text = te.id::text
-      WHERE te.status IN ('gerado', 'enviado')
-      ORDER BY te.criado_em DESC NULLS LAST
-    `);
-    const gerados = rows.rows.filter((row) => row.status === "gerado");
-    const enviados = rows.rows.filter((row) => row.status === "enviado").map((row) => ({ id: row.id, nome: row.nome ?? "" }));
-    const falhas: Array<{ id: string; nome: string; erro: string }> = [];
-    let refeitos = 0;
-    if (aplicar) {
-      const dir = await pastaGravavel(this.config.PDF_STORAGE_DIR);
-      for (const row of gerados) {
-        const campos = row.payload?.campos;
-        const concedente = row.payload?.empresa;
-        try {
-          if (!campos || !concedente) throw new AppError(404, "NAO_ENCONTRADO", "Termo sem dados salvos.");
-          const pdf = await this.pdfDe(concedente, campos);
-          await fs.writeFile(path.join(dir, path.basename(row.pdf_path || `${row.id}.pdf`)), pdf);
-          refeitos++;
-        } catch (error) {
-          falhas.push({ id: row.id, nome: row.nome ?? "", erro: error instanceof Error ? error.message : String(error) });
-        }
-      }
-    }
-    return { aplicado: aplicar, gerados: gerados.length, refeitos, falhas, enviados };
-  }
-
   private async montar(input: GerarTceInput, empresa: Concedente | null) {
     // Valores fixos de todo TCE: a tela mostra só para leitura e aqui sempre vale o padrão.
     const campos = { ...input.campos, seguro_apolice: APOLICE_SEGURO, carga_horaria_diaria: CARGA_HORARIA_DIARIA, carga_horaria_semanal: CARGA_HORARIA_SEMANAL };

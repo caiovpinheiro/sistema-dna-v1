@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import test, { before, after } from "node:test";
 import EmbeddedPostgres from "embedded-postgres";
 import pg from "pg";
+import { ligarBancoEmbutido } from "./apoio/banco-embutido.js";
 import type { FastifyInstance } from "fastify";
 
 const port = 55433;
@@ -69,8 +70,7 @@ before(async () => {
   if (!["127.0.0.1", "localhost"].includes(url.hostname) || url.pathname.includes("dnaworkia")) {
     throw new Error("Teste recusado fora do PostgreSQL local.");
   }
-  await embedded.initialise();
-  await embedded.start();
+  await ligarBancoEmbutido(embedded, { port, user: "postgres", password });
   const admin = new pg.Client({ host: "127.0.0.1", port, user: "postgres", password, database: "postgres" });
   await admin.connect();
   await admin.query(`CREATE DATABASE ${database}`);
