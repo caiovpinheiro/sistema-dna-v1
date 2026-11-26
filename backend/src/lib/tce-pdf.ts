@@ -68,6 +68,59 @@ export function tamanhoQueCabe(font: PDFFont, texto: string, maximo: number, lar
   }
 }
 
+/** Letra a partir da qual fica com menos linhas: uma linha com 7 pt ou mais; várias linhas com 6,5 pt ou mais. */
+const LEGIVEL_UMA_LINHA = 7;
+const LEGIVEL_VARIAS_LINHAS = 6.5;
+const SUBLINHADO = 1.5;
+
+export type Bloco = { tamanho: number; linhas: string[] };
+
+/** Altura de um bloco de `n` linhas: do topo das maiúsculas da primeira linha ao sublinhado da última. */
+export function alturaDoBloco(tamanho: number, n: number, entrelinha: number) {
+  return (n - 1) * tamanho * entrelinha + tamanho * 0.72 + SUBLINHADO;
+}
+
+/**
+ * Como escrever o texto de um campo de uma linha sem cortar. Para 1, 2, … `maxLinhas` linhas, acha a maior letra
+ * (até `maximo`) em que o texto cabe na largura e o bloco cabe na `altura`; fica com o menor número de linhas que
+ * ainda deixa a letra legível (7 pt numa linha, 6,5 pt em várias) e, se nenhum deixar, com a maior letra.
+ * Só se nem com a letra mínima couber, a última linha é cortada com "...".
+ */
+export function blocoQueCabe(font: PDFFont, texto: string, maximo: number, largura: number, altura: number, maxLinhas: number, entrelinha = 1.15, minimo = TAMANHO_MINIMO): Bloco {
+  const linha = texto.replace(/[\r\n]+/g, " ").replace(/\s+/g, " ").trim();
+  try {
+    const opcoes: Bloco[] = [];
+    for (let n = 1; n <= maxLinhas; n += 1) {
+      for (let tamanho = maximo; tamanho >= minimo; tamanho -= 0.25) {
+        const linhas = n === 1 ? [linha] : quebrarLinhas(font, linha, tamanho, largura);
+        const cabe = n === 1
+          ? font.widthOfTextAtSize(linha, tamanho) <= largura
+          : linhas.length <= n && alturaDoBloco(tamanho, linhas.length, entrelinha) <= altura;
+        if (cabe) {
+          opcoes.push({ tamanho, linhas });
+          break;
+        }
+      }
+    }
+    const legivel = opcoes.find((opcao) => opcao.tamanho >= (opcao.linhas.length === 1 ? LEGIVEL_UMA_LINHA : LEGIVEL_VARIAS_LINHAS));
+    if (legivel) return legivel;
+    if (opcoes.length) return opcoes.reduce((melhor, opcao) => (opcao.tamanho > melhor.tamanho ? opcao : melhor));
+    // Nem assim: cabe o máximo de linhas na altura, com a letra mínima, e a última termina em "...".
+    let n = maxLinhas;
+    while (n > 1 && alturaDoBloco(minimo, n, entrelinha) > altura) n--;
+    const linhas = quebrarLinhas(font, linha, minimo, largura);
+    if (linhas.length <= n) return { tamanho: minimo, linhas };
+    const visiveis = linhas.slice(0, n);
+    let ultima = visiveis[n - 1];
+    while (ultima.length > 1 && font.widthOfTextAtSize(`${ultima}...`, minimo) > largura) ultima = ultima.slice(0, -1).trimEnd();
+    visiveis[n - 1] = `${ultima}...`;
+    return { tamanho: minimo, linhas: visiveis };
+  } catch {
+    // Letra que a fonte não mede: uma linha no tamanho padrão, como antes.
+    return { tamanho: maximo, linhas: [linha] };
+  }
+}
+
 /** Quebra o texto em linhas de até `largura` (por palavra; palavra maior que a linha é quebrada por letra). */
 function quebrarLinhas(font: PDFFont, texto: string, tamanho: number, largura: number) {
   const linhas: string[] = [];
@@ -124,6 +177,58 @@ const CAMPOS_ANEXO_1 = new Set([
   "seguro_apolice",
 ]);
 
+/** Campos que nunca quebram linha (têm lugar e tamanho próprios). */
+const SEMPRE_UMA_LINHA = new Set(["emissao_cidade_data", "data_termo_aditivo", "seguro_apolice"]);
+
+type Espaco = { altura: number; maxLinhas: number; anexo1: boolean; entrelinha: number };
+
+/**
+ * Quanto espaço o campo tem para quebrar o texto em mais linhas.
+ * - Anexo I (página 7): as linhas ficam a 19 pt uma da outra e o texto ocupa uns 6 pt, então há espaço livre acima e
+ *   abaixo: até 3 linhas, centradas na altura do rótulo, cada uma com a sua linha embaixo.
+ * - Página 1: o rótulo do campo de baixo fica colado na caixa, então só cabe o que couber dentro da caixa: até 2 linhas.
+ */
+function espacoDoCampo(nome: string, alturaDaCaixa: number): Espaco {
+  if (SEMPRE_UMA_LINHA.has(nome)) return { altura: 0, maxLinhas: 1, anexo1: false, entrelinha: 1.15 };
+  if (CAMPOS_ANEXO_1.has(nome)) return { altura: ANEXO1.acima + ANEXO1.abaixo, maxLinhas: 3, anexo1: true, entrelinha: ANEXO1.entrelinha };
+  return { altura: alturaDaCaixa + 1, maxLinhas: 2, anexo1: false, entrelinha: 1.15 };
+}
+
+/**
+ * Anexo I: até onde o bloco pode subir e descer a partir da linha de base do rótulo. A linha de cima fica 17,5 pt acima
+ * e o texto da linha de baixo começa uns 13 pt abaixo: sobra folga dos dois lados.
+ */
+const ANEXO1 = { acima: 13, abaixo: 9.5, centro: 3, entrelinha: 1.3 };
+
+/** Texto que não coube numa linha, por campo, e onde desenhá-lo (calculado junto com `tamanhosDoTce`). */
+let blocosDoTce: Record<string, Bloco> = {};
+
+function desenharBloco(
+  page: ReturnType<PDFDocument["getPages"]>[number],
+  font: PDFFont,
+  rect: { x: number; y: number; width: number; height: number },
+  base: number,
+  bloco: Bloco,
+  anexo1: boolean,
+) {
+  const { tamanho, linhas } = bloco;
+  const entrelinha = anexo1 ? ANEXO1.entrelinha : 1.15;
+  const passo = tamanho * entrelinha;
+  const altura = alturaDoBloco(tamanho, linhas.length, entrelinha);
+  // Topo do bloco: centrado no rótulo (Anexo I) ou na caixa (página 1), sem passar dos limites.
+  const [baixo, cima, centro] = anexo1
+    ? [base - ANEXO1.abaixo, base + ANEXO1.acima, base + ANEXO1.centro]
+    : [rect.y - 1.5, rect.y + rect.height - 0.5, rect.y + rect.height / 2];
+  const topo = Math.min(cima, Math.max(baixo + altura, centro + altura / 2));
+  linhas.forEach((linha, indice) => {
+    const y = topo - tamanho * 0.72 - indice * passo;
+    page.drawText(linha, { x: rect.x + 2, y, size: tamanho, font, color: rgb(0, 0, 0) });
+    if (anexo1 || indice === linhas.length - 1) {
+      page.drawLine({ start: { x: rect.x, y: y - SUBLINHADO }, end: { x: rect.x + rect.width, y: y - SUBLINHADO }, thickness: 0.7, color: rgb(0, 0, 0) });
+    }
+  });
+}
+
 function ajustarQuadroDoPlano(field: PDFTextField, doc: PDFDocument) {
   const widget = field.acroField.getWidgets()[0];
   widget?.dict.set(PDFName.of("Rect"), doc.context.obj([PLANO.x, PLANO.topo - alturaDoPlano, PLANO.x + PLANO.largura, PLANO.topo]));
@@ -170,7 +275,13 @@ function alinharDataAditivo(field: PDFTextField, doc: PDFDocument, font: PDFFont
 // Coluna "Novo valor" da tabela do Termo Aditivo (Anexo III): texto até a borda direita da tabela.
 const LARGURA_NOVO_VALOR = 146;
 
-/** Escreve na célula: diminui a letra para caber numa linha; se ficar pequena demais, quebra em duas linhas. */
+// Cada linha da tabela tem 21,2 pt de altura; `y` é a linha de base de um texto de uma linha só, a 7,1 pt da borda de baixo.
+const CELULA = { abaixo: 7.1, acima: 14.1 };
+
+/**
+ * Escreve na célula: numa linha, diminuindo a letra até 6,5 pt; se não couber, em até 4 linhas dentro da célula
+ * (a letra desce até 4,5 pt). Só o que nem assim couber termina em "...".
+ */
 function escrever(page: ReturnType<PDFDocument["getPages"]>[number], font: Awaited<ReturnType<PDFDocument["embedFont"]>>, x: number, y: number, texto: string, tamanho = 8) {
   const valor = forPdf(texto).replace(/\s+/g, " ").trim();
   if (!valor) return;
@@ -180,16 +291,17 @@ function escrever(page: ReturnType<PDFDocument["getPages"]>[number], font: Await
     page.drawText(valor, { x, y, size: umaLinha, font, color: rgb(0, 0, 0) });
     return;
   }
-  let menor = 7;
-  let linhas = quebrarLinhas(font, valor, menor, LARGURA_NOVO_VALOR);
-  while (linhas.length > 2 && menor > 5) {
-    menor -= 0.25;
-    linhas = quebrarLinhas(font, valor, menor, LARGURA_NOVO_VALOR);
-  }
-  page.drawRectangle({ x: x - 1, y: y - 6, width: LARGURA_NOVO_VALOR, height: 19, color: rgb(1, 1, 1) });
-  const [primeira = "", ...resto] = linhas;
-  page.drawText(primeira, { x, y: y + 4, size: menor, font, color: rgb(0, 0, 0) });
-  page.drawText(resto.join(" "), { x, y: y - 4, size: menor, font, color: rgb(0, 0, 0) });
+  const entrelinha = 1.1;
+  const altura = CELULA.abaixo + CELULA.acima - 1.5;
+  const { tamanho: menor, linhas } = blocoQueCabe(font, valor, 7, LARGURA_NOVO_VALOR, altura, 4, entrelinha, 4.5);
+  page.drawRectangle({ x: x - 1, y: y - CELULA.abaixo + 0.8, width: LARGURA_NOVO_VALOR, height: CELULA.abaixo + CELULA.acima - 1.6, color: rgb(1, 1, 1) });
+  // Centrado na altura da célula.
+  const meio = y + (CELULA.acima - CELULA.abaixo) / 2;
+  const alturaTexto = (linhas.length - 1) * menor * entrelinha + menor * 0.72;
+  const primeira = meio + alturaTexto / 2 - menor * 0.72;
+  linhas.forEach((linha, indice) => {
+    page.drawText(linha, { x, y: primeira - indice * menor * entrelinha, size: menor, font, color: rgb(0, 0, 0) });
+  });
 }
 
 function cobrirTextoDoModelo(doc: PDFDocument) {
@@ -240,6 +352,7 @@ export async function fillTceTemplate(values: Record<string, string>): Promise<U
   const font = await doc.embedFont(StandardFonts.Helvetica);
   // Antes de alinhar e escrever: o tamanho de letra que faz cada texto caber no seu campo.
   tamanhosDoTce = {};
+  blocosDoTce = {};
   alturaDoPlano = PLANO.alturaMinima;
   for (const [key, raw] of Object.entries(values)) {
     const texto = forPdf(raw ?? "");
@@ -253,8 +366,17 @@ export async function fillTceTemplate(values: Record<string, string>): Promise<U
       }
       continue;
     }
-    const largura = form.getTextField(key).acroField.getWidgets()[0]?.getRectangle().width;
-    if (largura) tamanhosDoTce[key] = tamanhoQueCabe(font, texto.trim(), tamanhoPadrao(key), largura - 4);
+    const caixa = form.getTextField(key).acroField.getWidgets()[0]?.getRectangle();
+    if (!caixa?.width) continue;
+    const espaco = espacoDoCampo(key, caixa.height);
+    if (espaco.maxLinhas === 1) {
+      tamanhosDoTce[key] = tamanhoQueCabe(font, texto.trim(), tamanhoPadrao(key), caixa.width - 4);
+      continue;
+    }
+    const bloco = blocoQueCabe(font, texto, tamanhoPadrao(key), caixa.width - 4, espaco.altura, espaco.maxLinhas, espaco.entrelinha);
+    // Em várias linhas, o campo fica vazio (o texto é desenhado depois) e mantém o tamanho padrão para o alinhamento.
+    if (bloco.linhas.length > 1) blocosDoTce[key] = bloco;
+    else tamanhosDoTce[key] = bloco.tamanho;
   }
   for (const field of form.getFields()) {
     if (field.constructor.name !== "PDFTextField") continue;
@@ -277,12 +399,13 @@ export async function fillTceTemplate(values: Record<string, string>): Promise<U
       throw new AppError(400, "CAMPO_LONGO", `O campo ${key} excede o limite de ${max} caracteres do modelo.`);
     }
     try {
-      field.setText(text);
+      field.setText(blocosDoTce[key] ? "" : text);
     } catch {
       throw new AppError(400, "CAMPO_INVALIDO", `Não foi possível gravar o campo ${key}.`);
     }
   }
   const linhas: { page: ReturnType<PDFDocument["getPages"]>[number] | undefined; x: number; y: number; largura: number }[] = [];
+  const quebrados: (() => void)[] = [];
   for (const field of form.getFields()) {
     if (field.constructor.name !== "PDFTextField") continue;
     const texto = form.getTextField(field.getName());
@@ -292,6 +415,13 @@ export async function fillTceTemplate(values: Record<string, string>): Promise<U
       const rect = widget.getRectangle();
       const ref = doc.context.getObjectRef(widget.dict);
       const page = doc.getPages().find((item) => item.node.Annots()?.asArray().some((anotacao) => anotacao === ref));
+      const bloco = blocosDoTce[texto.getName()];
+      if (bloco) {
+        const base = rect.y + baseDoTexto(font, tamanhoDoCampo(texto.getName()), rect.height);
+        const anexo1 = espacoDoCampo(texto.getName(), rect.height).anexo1;
+        if (page) quebrados.push(() => desenharBloco(page, font, rect, base, bloco, anexo1));
+        continue;
+      }
       linhas.push({
         page,
         x: rect.x,
@@ -309,6 +439,7 @@ export async function fillTceTemplate(values: Record<string, string>): Promise<U
       color: rgb(0, 0, 0),
     });
   }
+  for (const desenhar of quebrados) desenhar();
   cobrirTextoDoModelo(doc);
   completarAnexo3(doc, font, values);
   return doc.save();

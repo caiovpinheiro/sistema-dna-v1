@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { PDFDocument, StandardFonts } from "pdf-lib";
-import { fillTceTemplate, medidasDoPlano, tamanhoQueCabe } from "../src/lib/tce-pdf.js";
+import { blocoQueCabe, fillTceTemplate, medidasDoPlano, tamanhoQueCabe } from "../src/lib/tce-pdf.js";
 
 const temPdftotext = (() => { try { execFileSync("pdftotext", ["-v"], { stdio: "ignore" }); return true; } catch { return false; } })();
 
@@ -60,4 +60,39 @@ test("texto com quebra de linha ou caractere invisível num campo de uma linha n
   assert.ok(pdf.length > 0);
   const font = await (await PDFDocument.create()).embedFont(StandardFonts.Helvetica);
   assert.equal(tamanhoQueCabe(font, "Segunda\nSábado", 8, 250), 8);
+});
+
+// Jornadas reais que saíam cortadas no Anexo I (a da tela e a maior gravada, com 235 letras).
+const jornadaDaTela = "Segunda à Domingo das 14:00 às 19:00 com 15 minutos de pausa, e uma folga alternada na semana ou no final de semana a definir pela empresa.";
+const jornadaMaior = "Segunda a sexta-feira, das 08h00 às 15h00, com 1 hora de intervalo para refeição e descanso. Folgas fixas aos finais de semana. Caso haja necessidade de trabalho em algum final de semana, o colaborador será comunicado com antecedência.";
+
+test("texto longo quebra em mais linhas em vez de ser cortado", async () => {
+  const font = await (await PDFDocument.create()).embedFont(StandardFonts.Helvetica);
+  // Anexo I: até 3 linhas em 22,5 pt de altura; cabe numa linha, fica numa linha.
+  assert.deepEqual(blocoQueCabe(font, "Segunda a sexta das 08:00 às 14:00", 8, 252, 22.5, 3, 1.3), { tamanho: 8, linhas: ["Segunda a sexta das 08:00 às 14:00"] });
+  const tela = blocoQueCabe(font, jornadaDaTela, 8, 252, 22.5, 3, 1.3);
+  assert.equal(tela.linhas.length, 2);
+  assert.ok(tela.tamanho >= 6.5, `letra ${tela.tamanho}`);
+  assert.equal(tela.linhas.join(" "), jornadaDaTela);
+  const maior = blocoQueCabe(font, jornadaMaior, 8, 252, 22.5, 3, 1.3);
+  assert.ok(maior.linhas.length <= 3);
+  assert.equal(maior.linhas.join(" "), jornadaMaior, "nada pode ficar de fora");
+  for (const linha of maior.linhas) assert.ok(font.widthOfTextAtSize(linha, maior.tamanho) <= 252);
+  // Sem espaço nem com a letra mínima: corta a última linha com "...".
+  const enorme = blocoQueCabe(font, jornadaMaior.repeat(3), 8, 252, 22.5, 3, 1.3);
+  assert.equal(enorme.linhas.length, 3);
+  assert.match(enorme.linhas[2], /\.\.\.$/);
+});
+
+test("Anexo I e aditivo mostram a jornada inteira", { skip: !temPdftotext && "sem pdftotext" }, async () => {
+  const pdf = await fillTceTemplate({
+    jornada: jornadaMaior,
+    escola_endereco: "Rua Professor Sebastião Nascimento Bastos, 1550 - Jardim Santa Terezinha",
+    endereco: "Rua Doutor Antônio Bento de Amorim Ferreira, 1234 - Apto 56 Bloco C - Jardim Paulista",
+  });
+  const juntar = (texto: string) => texto.replace(/\s+/g, " ");
+  for (const pagina of [7, 9]) assert.ok(juntar(textoDaPagina(pdf, pagina)).includes("o colaborador será comunicado com antecedência."), `página ${pagina}`);
+  const capa = juntar(textoDaPagina(pdf, 1));
+  assert.match(capa, /Jardim Santa Terezinha/);
+  assert.match(capa, /Bloco C - Jardim Paulista/);
 });
