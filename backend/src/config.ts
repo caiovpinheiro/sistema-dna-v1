@@ -70,6 +70,31 @@ const envSchema = z.object({
   JEV_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(120_000).default(30_000),
   JEV_CONCORRENCIA: z.coerce.number().int().min(1).max(10).default(3),
   JEV_LOTE: z.coerce.number().int().min(1).max(30).default(10),
+  // MCP (serviço mcp-server). Desligado por padrão: com MCP_ENABLED fora de "1"/"true", nada abaixo é registrado.
+  MCP_ENABLED: z.string().optional().transform((value) => value === "1" || value === "true"),
+  // URL pública do gateway (ex.: https://mcp.dnawork.ai) e do painel (emissor OAuth). Só origem, sem caminho.
+  MCP_PUBLIC_URL: z.string().optional().default(""),
+  APP_PUBLIC_URL: z.string().optional().default(""),
+  // Porta só da rede privada: rotas /internal/mcp/*. Nunca publicar no domínio.
+  MCP_INTERNAL_PORT: z.coerce.number().int().positive().default(3334),
+  MCP_INTERNAL_HOST: z.string().default("0.0.0.0"),
+  // "id:segredo" separados por vírgula (o primeiro é o atual). Cada segredo tem 32+ caracteres. Permite rotação.
+  MCP_GATEWAY_SECRETS: z.string().optional().default(""),
+  MCP_HMAC_JANELA_S: z.coerce.number().int().min(5).max(300).default(60),
+  // TLS/mTLS opcional no listener interno (caminhos de arquivo PEM).
+  MCP_INTERNAL_TLS_CERT: z.string().optional().default(""),
+  MCP_INTERNAL_TLS_KEY: z.string().optional().default(""),
+  MCP_INTERNAL_TLS_CA: z.string().optional().default(""),
+  // OAuth: DCR desligado por padrão; clientes previamente cadastrados em JSON (segredos só no ambiente).
+  MCP_OAUTH_DCR: z.string().optional().transform((value) => value === "1" || value === "true"),
+  MCP_OAUTH_CLIENTS: z.string().optional().default(""),
+  MCP_OAUTH_REDIRECT_HOSTS: z.string().optional().default(""),
+  MCP_OAUTH_COOKIE_SECRET: z.string().optional().default(""),
+  // Limite por IP nos endpoints /oauth/token, /oauth/revoke e /oauth/register (por minuto).
+  MCP_OAUTH_RATE_POR_MIN: z.coerce.number().int().min(1).max(10_000).default(30),
+  MCP_ACCESS_TTL_S: z.coerce.number().int().min(60).max(86_400).default(3_600),
+  MCP_REFRESH_TTL_S: z.coerce.number().int().min(3_600).max(7_776_000).default(2_592_000),
+  MCP_RATE_USUARIO_POR_MIN: z.coerce.number().int().min(1).max(10_000).default(120),
 });
 
 export type AppConfig = z.infer<typeof envSchema> & {

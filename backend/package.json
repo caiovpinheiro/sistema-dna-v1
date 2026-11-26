@@ -26,14 +26,17 @@
     "fastify": "^5.6.1",
     "fastify-type-provider-zod": "^4.0.2",
     "jszip": "^3.10.2",
+    "oidc-provider": "^9.15.1",
     "pdf-lib": "^1.17.1",
     "pg": "^8.16.3",
     "sharp": "^0.35.5",
     "tesseract.js": "^7.0.0",
-    "zod": "^3.25.76"
+    "zod": "^3.25.76",
+    "zod-to-json-schema": "^3.25.2"
   },
   "devDependencies": {
     "@types/node": "^24.9.1",
+    "@types/oidc-provider": "^9.15.0",
     "@types/pg": "^8.15.5",
     "embedded-postgres": "^18.1.0-beta.16",
     "tsx": "^4.20.6",

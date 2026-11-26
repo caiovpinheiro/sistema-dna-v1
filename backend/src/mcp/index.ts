@@ -1,0 +1,47 @@
+import type { FastifyInstance } from "fastify";
+import type Provider from "oidc-provider";
+import type { Pool } from "pg";
+import type { AppConfig } from "../config.js";
+import type { AcessoService } from "../services/acesso.service.js";
+import { lerMcpConfig, type McpConfig } from "./config.js";
+import { registrarConsentimento } from "./consentimento.js";
+import { criarRegistroPadrao } from "./ferramentas/index.js";
+import { IntegracoesMcpService } from "./integracoes.service.js";
+import { criarAppInterno } from "./interno.js";
+import { criarProvider, montarOAuth } from "./oauth.js";
+import type { RegistroFerramentas, ServicosMcp } from "./registro.js";
+
+export type McpRuntime = {
+  config: McpConfig;
+  provider: Provider;
+  registro: RegistroFerramentas;
+  integracoes: IntegracoesMcpService;
+  /** Instância Fastify das rotas /internal/mcp/*. Quem sobe o servidor escuta nela, em porta privada. */
+  interno: FastifyInstance;
+};
+
+declare module "fastify" {
+  interface FastifyInstance {
+    mcp?: McpRuntime;
+  }
+}
+
+/**
+ * Liga o MCP no monólito. Com MCP_ENABLED desligado (padrão) não registra nada: nenhuma rota, nenhum listener.
+ * Ligado: OAuth e consentimento no app público, e um app separado para a API interna.
+ */
+export function iniciarMcp(app: FastifyInstance, deps: { db: Pool; config: AppConfig; acesso: AcessoService; servicos: ServicosMcp }): McpRuntime | null {
+  if (!deps.config.MCP_ENABLED) return null;
+  const mcp = lerMcpConfig(deps.config); // falha no boot se a configuração for insegura ou incompleta
+  const provider = criarProvider(deps.db, deps.config, mcp);
+  const registro = criarRegistroPadrao();
+  montarOAuth(app, provider, deps.config.MCP_OAUTH_RATE_POR_MIN);
+  registrarConsentimento(app, { db: deps.db, provider, mcp });
+  const interno = criarAppInterno({ db: deps.db, config: deps.config, mcp, provider, acesso: deps.acesso, registro, servicos: deps.servicos });
+  const runtime: McpRuntime = { config: mcp, provider, registro, integracoes: new IntegracoesMcpService(deps.db, mcp, registro), interno };
+  app.decorate("mcp", runtime);
+  app.addHook("onClose", async () => {
+    await interno.close();
+  });
+  return runtime;
+}

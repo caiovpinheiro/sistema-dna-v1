@@ -1,0 +1,97 @@
+import type { FastifyInstance, FastifyRequest } from "fastify";
+import type Provider from "oidc-provider";
+import type { Pool } from "pg";
+import { z } from "zod";
+import { AppError } from "../lib/errors.js";
+import { redirectPermitido, slugDoRecurso, type McpConfig } from "./config.js";
+import { ESCOPO_LEITURA } from "./oauth.js";
+import { agoraEmSegundos } from "./util.js";
+
+const ok = <T>(data: T) => ({ success: true as const, data, meta: {} });
+
+type Pedido = { client_id?: string; resource?: string | string[]; redirect_uri?: string; scope?: string };
+
+/**
+ * Tela de consentimento (a página React vem na Fase 4): estas duas rotas usam a sessão do painel (cookie).
+ * Quem aprova é o usuário logado agora; o bootstrap-admin, sem linha em app_usuario, nunca passa.
+ */
+export function registrarConsentimento(app: FastifyInstance, deps: { db: Pool; provider: Provider; mcp: McpConfig }): void {
+  const { db, provider, mcp } = deps;
+
+  async function usuarioReal(request: FastifyRequest) {
+    const { rows } = await db.query<{ id: string; nome: string; email: string }>(
+      "SELECT id::text AS id, nome, email FROM dna_work.app_usuario WHERE id::text = $1 AND ativo = true",
+      [request.user.sub],
+    );
+    return rows[0] ?? null; // sub "bootstrap-admin" não existe na tabela
+  }
+
+  async function carregar(request: FastifyRequest, uid: string) {
+    const interacao = await provider.Interaction.find(uid);
+    if (!interacao) throw new AppError(404, "PEDIDO_NAO_ENCONTRADO", "Pedido de autorização expirado ou inexistente.");
+    const params = (interacao.params ?? {}) as Pedido;
+    const recurso = Array.isArray(params.resource) ? params.resource[0] : params.resource;
+    const slug = recurso ? slugDoRecurso(mcp, recurso) : null;
+    const [usuario, cliente, integracao] = await Promise.all([
+      usuarioReal(request),
+      params.client_id ? provider.Client.find(params.client_id).catch(() => undefined) : undefined,
+      slug
+        ? db.query<{ id: string; nome: string; descricao: string | null }>(
+          "SELECT id, nome, descricao FROM dna_work.mcp_integracao WHERE slug = $1 AND ativa = true", [slug],
+        ).then((resultado) => resultado.rows[0] ?? null)
+        : null,
+    ]);
+    let motivo: string | null = null;
+    if (!usuario) motivo = "Somente usuários cadastrados e ativos do painel podem autorizar.";
+    else if (!cliente) motivo = "Aplicativo desconhecido.";
+    else if (!integracao || !recurso) motivo = "Integração inexistente ou desativada.";
+    else if (!(cliente.redirectUris ?? []).every((uri) => redirectPermitido(mcp, uri))) motivo = "Endereço de retorno do aplicativo não permitido.";
+    else {
+      const { rows } = await db.query(
+        "SELECT 1 FROM dna_work.mcp_integracao_usuario WHERE id_integracao = $1 AND id_usuario::text = $2",
+        [integracao.id, usuario!.id],
+      );
+      if (!rows.length) motivo = "Você não foi autorizado nesta integração. Peça ao administrador.";
+    }
+    return { interacao, params, recurso, usuario, cliente, integracao, motivo };
+  }
+
+  app.get("/api/v1/mcp/interacao/:uid", { schema: { params: z.object({ uid: z.string().min(8).max(128) }) } }, async (request) => {
+    const { uid } = request.params as { uid: string };
+    const pedido = await carregar(request, uid);
+    return ok({
+      pode: pedido.motivo === null,
+      motivo: pedido.motivo,
+      aplicativo: pedido.cliente ? { id: pedido.cliente.clientId, nome: pedido.cliente.clientName ?? pedido.cliente.clientId } : null,
+      integracao: pedido.integracao ? { nome: pedido.integracao.nome, descricao: pedido.integracao.descricao } : null,
+      acesso: "Somente leitura, com as mesmas permissões que você tem no painel.",
+      usuario: pedido.usuario ? { nome: pedido.usuario.nome } : null,
+    });
+  });
+
+  app.post("/api/v1/mcp/interacao/:uid/decisao", {
+    schema: { params: z.object({ uid: z.string().min(8).max(128) }), body: z.object({ aprovar: z.boolean() }) },
+  }, async (request) => {
+    // CSRF: o navegador sempre manda Origin em POST; precisa ser o do painel.
+    const origem = request.headers.origin;
+    if (origem !== mcp.appUrl) throw new AppError(403, "ORIGEM_INVALIDA", "Origem não permitida.");
+    const { uid } = request.params as { uid: string };
+    const { aprovar } = request.body as { aprovar: boolean };
+    const pedido = await carregar(request, uid);
+    const retomar = `${mcp.appUrl}/oauth/authorize/${uid}`;
+    if (!aprovar) {
+      pedido.interacao.result = { error: "access_denied", error_description: "O usuário negou o acesso." };
+      await pedido.interacao.save(pedido.interacao.exp - agoraEmSegundos());
+      return ok({ redirectTo: retomar });
+    }
+    if (pedido.motivo || !pedido.usuario || !pedido.recurso || !pedido.params.client_id) {
+      throw new AppError(403, "AUTORIZACAO_NEGADA", pedido.motivo ?? "Autorização negada.");
+    }
+    const concessao = new provider.Grant({ accountId: pedido.usuario.id, clientId: pedido.params.client_id });
+    concessao.addResourceScope(pedido.recurso, ESCOPO_LEITURA);
+    const grantId = await concessao.save();
+    pedido.interacao.result = { login: { accountId: pedido.usuario.id, remember: false }, consent: { grantId } };
+    await pedido.interacao.save(pedido.interacao.exp - agoraEmSegundos());
+    return ok({ redirectTo: retomar });
+  });
+}
