@@ -49,3 +49,15 @@ test("termo aditivo: carga sem 'horas' repetido e jornada longa em duas linhas",
   assert.match(aditivo, /Segunda à Domingo das 07:00 às 12:00 com 15/);
   assert.match(aditivo, /conforme escala da loja/);
 });
+
+test("texto com quebra de linha ou caractere invisível num campo de uma linha não derruba o PDF", async () => {
+  // Antes: "WinAnsi cannot encode" ao medir o texto → "Erro interno" ao salvar o TCE.
+  const pdf = await fillTceTemplate({
+    jornada: "Segunda a sexta das 08:00 às 14:00\r\nSábado das 08:00 às 12:00",
+    nome: "Maria\u0085Souza",
+    plano_atividades: "Atender\u0085clientes\nRepor mercadorias",
+  });
+  assert.ok(pdf.length > 0);
+  const font = await (await PDFDocument.create()).embedFont(StandardFonts.Helvetica);
+  assert.equal(tamanhoQueCabe(font, "Segunda\nSábado", 8, 250), 8);
+});

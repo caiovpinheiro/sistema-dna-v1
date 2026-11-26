@@ -30,7 +30,8 @@ function forPdf(value: string) {
   let out = "";
   for (const ch of normalized) {
     const code = ch.codePointAt(0) ?? 0;
-    if (code === 10 || code === 13 || (code >= 32 && code <= 255)) out += ch;
+    // Fora disso a Helvetica do PDF não tem a letra (inclui os controles invisíveis U+007F a U+009F, comuns em texto colado).
+    if (code === 10 || code === 13 || (code >= 32 && code <= 126) || (code >= 160 && code <= 255)) out += ch;
     else out += " ";
   }
   return out;
@@ -55,9 +56,16 @@ const TAMANHO_MINIMO = 5.5;
 
 /** Maior tamanho (até `maximo`) em que o texto cabe numa linha de `largura`. */
 export function tamanhoQueCabe(font: PDFFont, texto: string, maximo: number, largura: number, minimo = TAMANHO_MINIMO) {
-  let tamanho = maximo;
-  while (tamanho > minimo && font.widthOfTextAtSize(texto, tamanho) > largura) tamanho -= 0.25;
-  return tamanho;
+  // Campo de uma linha: quebra de linha vira espaço, como o pdf-lib faz ao escrever.
+  const linha = texto.replace(/[\r\n]+/g, " ");
+  try {
+    let tamanho = maximo;
+    while (tamanho > minimo && font.widthOfTextAtSize(linha, tamanho) > largura) tamanho -= 0.25;
+    return tamanho;
+  } catch {
+    // Letra que a fonte não mede: fica o tamanho padrão (antes desta função existir era sempre assim).
+    return maximo;
+  }
 }
 
 /** Quebra o texto em linhas de até `largura` (por palavra; palavra maior que a linha é quebrada por letra). */
@@ -236,9 +244,13 @@ export async function fillTceTemplate(values: Record<string, string>): Promise<U
   for (const [key, raw] of Object.entries(values)) {
     const texto = forPdf(raw ?? "");
     if (key === "plano_atividades") {
-      const plano = medidasDoPlano(font, texto);
-      tamanhosDoTce[key] = plano.tamanho;
-      alturaDoPlano = plano.altura;
+      try {
+        const plano = medidasDoPlano(font, texto);
+        tamanhosDoTce[key] = plano.tamanho;
+        alturaDoPlano = plano.altura;
+      } catch {
+        // Sem conseguir medir, fica o quadro e a letra do modelo, como antes.
+      }
       continue;
     }
     const largura = form.getTextField(key).acroField.getWidgets()[0]?.getRectangle().width;
