@@ -14,6 +14,7 @@ const pegar = (nome: string) => registro.obter(nome) as Ferramenta;
 const ctx = (servicos: Partial<ServicosMcp>, opc: { permissoes?: string[]; paginas?: string[]; abrangencia?: "autorizados" | "todos"; candidatos?: string[]; empresas?: string[] } = {}): ContextoFerramenta => ({
   usuario: { id: "u1", nome: "Usuária" }, integracao: { id: "i1", slug: "rec", nome: "Rec" }, permissoes: new Set(opc.permissoes ?? []), requestId: "req-1",
   servicos: servicos as ServicosMcp, link: (t, id) => linkInterno(APP, t, id), temPagina: (p) => (opc.paginas ?? []).includes(p),
+  sessao: { admin: false, paginas: opc.paginas ?? [] },
   escopo: escopoDe({ abrangencia: opc.abrangencia ?? "todos", registros: { candidatos: new Set(opc.candidatos ?? []), empresas: new Set(opc.empresas ?? []) } }),
 });
 /** Executa como o gateway interno: valida entrada (Zod), executa, valida saída ESTRITA. */

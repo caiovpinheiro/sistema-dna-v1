@@ -27,7 +27,7 @@ export const MODULOS: ReadonlyArray<{ id: string; rotulo: string; finalidade: st
   { id: "processos", rotulo: "Processos", finalidade: "Consultar processos seletivos e suas etapas." },
   { id: "contratacoes", rotulo: "Contratações", finalidade: "Consultar contratações, sem salário e sem documentos." },
   { id: "gestao", rotulo: "Gestão", finalidade: "Indicadores gerenciais agregados (restritos à administração por padrão)." },
-  { id: "conhecimento", rotulo: "Base de conhecimento", finalidade: "Consultar orientações oficiais da DNA Work (Fase 5, ainda não implementada).", planejado: true },
+  { id: "conhecimento", rotulo: "Base de conhecimento", finalidade: "Consultar procedimentos, regras, estratégias e treinamentos oficiais publicados pela DNA Work." },
 ];
 
 /** Permissões individuais que o administrador pode conceder a um colaborador (liberam campos ou ferramentas gerenciais). */

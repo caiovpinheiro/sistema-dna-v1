@@ -303,6 +303,7 @@ export function criarAppInterno(deps: DepsInterno): FastifyInstance {
           requestId: requestId ?? "", link: (tipo, id) => linkInterno(mcp.appUrl, tipo, id),
           temPagina: (pagina) => contexto.sessao.admin || contexto.sessao.paginas.includes(pagina),
           escopo: escopoDe(contexto),
+          sessao: { admin: contexto.sessao.admin, paginas: contexto.sessao.paginas },
         }, entrada.data),
         new Promise<never>((_resolve, rejeitar) => setTimeout(() => rejeitar(new AppError(504, "FERRAMENTA_DEMOROU", "A consulta demorou demais.")), config.MCP_FERRAMENTA_TIMEOUT_MS).unref()),
       ]);

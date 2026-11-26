@@ -12,6 +12,7 @@ import type { ProcessoService } from "../services/processo.service.js";
 import type { TriagemMatchingService } from "../services/triagem-matching.service.js";
 import type { TriagemService } from "../services/triagem.service.js";
 import type { VagaService } from "../services/vaga.service.js";
+import type { ConhecimentoService } from "../conhecimento/conhecimento.service.js";
 
 /** Serviços e repositories do monólito que as ferramentas podem usar. Nenhuma ferramenta recebe SQL livre. */
 export type ServicosMcp = {
@@ -27,6 +28,7 @@ export type ServicosMcp = {
   triagem: TriagemService;
   matching: TriagemMatchingService;
   dossie: DossieService;
+  conhecimento: ConhecimentoService;
   /** Origem dos candidatos (cache em memória de 10 min; chama o CRM). */
   origem: (from: string | null, to: string | null) => Promise<{ status: number; body: unknown }>;
 };
@@ -46,6 +48,8 @@ export type ContextoFerramenta = {
   temPagina(pagina: string): boolean;
   /** Abrangência dos registros concedida a este usuário nesta integração (camada própria do MCP). */
   escopo: EscopoRegistros;
+  /** Administrador efetivo e páginas do painel (para permissões por artigo da base de conhecimento). */
+  sessao: { admin: boolean; paginas: readonly string[] };
 };
 
 /**

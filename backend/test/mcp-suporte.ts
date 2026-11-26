@@ -95,11 +95,12 @@ async function criarBanco(): Promise<{ url: string; limpar(): Promise<void> }> {
   // Migrations do repositório, na ordem. Uma que dependa de tabela legada ausente é ignorada (o banco de teste é parcial).
   const pasta = path.join(raiz, "prisma/migrations");
   for (const nome of fs.readdirSync(pasta).filter((n) => /^\d{14}_/.test(n)).sort()) {
-    if (nome.includes("_mcp_")) continue; // as do MCP entram depois, em ordem, sem esconder erro
+    if (nome.includes("_mcp_") || nome.endsWith("_conhecimento")) continue; // as do MCP entram depois, em ordem, sem esconder erro
     try { await cliente.query(fs.readFileSync(path.join(pasta, nome, "migration.sql"), "utf8")); } catch { /* tabela legada ausente no banco de teste */ }
   }
   await cliente.query(sql("prisma/migrations/20261126120000_mcp_base/migration.sql"));
   await cliente.query(sql("prisma/migrations/20261127120000_mcp_gestao/migration.sql"));
+  await cliente.query(sql("prisma/migrations/20261128120000_conhecimento/migration.sql"));
   await cliente.end();
   return { url: urlBase.toString(), limpar };
 }

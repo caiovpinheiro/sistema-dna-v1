@@ -129,3 +129,10 @@ Cada arquivo cria e apaga seu próprio banco em um PostgreSQL local (nunca produ
 - **Tela de autorização OAuth** (`/mcp/autorizar/:uid`): `docs/agentes/mcp-autorizar/agente.md`.
 - Migration aditiva `20261127120000_mcp_gestao`. Nada de segredo na interface: chaves e segredos HMAC continuam só no EasyPanel.
 - Total de ferramentas: 29 (a nova é `listar_registros_autorizados`). Indicadores gerenciais agora exigem `gestao:indicadores` (ou administrador) e abrangência `todos`.
+
+
+## Fase 5 — base de conhecimento
+
+- Aba **Base de conhecimento** em Configurações; ferramentas `buscar_conhecimento`, `consultar_documento` e `listar_categorias_conhecimento` (total: 32 ferramentas). Detalhes, modelo, pesquisa, segurança e importação em `docs/mcp/conhecimento.md`.
+- Migration aditiva `20261128120000_conhecimento` (cria também as 16 categorias iniciais, sem artigos).
+- Abrangência futura por responsável do lead no Bwipo: só documentada (`abrangencia.md`).

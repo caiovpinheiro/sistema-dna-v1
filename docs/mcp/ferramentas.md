@@ -1,6 +1,6 @@
 # Ferramentas MCP (Fase 3)
 
-> Última revisão: 2026-11-26. 29 ferramentas, **todas somente leitura**. O módulo financeiro continua desativado e não tem ferramentas. Nenhuma ferramenta executa SQL livre nem devolve objeto de repository: cada resposta é uma projeção explícita e é **validada de forma estrita** contra o schema de saída (campo fora do contrato derruba a resposta).
+> Última revisão: 2026-11-26. 32 ferramentas, **todas somente leitura**. O módulo financeiro continua desativado e não tem ferramentas. Nenhuma ferramenta executa SQL livre nem devolve objeto de repository: cada resposta é uma projeção explícita e é **validada de forma estrita** contra o schema de saída (campo fora do contrato derruba a resposta).
 
 ## Como uma ferramenta chega a um usuário (todas as condições, a cada chamada)
 
@@ -43,6 +43,9 @@ Nome estável (nunca renomeado) · descrição em português dizendo quando e co
 | `consultar_origem_candidatos` | gestao | painel + gestao:indicadores | serviço externo, 6/h | de, ate |
 | `consultar_metricas_clt` | gestao | somente administrador | puro | de, ate |
 | `consultar_metricas_estagio` | gestao | somente administrador | puro | de, ate, modo |
+| `buscar_conhecimento` | conhecimento | (nenhuma; permissões por artigo) | puro | texto, categoria, modulo, tags, palavras_chave, pagina, limite |
+| `consultar_documento` | conhecimento | (nenhuma; permissões por artigo) | puro | id |
+| `listar_categorias_conhecimento` | conhecimento | (nenhuma; permissões por artigo) | puro | (sem parâmetros) |
 
 "Serviço externo" = Google/CEP, JEV, OpenAI ou CRM: `openWorldHint: true`, teto por usuário por hora (além do limite geral por minuto) e auditoria própria.
 

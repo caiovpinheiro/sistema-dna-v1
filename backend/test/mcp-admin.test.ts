@@ -50,7 +50,7 @@ test("catálogo: módulos na ordem do painel, ferramentas com finalidade, permis
   assert.deepEqual(modulos.map((m: any) => m.id), ["vagas", "empresas", "triagem", "candidatos", "dossies", "processos", "contratacoes", "gestao", "conhecimento"]);
   assert.equal(total, amb.app.mcp!.registro.nomes().length);
   assert.equal(modulos.reduce((n: number, m: any) => n + m.ferramentas.length, 0), total);
-  assert.equal(modulos.find((m: any) => m.id === "conhecimento").planejado, true);
+  assert.deepEqual(modulos.find((m: any) => m.id === "conhecimento").ferramentas.map((f: any) => f.nome).sort(), ["buscar_conhecimento", "consultar_documento", "listar_categorias_conhecimento"]);
   for (const m of modulos) for (const f of m.ferramentas) {
     assert.ok(f.titulo && f.descricao && f.finalidade, f.nome);
     assert.equal(typeof f.servicoExterno, "boolean");

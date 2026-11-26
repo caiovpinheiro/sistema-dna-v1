@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Save, Trash2, UserPlus } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
+import { BaseConhecimento } from "@/components/base-conhecimento";
 import { IntegracoesMcp } from "@/components/integracoes-mcp";
 import { Alerta, CabecalhoPagina, FiltroChips } from "@/components/pagina";
 import { Badge, Button, Card, Empty, Field, Input, Skeleton, cn } from "@/components/ui";
@@ -20,10 +21,20 @@ function mensagem(error: unknown) {
 /** Abas de Configurações: acessos ao painel e integrações MCP (só administrador). */
 export function ConfiguracoesPage() {
   const [params, setParams] = useSearchParams();
-  const aba = params.get("aba") === "mcp" ? "mcp" : "acessos";
+  const bruta = params.get("aba");
+  const aba = bruta === "mcp" || bruta === "conhecimento" ? bruta : "acessos";
   const abas = (
-    <FiltroChips rotulo="Abas de Configurações" valor={aba} onChange={(id) => setParams(id === "mcp" ? { aba: "mcp" } : {})} opcoes={[{ id: "acessos", rotulo: "Acessos" }, { id: "mcp", rotulo: "Integrações MCP" }]} />
+    <FiltroChips rotulo="Abas de Configurações" valor={aba} onChange={(id) => setParams(id === "acessos" ? {} : { aba: id })} opcoes={[{ id: "acessos", rotulo: "Acessos" }, { id: "mcp", rotulo: "Integrações MCP" }, { id: "conhecimento", rotulo: "Base de conhecimento" }]} />
   );
+  if (aba === "conhecimento") {
+    return (
+      <div className="grid gap-5">
+        <CabecalhoPagina titulo="Configurações" descricao="Base de conhecimento: procedimentos, regras, estratégias e treinamentos da DNA Work, consultados pelos colaboradores no ChatGPT (MCP)." />
+        {abas}
+        <BaseConhecimento />
+      </div>
+    );
+  }
   if (aba === "mcp") {
     return (
       <div className="grid gap-5">

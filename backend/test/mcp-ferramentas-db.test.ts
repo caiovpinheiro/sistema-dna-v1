@@ -69,7 +69,7 @@ test("catálogo efetivo por usuário: cada um vê só as ferramentas dos seus m�
   // Indicadores gerenciais: restritos à administração por padrão; a página (contratacoes) sozinha não basta, exige a permissão individual gestao:indicadores.
   assert.ok(!a.includes("consultar_indicadores_contratacoes"), "sem a permissão gestao:indicadores");
   assert.ok(!a.includes("consultar_dashboard") && !a.includes("consultar_origem_candidatos"), "sem a página painel");
-  assert.deepEqual(await nomesDoCatalogo(tBia), ["buscar_empresas", "consultar_empresa", "consultar_vagas_empresa", "listar_registros_autorizados"]); // + a lista de registros autorizados, que não exige página
+  assert.deepEqual(await nomesDoCatalogo(tBia), ["buscar_conhecimento", "buscar_empresas", "consultar_documento", "consultar_empresa", "consultar_vagas_empresa", "listar_categorias_conhecimento", "listar_registros_autorizados"]); // + registros autorizados e base de conhecimento, que não exigem página (o acesso é por artigo)
   const todas = await nomesDoCatalogo(tAdm);
   assert.equal(todas.length, amb.app.mcp!.registro.nomes().length);
   assert.ok(todas.includes("consultar_metricas_clt") && todas.includes("consultar_metricas_estagio"));

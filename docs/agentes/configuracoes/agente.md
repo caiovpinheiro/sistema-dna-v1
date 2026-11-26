@@ -1,6 +1,6 @@
 # Agente — Configurações
 
-> Última revisão: 2026-11-26 (commit df7000a, aba Integrações MCP)
+> Última revisão: 2026-11-26 (Fase 5: aba Base de conhecimento)
 
 ## Para que serve
 
@@ -98,3 +98,16 @@ API (`backend/src/mcp/admin.ts`, prefixo `/api/v1/configuracoes/mcp`): GET `resu
 Dados: tabelas `dna_work.mcp_*` (migrations `20261126120000_mcp_base` e `20261127120000_mcp_gestao`, esta com `abrangencia` e `mcp_integracao_usuario_registro`). Regras e limites da abrangência em `docs/mcp/abrangencia.md`.
 
 Cuidados: "próprios" e "equipe" ficam indisponíveis (o banco não registra responsável nem equipe); toda mudança vale na próxima chamada, sem rebuild; não expor segredos. Testes: `backend/test/mcp-admin.test.ts` e `backend/test/mcp-abrangencia.test.ts`.
+
+
+## Aba "Base de conhecimento" (Fase 5)
+
+Rota `/configuracoes?aba=conhecimento` (só administrador). Componentes: `frontend/src/components/base-conhecimento.tsx`, `frontend/src/components/markdown.tsx` e `frontend/src/lib/markdown.ts` (Markdown seguro, sem HTML cru). Três áreas:
+
+- **Artigos**: lista com pesquisa e filtros (categoria, módulo, status, só desatualizados) e selos (rascunho pendente, revisar, acesso restrito); editor com título, resumo, Markdown com pré-visualização (lado a lado em tela larga, alternado no celular), tags, palavras-chave, referência, fonte e nota; organização (categoria, módulo, revisar em); permissões (só administradores, páginas exigidas, integrações); ações Salvar rascunho, Publicar (confirmação), Arquivar/Reativar, Duplicar e Histórico (ver versão, restaurar como novo rascunho).
+- **Categorias**: criar, renomear, ativar/desativar (desativar tira os artigos do MCP).
+- **Testar a busca**: mostra o que `buscar_conhecimento` encontra (só publicado), com relevância e trechos.
+
+API (`backend/src/conhecimento/admin.ts`, prefixo `/api/v1/configuracoes/conhecimento`): GET `opcoes`, `categorias`, `artigos`, `artigos/:id`, `artigos/:id/versoes`, `artigos/:id/versoes/:v`, `auditoria`, `busca`; POST `categorias`, `artigos`, `artigos/:id/publicar|arquivar|reativar|duplicar`, `artigos/:id/versoes/:v/restaurar`, `importar`; PATCH `categorias/:id`, `artigos/:id`; PUT `artigos/:id/rascunho`.
+
+Dados: `dna_work.conhecimento_*` (migration `20261128120000_conhecimento`). Regras completas em `docs/mcp/conhecimento.md`. Cuidados: a versão publicada é imutável; publicar é a única forma de mudar o que o MCP vê; nunca colocar dados pessoais, conversas reais ou credenciais nos artigos. Testes: `backend/test/mcp-conhecimento.test.ts`, `frontend/test/markdown.test.ts`.

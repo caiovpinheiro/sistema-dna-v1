@@ -13,7 +13,7 @@ type Pedido = {
   usuario: { nome: string } | null; modulos: Array<{ id: string; ferramentas: string[] }>; abrangencia: string | null; contato: boolean; privacidade: string[];
 };
 
-const MODULOS: Record<string, string> = { vagas: "Vagas", empresas: "Empresas", triagem: "Triagem", candidatos: "Candidatos", dossies: "Dossiês", processos: "Processos", contratacoes: "Contratações", gestao: "Gestão" };
+const MODULOS: Record<string, string> = { vagas: "Vagas", empresas: "Empresas", triagem: "Triagem", candidatos: "Candidatos", dossies: "Dossiês", processos: "Processos", contratacoes: "Contratações", gestao: "Gestão", conhecimento: "Base de conhecimento" };
 const ESCOPOS: Record<string, string> = { "mcp:read": "Consultar informações do DNA Work (somente leitura)" };
 const ABRANGENCIAS: Record<string, string> = {
   nenhuma: "Sem acesso a dados individuais de candidatos, processos e contratações.",
