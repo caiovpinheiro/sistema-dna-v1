@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { PDFDocument } from "pdf-lib";
-import { calcularHolerite, diasTrabalhados, gerarHoleritesPdf, linhasDoHolerite } from "../src/lib/holerite.js";
+import { calcularHolerite, calcularRescisaoEstagio, diasTrabalhados, gerarHoleritesPdf, linhasDoHolerite } from "../src/lib/holerite.js";
 
 const vazio = { faltas: 0, auxilio_transporte: 0, acrescimos: 0, descricao_acrescimos: "", descontos: 0, descricao_descontos: "" };
 
@@ -45,4 +45,50 @@ test("PDF sai com uma página por estagiário e só as linhas com valor", async 
   const bytes = await gerarHoleritesPdf([dados, dados]);
   assert.ok(Buffer.from(bytes).toString("latin1").startsWith("%PDF"));
   assert.equal((await PDFDocument.load(bytes)).getPageCount(), 2);
+});
+
+test("rescisão: exemplo do usuário", () => {
+  const r = calcularRescisaoEstagio({ inicio: "2026-01-01", demissao: "2026-03-30", bolsa_base: 1300 });
+  assert.deepEqual(r, { bolsa_base: 1300, meses_fechados: 2, dias_trabalhados: 30, meses: 3, valor_dias: 1300, valor_ferias: 325, total: 1625 });
+});
+
+test("rescisão: início no meio do mês", () => {
+  const r = calcularRescisaoEstagio({ inicio: "2026-01-15", demissao: "2026-03-30", bolsa_base: 1200 });
+  assert.equal(r?.meses_fechados, 2);
+  assert.equal(r?.dias_trabalhados, 16);
+  assert.equal(r?.meses, 3);
+  assert.equal(r?.valor_dias, 640);
+  assert.equal(r?.valor_ferias, 300);
+  assert.equal(r?.total, 940);
+});
+
+test("rescisão: meses exatos, sem sobra", () => {
+  const r = calcularRescisaoEstagio({ inicio: "2026-01-15", demissao: "2026-03-14", bolsa_base: 1200 });
+  assert.equal(r?.meses_fechados, 2);
+  assert.equal(r?.dias_trabalhados, 0);
+  assert.equal(r?.meses, 2);
+  assert.equal(r?.valor_dias, 0);
+  assert.equal(r?.valor_ferias, 200);
+});
+
+test("rescisão: sobra máxima de um mês de 31 dias", () => {
+  const r = calcularRescisaoEstagio({ inicio: "2026-03-01", demissao: "2026-05-30", bolsa_base: 1200 });
+  assert.equal(r?.meses_fechados, 2);
+  assert.equal(r?.dias_trabalhados, 30);
+  assert.equal(r?.meses, 3);
+  assert.equal(r?.valor_dias, 1200);
+});
+
+test("rescisão: início no dia 31 e fevereiro", () => {
+  const r = calcularRescisaoEstagio({ inicio: "2026-01-31", demissao: "2026-03-10", bolsa_base: 1200 });
+  assert.equal(r?.meses_fechados, 1);
+  assert.equal(r?.meses, 2);
+});
+
+test("rescisão: sem cálculo quando as datas não servem e bolsa zero", () => {
+  assert.equal(calcularRescisaoEstagio({ inicio: "2026-03-10", demissao: "2026-03-10", bolsa_base: 1000 }), null);
+  assert.equal(calcularRescisaoEstagio({ inicio: "2026-03-10", demissao: "2026-03-01", bolsa_base: 1000 }), null);
+  assert.equal(calcularRescisaoEstagio({ inicio: null, demissao: "2026-03-01", bolsa_base: 1000 }), null);
+  assert.equal(calcularRescisaoEstagio({ inicio: "2026-03-01", demissao: null, bolsa_base: 1000 }), null);
+  assert.equal(calcularRescisaoEstagio({ inicio: "2026-01-01", demissao: "2026-03-30", bolsa_base: 0 })?.total, 0);
 });

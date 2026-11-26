@@ -80,6 +80,56 @@ export function calcularHolerite(entrada: { competencia: string; bolsa_base: num
   };
 }
 
+export type CalculoRescisao = {
+  bolsa_base: number;
+  meses_fechados: number;
+  dias_trabalhados: number;
+  meses: number;
+  valor_dias: number;
+  valor_ferias: number;
+  total: number;
+};
+
+const DIA_MS = 86_400_000;
+
+/** Soma n meses a uma data AAAA-MM-DD; se o dia não existir no mês de destino, usa o último dia dele. */
+function somaMeses(iso: string, n: number) {
+  const [ano, mes, dia] = iso.split("-").map(Number);
+  const alvo = mes - 1 + n;
+  const anoAlvo = ano + Math.floor(alvo / 12);
+  const mesAlvo = ((alvo % 12) + 12) % 12;
+  return Date.UTC(anoAlvo, mesAlvo, Math.min(dia, diasNoMes(anoAlvo, mesAlvo + 1)));
+}
+
+/**
+ * Acerto final do estágio: dias trabalhados (bolsa ÷ 30 × dias da sobra depois do último mês fechado, no máximo 30)
+ * e férias proporcionais (bolsa ÷ 12 × meses). Os meses contam a partir do início: meses fechados, mais 1 se sobrar algum dia.
+ * Datas em AAAA-MM-DD. Sem datas, ou com desligamento no início ou antes dele, não há recibo (null).
+ */
+export function calcularRescisaoEstagio(entrada: { inicio: string | null; demissao: string | null; bolsa_base: number }): CalculoRescisao | null {
+  const { inicio, demissao } = entrada;
+  const formato = /^\d{4}-\d{2}-\d{2}$/;
+  if (!inicio || !demissao || !formato.test(inicio) || !formato.test(demissao) || demissao <= inicio) return null;
+  const fim = Date.parse(`${demissao}T00:00:00Z`);
+  let fechados = 0;
+  while (somaMeses(inicio, fechados + 1) - DIA_MS <= fim) fechados += 1;
+  const sobra = Math.round((fim - somaMeses(inicio, fechados)) / DIA_MS) + 1;
+  const dias = Math.max(0, Math.min(30, sobra));
+  const meses = fechados + (dias > 0 ? 1 : 0);
+  const base = Math.max(0, Number(entrada.bolsa_base) || 0);
+  const valorDias = centavos((base / 30) * dias);
+  const valorFerias = centavos((base / 12) * meses);
+  return {
+    bolsa_base: centavos(base),
+    meses_fechados: fechados,
+    dias_trabalhados: dias,
+    meses,
+    valor_dias: valorDias,
+    valor_ferias: valorFerias,
+    total: centavos(valorDias + valorFerias),
+  };
+}
+
 const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
 
 export function competenciaPorExtenso(competencia: string) {
