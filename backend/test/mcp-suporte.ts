@@ -93,6 +93,14 @@ export async function criarAmbiente(extra: Record<string, string> = {}): Promise
     JEV_API_URL: "",
     JEV_API_KEY: "",
     MCP_ENABLED: "1",
+    MCP_INTERNAL_INSECURE: "1",
+    MCP_INTERNAL_TLS_CERT: "",
+    MCP_INTERNAL_TLS_KEY: "",
+    MCP_INTERNAL_TLS_CA: "",
+    MCP_INTERNAL_CLIENTES: "",
+    MCP_CONTRATOS: "1",
+    MCP_OAUTH_REDIRECT_URIS: "",
+    MCP_OAUTH_CIMD_URLS: "",
     MCP_PUBLIC_URL: MCP_URL,
     APP_PUBLIC_URL: APP_URL,
     MCP_GATEWAY_SECRETS: `k1:${SEGREDO_ATUAL},k0:${SEGREDO_ANTIGO}`,
@@ -119,6 +127,16 @@ export async function criarAmbiente(extra: Record<string, string> = {}): Promise
       await banco.limpar();
     },
   };
+}
+
+/** Outra instância do monólito sobre o MESMO banco (simula réplica ou reinício). */
+export async function criarReplica(amb: Ambiente): Promise<Ambiente> {
+  const { createPool } = await import("../src/db/pool.js");
+  const { loadCapabilities } = await import("../src/db/capabilities.js");
+  const { buildApp } = await import("../src/app.js");
+  const db = createPool(amb.config);
+  const app = await buildApp({ config: amb.config, db, capabilities: await loadCapabilities(db) });
+  return { app, db, config: amb.config, async fechar() { await app.close(); await db.end(); } };
 }
 
 export type UsuarioTeste = { id: string; email: string; cookie: string };
@@ -271,6 +289,8 @@ export async function obterTokens(amb: Ambiente, usuario: { cookie: string }, re
 import { assinar, CONTRATO_VERSAO } from "../src/mcp/assinatura.js";
 
 export type OpcoesInternas = {
+  /** Caminho completo (ex.: /internal/mcp/saude); substitui /internal/mcp/<slug>/<operacao>. */
+  caminhoCompleto?: string;
   slug: string;
   operacao: "integracao" | "autenticar" | "ferramentas" | "executar";
   token?: string | null;
@@ -295,7 +315,7 @@ export function requisicaoInterna(amb: Ambiente, o: OpcoesInternas) {
   const nonce = o.nonce ?? randomBytes(16).toString("base64url");
   const requestId = o.requestId ?? `req-${randomBytes(6).toString("hex")}`;
   const contrato = o.contrato ?? CONTRATO_VERSAO;
-  const caminho = `/internal/mcp/${o.slug}/${o.operacao}`;
+  const caminho = o.caminhoCompleto ?? `/internal/mcp/${o.slug}/${o.operacao}`;
   const assinatura = assinar(segredo, { metodo: "POST", caminho, contrato, chave, timestamp, nonce, requestId, corpo: corpoTexto, token: o.token ?? null });
   return amb.app.mcp!.interno.inject({
     method: "POST",

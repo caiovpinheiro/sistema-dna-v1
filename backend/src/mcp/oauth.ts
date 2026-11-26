@@ -13,10 +13,25 @@ function escapar(texto: string): string {
   return texto.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] as string);
 }
 
-/** Chave de assinatura só para o endpoint JWKS (os tokens são opacos). Nova a cada boot: nada depende dela. */
-function chaveEfemera() {
+function gerarChave() {
   const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
-  return { ...privateKey.export({ format: "jwk" }), alg: "RS256", use: "sig", kid: "mcp-efemera" };
+  return { ...privateKey.export({ format: "jwk" }), alg: "RS256", use: "sig", kid: "mcp-principal" };
+}
+
+type ChaveJwk = ReturnType<typeof gerarChave>;
+
+/**
+ * Chave de assinatura do provider (JWKS). Os access/refresh tokens são opacos e não dependem dela, mas todas as
+ * réplicas precisam servir o MESMO JWKS e sobreviver a reinícios: a primeira a subir grava (INSERT … DO NOTHING,
+ * atômico) e as demais leem a mesma.
+ */
+export async function chaveAssinaturaPersistente(db: Pool): Promise<ChaveJwk> {
+  await db.query(
+    "INSERT INTO dna_work.mcp_oauth_registro (tipo, id, payload) VALUES ('ChaveAssinatura', 'principal', $1::jsonb) ON CONFLICT (tipo, id) DO NOTHING",
+    [JSON.stringify(gerarChave())],
+  );
+  const { rows } = await db.query<{ payload: ChaveJwk }>("SELECT payload FROM dna_work.mcp_oauth_registro WHERE tipo = 'ChaveAssinatura' AND id = 'principal'");
+  return rows[0].payload;
 }
 
 async function integracaoAtivaPorSlug(db: Pool, slug: string) {
@@ -43,7 +58,7 @@ function politicaSempreConfirma() {
   return politica;
 }
 
-export function criarProvider(db: Pool, config: AppConfig, mcp: McpConfig): Provider {
+export function criarProvider(db: Pool, config: AppConfig, mcp: McpConfig, chave: ChaveJwk): Provider {
   const producao = process.env.NODE_ENV === "production";
   const segredoCookie = config.MCP_OAUTH_COOKIE_SECRET
     || createHash("sha256").update(`dnawork-mcp-cookies:${config.JWT_SECRET}`).digest("hex");
@@ -67,7 +82,7 @@ export function criarProvider(db: Pool, config: AppConfig, mcp: McpConfig): Prov
       response_types: ["code"],
       token_endpoint_auth_method: "none",
     },
-    jwks: { keys: [chaveEfemera()] },
+    jwks: { keys: [chave] },
     cookies: {
       keys: [segredoCookie],
       long: { signed: true, secure: producao, sameSite: "lax", httpOnly: true },
@@ -122,7 +137,8 @@ export function criarProvider(db: Pool, config: AppConfig, mcp: McpConfig): Prov
       clientIdMetadataDocument: {
         enabled: true,
         ack: "draft-03",
-        allowFetch: async () => true,
+        // Lista exata de client_id (ex.: https://chatgpt.com/oauth/client.json). Vazia = qualquer https público (com proteção SSRF).
+        allowFetch: async (_ctx, clientId) => !mcp.cimdUrls.length || mcp.cimdUrls.includes(clientId),
         allowClient: async (_ctx, client) => (client.redirectUris ?? []).every((uri) => redirectPermitido(mcp, uri)),
       },
       resourceIndicators: {
@@ -176,7 +192,16 @@ export function montarOAuth(app: FastifyInstance, provider: Provider, limitePorM
     oauth.post("/oauth/token", limitado, encaminhar);
     oauth.post("/oauth/revoke", limitado, encaminhar);
     oauth.post("/oauth/register", limitado, encaminhar);
-    oauth.get("/oauth/authorize", { config: { rateLimit: { max: 60, timeWindow: "1 minute" } } }, encaminhar);
+    // Cliente que não manda `scope` recebe o escopo único da integração (mcp:read); escopos desconhecidos (ex.: offline_access) são ignorados pelo provider.
+    oauth.get("/oauth/authorize", { config: { rateLimit: { max: 60, timeWindow: "1 minute" } } }, async (request, reply) => {
+      const url = new URL(request.raw.url ?? "", "http://x");
+      const pedidos = (url.searchParams.get("scope") ?? "").split(/\s+/).filter(Boolean);
+      if (!pedidos.some((escopo) => ESCOPOS_SUPORTADOS.includes(escopo))) {
+        url.searchParams.set("scope", [...pedidos, ESCOPO_LEITURA].join(" "));
+        request.raw.url = `${url.pathname}${url.search}`;
+      }
+      return encaminhar(request, reply);
+    });
     oauth.get("/oauth/authorize/:uid", encaminhar);
     oauth.get("/oauth/jwks", encaminhar);
     oauth.get("/.well-known/oauth-authorization-server", encaminhar);

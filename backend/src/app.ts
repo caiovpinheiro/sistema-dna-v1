@@ -185,7 +185,7 @@ export async function buildApp(context: AppContext): Promise<FastifyInstance> {
 
   await registerRoutes(app, context.config, services, context.db);
   // MCP: desligado por padrão (MCP_ENABLED). Ligado, registra OAuth/consentimento aqui e a API interna em app separado.
-  iniciarMcp(app, { db: context.db, config: context.config, acesso: services.acesso, servicos: { vagas: services.vagas } });
+  await iniciarMcp(app, { db: context.db, config: context.config, acesso: services.acesso, servicos: { vagas: services.vagas } });
   app.withTypeProvider<ZodTypeProvider>().post("/api/v1/candidatos/:id/acesso-lms", {
     schema: {
       tags: ["candidatos"],

@@ -85,10 +85,20 @@ const envSchema = z.object({
   MCP_INTERNAL_TLS_CERT: z.string().optional().default(""),
   MCP_INTERNAL_TLS_KEY: z.string().optional().default(""),
   MCP_INTERNAL_TLS_CA: z.string().optional().default(""),
+  // mTLS é obrigatório. Só em desenvolvimento/teste (nunca em produção) dá para ligar sem TLS com MCP_INTERNAL_INSECURE=1.
+  MCP_INTERNAL_INSECURE: z.string().optional().transform((value) => value === "1" || value === "true"),
+  // CNs/SANs de certificados de cliente aceitos no listener interno (vazio = qualquer certificado emitido pela CA).
+  MCP_INTERNAL_CLIENTES: z.string().optional().default(""),
+  // Versões do contrato interno aceitas (N e N-1 durante uma troca). Ex.: "1" ou "1,2".
+  MCP_CONTRATOS: z.string().optional().default("1"),
   // OAuth: DCR desligado por padrão; clientes previamente cadastrados em JSON (segredos só no ambiente).
   MCP_OAUTH_DCR: z.string().optional().transform((value) => value === "1" || value === "true"),
   MCP_OAUTH_CLIENTS: z.string().optional().default(""),
   MCP_OAUTH_REDIRECT_HOSTS: z.string().optional().default(""),
+  // Redirect URIs EXATAS permitidas (ex.: https://chatgpt.com/connector_platform_oauth_redirect). Têm precedência sobre hosts.
+  MCP_OAUTH_REDIRECT_URIS: z.string().optional().default(""),
+  // client_id (URL do CIMD) EXATOS permitidos (ex.: https://chatgpt.com/oauth/client.json). Vazio = qualquer https público.
+  MCP_OAUTH_CIMD_URLS: z.string().optional().default(""),
   MCP_OAUTH_COOKIE_SECRET: z.string().optional().default(""),
   // Limite por IP nos endpoints /oauth/token, /oauth/revoke e /oauth/register (por minuto).
   MCP_OAUTH_RATE_POR_MIN: z.coerce.number().int().min(1).max(10_000).default(30),

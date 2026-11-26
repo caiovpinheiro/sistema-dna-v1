@@ -1,0 +1,10 @@
+node_modules
+dist
+test
+scripts
+*.md
+*.pem
+*.key
+*.crt
+.env
+.env.*

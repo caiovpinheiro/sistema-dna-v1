@@ -1,6 +1,6 @@
 # MCP DNA Work — Fase 2A (núcleo no monólito)
 
-> Última revisão: 2026-11-26. Estado: **Fase 2A** (OAuth, API interna, política, auditoria, rate limit, flag). O gateway `mcp-server/` (Fase 2B), a aba "Integrações MCP" e a tela de consentimento (Fase 4) ainda não existem.
+> Última revisão: 2026-11-26. Estado: **Fase 2B** (núcleo no monólito + gateway `mcp-server/` + mTLS + workflows). A aba "Integrações MCP" e a tela de consentimento (Fase 4) ainda não existem. Veja também [mtls.md](mtls.md) e [implantacao.md](implantacao.md).
 
 O MCP roda em dois serviços do mesmo repositório. O monólito continua sendo o único dono de usuários, OAuth, permissões, ferramentas e auditoria. O `mcp-server` (2B) só fala o protocolo MCP e repassa as chamadas, sem banco e sem cache de autorização.
 
@@ -26,7 +26,12 @@ ChatGPT/navegador ─► monólito: listener PÚBLICO /oauth/*, /.well-known/*, 
 | `MCP_INTERNAL_PORT` / `MCP_INTERNAL_HOST` | Listener interno (padrão 3334 / 0.0.0.0). Nunca publicar no domínio. |
 | `MCP_GATEWAY_SECRETS` | `id:segredo,id2:segredo2` (32+ caracteres cada). O gateway assina com um deles; vários permitem rotação sem queda. |
 | `MCP_HMAC_JANELA_S` | Tolerância de relógio da assinatura (padrão 60). |
-| `MCP_INTERNAL_TLS_CERT` / `_KEY` / `_CA` | TLS no listener interno; com `_CA`, exige certificado de cliente (mTLS). |
+| `MCP_INTERNAL_TLS_CERT` / `_KEY` / `_CA` | **mTLS obrigatório** no listener interno (validado no boot; falha fechada). |
+| `MCP_INTERNAL_INSECURE` | Só dev/teste, nunca em produção: listener interno em texto puro. |
+| `MCP_INTERNAL_CLIENTES` | CNs/SANs de cliente aceitos (ex.: `gateway-mcp`). |
+| `MCP_CONTRATOS` | Versões do contrato interno aceitas (`1`, `1,2` durante uma troca). |
+| `MCP_OAUTH_REDIRECT_URIS` | Redirect URIs **exatas** (precedência sobre hosts). Ex.: `https://chatgpt.com/connector_platform_oauth_redirect`. |
+| `MCP_OAUTH_CIMD_URLS` | `client_id` (URL do CIMD) **exatos** aceitos. Ex.: `https://chatgpt.com/oauth/client.json`. |
 | `MCP_OAUTH_DCR` | `1` liga o registro dinâmico (DCR). Padrão: desligado. |
 | `MCP_OAUTH_CLIENTS` | JSON de clientes pré-cadastrados (`client_id`, `client_secret` opcional, `redirect_uris`). Segredos só no ambiente. |
 | `MCP_OAUTH_REDIRECT_HOSTS` | Lista de hosts permitidos nos redirects (opcional, restringe todos os tipos de cliente). |
@@ -93,3 +98,17 @@ MCP_TEST_DATABASE_URL=postgres://postgres@127.0.0.1:5432/postgres npx tsx --test
 ```
 
 Cada arquivo cria e apaga seu próprio banco em um PostgreSQL local (nunca produção). Sem `MCP_TEST_DATABASE_URL`, usa `embedded-postgres`, que não roda como root.
+
+## Fase 2B — o que mudou
+
+- **Gateway `mcp-server/`**: serviço independente (Node/TypeScript, SDK oficial, Streamable HTTP sem sessão, catálogo dinâmico, sem banco). `/health` (liveness) e `/ready` (certificados, monólito, contrato, issuer e URL pública). Erros 401 (`WWW-Authenticate` com `resource_metadata` do caminho exato `/.well-known/oauth-protected-resource/mcp/:slug`), 403, 429 e 503 controlados.
+- **Canal interno**: mTLS obrigatório + HMAC + token do usuário (`docs/mcp/mtls.md`). Rota interna `POST /internal/mcp/saude` informa contratos, issuer e URL pública.
+- **OAuth/ChatGPT**: `resource` obrigatório; escopo ausente ou desconhecido (`offline_access`) vira `mcp:read`; refresh token emitido sem `offline_access` quando o cliente declara `refresh_token`; CIMD e redirect por **lista exata**; JWKS persistido no banco (todas as réplicas servem o mesmo).
+- **Workflows** de CI e deploy independente (`docs/mcp/implantacao.md`).
+
+### Comportamento do `oidc-provider` com o CIMD (validado em teste)
+
+- `token_endpoint_auth_method: "none"` funciona.
+- Se o documento lista `private_key_jwt` em `token_endpoint_auth_methods_supported`, a biblioteca **exige `jwks` ou `jwks_uri`** e passa a **exigir a assertion** `private_key_jwt` no `/oauth/token` (sem ela, 401).
+- Documento sem `refresh_token` em `grant_types` → sem refresh token.
+- Conferir com o documento real do ChatGPT (`https://chatgpt.com/oauth/client.json`) antes do go-live.

@@ -36,7 +36,7 @@ test("segredos: formato id:segredo, mínimo de 32 caracteres, ids únicos, rota�
   assert.equal(lerSegredos("").size, 0);
 });
 
-const envBase = { MCP_PUBLIC_URL: "https://mcp.dnawork.ai", APP_PUBLIC_URL: "https://painel.dnawork.ai", MCP_GATEWAY_SECRETS: `k1:${SEGREDO}`, MCP_OAUTH_CLIENTS: "", MCP_OAUTH_REDIRECT_HOSTS: "" };
+const envBase = { MCP_INTERNAL_INSECURE: true, MCP_INTERNAL_TLS_CERT: "", MCP_INTERNAL_TLS_KEY: "", MCP_INTERNAL_TLS_CA: "", MCP_INTERNAL_CLIENTES: "", MCP_CONTRATOS: "1", MCP_OAUTH_REDIRECT_URIS: "", MCP_OAUTH_CIMD_URLS: "", MCP_PUBLIC_URL: "https://mcp.dnawork.ai", APP_PUBLIC_URL: "https://painel.dnawork.ai", MCP_GATEWAY_SECRETS: `k1:${SEGREDO}`, MCP_OAUTH_CLIENTS: "", MCP_OAUTH_REDIRECT_HOSTS: "" };
 
 test("configuração: URLs só https e só origem; segredos obrigatórios; falha no boot", () => {
   const ok = lerMcpConfig(envBase as never);

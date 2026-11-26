@@ -1,4 +1,3 @@
-import fs from "node:fs";
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import type Provider from "oidc-provider";
 import type { Pool } from "pg";
@@ -6,7 +5,9 @@ import { z } from "zod";
 import type { AppConfig } from "../config.js";
 import { AppError } from "../lib/errors.js";
 import type { AcessoService } from "../services/acesso.service.js";
-import { assinaturaConfere, CONTRATO_VERSAO, CONTRATOS_SUPORTADOS } from "./assinatura.js";
+import { assinaturaConfere, CONTRATO_VERSAO } from "./assinatura.js";
+import { opcoesServidor, validarMaterialTls } from "./tls-interno.js";
+import type { TLSSocket } from "node:tls";
 import { recursoDaIntegracao, type McpConfig } from "./config.js";
 import { ESCOPO_LEITURA } from "./oauth.js";
 import { carregarContexto, ferramentasEfetivas, motivoDaNegativa, type ContextoAcesso } from "./politica.js";
@@ -57,7 +58,7 @@ function bearerDe(request: FastifyRequest): string | null {
  */
 export function criarAppInterno(deps: DepsInterno): FastifyInstance {
   const { db, config, mcp, provider, acesso, registro, servicos } = deps;
-  const tlsCert = config.MCP_INTERNAL_TLS_CERT && config.MCP_INTERNAL_TLS_KEY;
+  const material = mcp.inseguro ? null : validarMaterialTls({ cert: config.MCP_INTERNAL_TLS_CERT, key: config.MCP_INTERNAL_TLS_KEY, ca: config.MCP_INTERNAL_TLS_CA });
   const app = Fastify({
     logger: process.env.NODE_ENV === "test" ? false : {
       level: "info",
@@ -65,17 +66,7 @@ export function criarAppInterno(deps: DepsInterno): FastifyInstance {
     },
     bodyLimit: 256 * 1024,
     trustProxy: false,
-    ...(tlsCert
-      ? {
-        https: {
-          key: fs.readFileSync(config.MCP_INTERNAL_TLS_KEY),
-          cert: fs.readFileSync(config.MCP_INTERNAL_TLS_CERT),
-          ...(config.MCP_INTERNAL_TLS_CA
-            ? { ca: fs.readFileSync(config.MCP_INTERNAL_TLS_CA), requestCert: true, rejectUnauthorized: true }
-            : {}),
-        },
-      }
-      : {}),
+    ...(material ? { https: opcoesServidor(material) } : {}),
   }) as unknown as FastifyInstance;
 
   app.decorateRequest("mcpGateway", null);
@@ -102,6 +93,24 @@ export function criarAppInterno(deps: DepsInterno): FastifyInstance {
     throw new AppError(401, "ASSINATURA_INVALIDA", "Assinatura inválida.");
   }
 
+  /** (0) mTLS: o handshake já exigiu certificado de cliente válido; aqui confere também QUEM é (CN/SAN permitidos). */
+  app.addHook("onRequest", async (request) => {
+    if (mcp.inseguro) return;
+    const socket = request.raw.socket as TLSSocket;
+    if (!socket.authorized) {
+      await auditarTentativa(db, { operacao: "mtls", resultado: "negado", codigo: "cliente_sem_certificado" }).catch(() => undefined);
+      throw new AppError(401, "CERTIFICADO_CLIENTE_INVALIDO", "Certificado de cliente inválido.");
+    }
+    if (mcp.clientesInternos.length) {
+      const par = socket.getPeerCertificate();
+      const nomes = [par.subject?.CN, ...String(par.subjectaltname ?? "").split(",").map((item) => item.trim().replace(/^DNS:/, ""))].filter(Boolean);
+      if (!nomes.some((nome) => mcp.clientesInternos.includes(String(nome)))) {
+        await auditarTentativa(db, { operacao: "mtls", resultado: "negado", codigo: "cliente_nao_permitido" }).catch(() => undefined);
+        throw new AppError(403, "CERTIFICADO_CLIENTE_NAO_PERMITIDO", "Certificado de cliente não permitido.");
+      }
+    }
+  });
+
   /** (1) Quem chama é o gateway? Assinatura sobre método, caminho, corpo, token (hash), tempo, nonce e request id. */
   app.addHook("preHandler", async (request) => {
     const h = request.headers;
@@ -124,8 +133,8 @@ export function criarAppInterno(deps: DepsInterno): FastifyInstance {
     // Só depois de a assinatura valer: consome o nonce (atômico, vale entre réplicas).
     if (!(await consumirNonce(db, chave, nonce, config.MCP_HMAC_JANELA_S * 2 + 5))) return negarGateway(request, "replay");
     request.mcpGateway = { chave, requestId };
-    if (!CONTRATOS_SUPORTADOS.includes(contrato)) {
-      throw new AppError(400, "CONTRATO_NAO_SUPORTADO", "Versão do contrato interno não suportada.", { suportados: CONTRATOS_SUPORTADOS });
+    if (!mcp.contratos.includes(contrato)) {
+      throw new AppError(400, "CONTRATO_NAO_SUPORTADO", "Versão do contrato interno não suportada.", { suportados: mcp.contratos });
     }
   });
 
@@ -171,6 +180,14 @@ export function criarAppInterno(deps: DepsInterno): FastifyInstance {
     }
     return { contexto, cliente: acessToken.clientId ?? null, requestId };
   }
+
+  /** Prontidão do gateway: versões do contrato, issuer e URL pública (para detectar configuração divergente). */
+  app.post("/internal/mcp/saude", async () => envelope({
+    contratos: mcp.contratos,
+    issuer: mcp.appUrl,
+    publicUrl: mcp.publicUrl,
+    tls: material ? { diasRestantes: validarMaterialTls({ cert: config.MCP_INTERNAL_TLS_CERT, key: config.MCP_INTERNAL_TLS_KEY, ca: config.MCP_INTERNAL_TLS_CA }).diasRestantes } : null,
+  }));
 
   const slugDe = (request: FastifyRequest) => (request.params as { slug: string }).slug;
   const ROTA = "/internal/mcp/:slug";
