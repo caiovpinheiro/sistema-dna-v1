@@ -3,6 +3,9 @@ import { AppError } from "../../lib/errors.js";
 import { AVISO_TEXTO_LIVRE, removerChavesSensiveis, saidaAviso } from "./comum.js";
 import { definir } from "./tipos.js";
 
+/** Indicadores gerenciais: restritos à administração; um colaborador só usa com esta permissão individual. */
+export const PERMISSAO_INDICADORES = "gestao:indicadores";
+
 type Linha = Record<string, any>;
 const DATA = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use AAAA-MM-DD.");
 const AGREGADO = z.record(z.unknown());
@@ -26,7 +29,7 @@ export const consultarDashboard = definir({
   nome: "consultar_dashboard",
   titulo: "Dashboard de gestão",
   descricao: `Indicadores gerais do painel no período (cadastros, vagas, contratações, encaminhamentos, regimes, série e ranking de empresas), comparados ao período anterior. Não inclui a lista de últimas contratações (tem CPF e salário). ${AVISO_AGREGADO}`,
-  modulo: "gestao", paginas: ["painel"], consumo: "puro",
+  modulo: "gestao", paginas: ["painel"], consumo: "puro", dados: "agregado", exigePermissao: PERMISSAO_INDICADORES,
   entrada: periodoEntrada,
   saida: z.object({ indicadores: AGREGADO, aviso: saidaAviso }).strict(),
   async executar(ctx, e) {
@@ -39,7 +42,7 @@ export const consultarIndicadoresContratacoes = definir({
   nome: "consultar_indicadores_contratacoes",
   titulo: "Indicadores de contratações",
   descricao: `Indicadores de contratações no período: total e comparação com o período anterior, contratações ativas agora, encaminhamentos, regimes (CLT/estágio), série no tempo e ranking de empresas. ${AVISO_AGREGADO}`,
-  modulo: "gestao", paginas: ["contratacoes"], consumo: "puro",
+  modulo: "gestao", paginas: ["contratacoes"], consumo: "puro", dados: "agregado", exigePermissao: PERMISSAO_INDICADORES,
   entrada: periodoEntrada,
   saida: z.object({ indicadores: AGREGADO, aviso: saidaAviso }).strict(),
   async executar(ctx, e) {
@@ -54,7 +57,7 @@ export const consultarOrigemCandidatos = definir({
   titulo: "Origem dos candidatos",
   descricao:
     "De onde vêm os candidatos (origens, redes, campanhas, ganhos e atendimentos) em um período de até 3 meses. Padrão: últimos 7 dias. Pode consultar o CRM, demorar e tem custo; por isso há limite de uso por hora e cache de 10 minutos. " + AVISO_AGREGADO,
-  modulo: "gestao", paginas: ["painel"], consumo: "servico_externo", limitePorHora: 6,
+  modulo: "gestao", paginas: ["painel"], consumo: "servico_externo", limitePorHora: 6, dados: "agregado", exigePermissao: PERMISSAO_INDICADORES,
   entrada: z.object({ de: DATA.optional(), ate: DATA.optional() }).strict(),
   saida: z.object({ origem: AGREGADO, aviso: saidaAviso }).strict(),
   async executar(ctx, e) {
@@ -75,7 +78,7 @@ export const consultarMetricasClt = definir({
   nome: "consultar_metricas_clt",
   titulo: "Métricas de contratações CLT",
   descricao: `Métricas das contratações CLT (quantidades e permanência) no período. ${AVISO_METRICA}`,
-  modulo: "gestao", paginas: [], adminOnly: true, consumo: "puro",
+  modulo: "gestao", paginas: [], adminOnly: true, consumo: "puro", dados: "agregado",
   entrada: metricaEntrada,
   saida: z.object({ metricas: AGREGADO, aviso: saidaAviso }).strict(),
   async executar(ctx, e) {
@@ -88,7 +91,7 @@ export const consultarMetricasEstagio = definir({
   nome: "consultar_metricas_estagio",
   titulo: "Métricas de permanência de estágio",
   descricao: `Permanência dos estagiários (por início ou ativos) no período. ${AVISO_METRICA}`,
-  modulo: "gestao", paginas: [], adminOnly: true, consumo: "puro",
+  modulo: "gestao", paginas: [], adminOnly: true, consumo: "puro", dados: "agregado",
   entrada: metricaEntrada.extend({ modo: z.enum(["inicio", "ativos"]).default("inicio") }).strict(),
   saida: z.object({ metricas: AGREGADO, aviso: saidaAviso }).strict(),
   async executar(ctx, e) {

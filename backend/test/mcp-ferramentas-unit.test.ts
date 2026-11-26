@@ -4,15 +4,17 @@ import { AppError } from "../src/lib/errors.js";
 import { linkInterno } from "../src/mcp/interno.js";
 import { criarRegistroPadrao } from "../src/mcp/ferramentas/index.js";
 import { limpar, redigirPii, removerChavesSensiveis, semCaracteristicasProtegidas } from "../src/mcp/ferramentas/comum.js";
+import { escopoDe } from "../src/mcp/politica.js";
 import type { ContextoFerramenta, Ferramenta, ServicosMcp } from "../src/mcp/registro.js";
 
 /** Testes por ferramenta com serviços FALSOS: projeção, ausência de campos sensíveis, validação, paginação, vazio, falha externa. */
 const registro = criarRegistroPadrao();
 const APP = "https://painel.test.local";
 const pegar = (nome: string) => registro.obter(nome) as Ferramenta;
-const ctx = (servicos: Partial<ServicosMcp>, opc: { permissoes?: string[]; paginas?: string[] } = {}): ContextoFerramenta => ({
+const ctx = (servicos: Partial<ServicosMcp>, opc: { permissoes?: string[]; paginas?: string[]; abrangencia?: "autorizados" | "todos"; candidatos?: string[]; empresas?: string[] } = {}): ContextoFerramenta => ({
   usuario: { id: "u1", nome: "Usuária" }, integracao: { id: "i1", slug: "rec", nome: "Rec" }, permissoes: new Set(opc.permissoes ?? []), requestId: "req-1",
   servicos: servicos as ServicosMcp, link: (t, id) => linkInterno(APP, t, id), temPagina: (p) => (opc.paginas ?? []).includes(p),
+  escopo: escopoDe({ abrangencia: opc.abrangencia ?? "todos", registros: { candidatos: new Set(opc.candidatos ?? []), empresas: new Set(opc.empresas ?? []) } }),
 });
 /** Executa como o gateway interno: valida entrada (Zod), executa, valida saída ESTRITA. */
 async function rodar(nome: string, entrada: unknown, c: ContextoFerramenta) {

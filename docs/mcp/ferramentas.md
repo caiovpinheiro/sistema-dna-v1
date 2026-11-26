@@ -1,6 +1,6 @@
 # Ferramentas MCP (Fase 3)
 
-> Última revisão: 2026-11-26. 28 ferramentas, **todas somente leitura**. O módulo financeiro continua desativado e não tem ferramentas. Nenhuma ferramenta executa SQL livre nem devolve objeto de repository: cada resposta é uma projeção explícita e é **validada de forma estrita** contra o schema de saída (campo fora do contrato derruba a resposta).
+> Última revisão: 2026-11-26. 29 ferramentas, **todas somente leitura**. O módulo financeiro continua desativado e não tem ferramentas. Nenhuma ferramenta executa SQL livre nem devolve objeto de repository: cada resposta é uma projeção explícita e é **validada de forma estrita** contra o schema de saída (campo fora do contrato derruba a resposta).
 
 ## Como uma ferramenta chega a um usuário (todas as condições, a cada chamada)
 
@@ -26,6 +26,7 @@ Nome estável (nunca renomeado) · descrição em português dizendo quando e co
 | `buscar_vagas_por_cep` | triagem | triagem | serviço externo, 60/h | cep, raio_km, regimes, pagina, limite |
 | `consultar_compatibilidade_profissional` | triagem | triagem | serviço externo, 30/h | vaga_ids, escolaridade, tempo_experiencia, habilidades, resumo_profissional |
 | `gerar_mensagem_apresentacao_vaga` | triagem | triagem ou vagas | puro | id_vaga, primeiro_nome |
+| `listar_registros_autorizados` | candidatos | (nenhuma) | puro | (sem parâmetros) |
 | `buscar_candidatos` | candidatos | candidatos | perm. individual candidatos:contato; puro | nome, cidade, uf, id_empresa, regime, situacao, vinculo, telefone, email, pagina, limite |
 | `consultar_candidato` | candidatos | candidatos | perm. individual candidatos:contato; puro | id_candidato |
 | `consultar_perfil_profissional` | candidatos | candidatos | puro | id_candidato |

@@ -95,10 +95,11 @@ async function criarBanco(): Promise<{ url: string; limpar(): Promise<void> }> {
   // Migrations do repositório, na ordem. Uma que dependa de tabela legada ausente é ignorada (o banco de teste é parcial).
   const pasta = path.join(raiz, "prisma/migrations");
   for (const nome of fs.readdirSync(pasta).filter((n) => /^\d{14}_/.test(n)).sort()) {
-    if (nome.endsWith("_mcp_base")) continue;
+    if (nome.includes("_mcp_")) continue; // as do MCP entram depois, em ordem, sem esconder erro
     try { await cliente.query(fs.readFileSync(path.join(pasta, nome, "migration.sql"), "utf8")); } catch { /* tabela legada ausente no banco de teste */ }
   }
   await cliente.query(sql("prisma/migrations/20261126120000_mcp_base/migration.sql"));
+  await cliente.query(sql("prisma/migrations/20261127120000_mcp_gestao/migration.sql"));
   await cliente.end();
   return { url: urlBase.toString(), limpar };
 }
@@ -190,11 +191,11 @@ export async function loginBootstrap(amb: Ambiente): Promise<string> {
 }
 
 /** Integração pronta: criada, com ferramentas, ativa e com os usuários vinculados. */
-export async function criarIntegracao(amb: Ambiente, slug: string, opcoes: { ferramentas?: string[]; ativa?: boolean; usuarios?: Array<{ id: string; ferramentas?: string[] | null; permissoes?: string[] }> } = {}) {
+export async function criarIntegracao(amb: Ambiente, slug: string, opcoes: { ferramentas?: string[]; ativa?: boolean; usuarios?: Array<{ id: string; ferramentas?: string[] | null; permissoes?: string[]; abrangencia?: "nenhuma" | "autorizados" | "todos" }> } = {}) {
   const mcp = amb.app.mcp!;
   const criada = await mcp.integracoes.criar({ slug, nome: `Integração ${slug}`, descricao: "Teste", instrucoes: "Use só dados do sistema." });
   await mcp.integracoes.definirFerramentas(criada.id, opcoes.ferramentas ?? ["consultar_filtros_vagas"]);
-  for (const usuario of opcoes.usuarios ?? []) await mcp.integracoes.vincularUsuario(criada.id, usuario.id, { ferramentas: usuario.ferramentas ?? null, permissoes: usuario.permissoes });
+  for (const usuario of opcoes.usuarios ?? []) await mcp.integracoes.vincularUsuario(criada.id, usuario.id, { ferramentas: usuario.ferramentas ?? null, permissoes: usuario.permissoes, abrangencia: usuario.abrangencia ?? "todos" }); // nos testes antigos o padrão é `todos`; os de abrangência passam o valor
   if (opcoes.ativa !== false) await mcp.integracoes.definirAtiva(criada.id, true);
   return { ...criada, recurso: `${MCP_URL}/mcp/${slug}` };
 }

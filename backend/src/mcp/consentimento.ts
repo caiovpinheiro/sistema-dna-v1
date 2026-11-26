@@ -4,7 +4,10 @@ import type { Pool } from "pg";
 import { z } from "zod";
 import { AppError } from "../lib/errors.js";
 import { redirectPermitido, slugDoRecurso, type McpConfig } from "./config.js";
+import type { AcessoService } from "../services/acesso.service.js";
 import { ESCOPOS_SUPORTADOS } from "./oauth.js";
+import { carregarContexto, motivoDaNegativa } from "./politica.js";
+import type { RegistroFerramentas } from "./registro.js";
 import { agoraEmSegundos } from "./util.js";
 
 const ok = <T>(data: T) => ({ success: true as const, data, meta: {} });
@@ -15,8 +18,8 @@ type Pedido = { client_id?: string; resource?: string | string[]; redirect_uri?:
  * Tela de consentimento (a página React vem na Fase 4): estas duas rotas usam a sessão do painel (cookie).
  * Quem aprova é o usuário logado agora; o bootstrap-admin, sem linha em app_usuario, nunca passa.
  */
-export function registrarConsentimento(app: FastifyInstance, deps: { db: Pool; provider: Provider; mcp: McpConfig }): void {
-  const { db, provider, mcp } = deps;
+export function registrarConsentimento(app: FastifyInstance, deps: { db: Pool; provider: Provider; mcp: McpConfig; acesso: AcessoService; registro: RegistroFerramentas }): void {
+  const { db, provider, mcp, acesso, registro } = deps;
 
   async function usuarioReal(request: FastifyRequest) {
     const { rows } = await db.query<{ id: string; nome: string; email: string }>(
@@ -36,8 +39,8 @@ export function registrarConsentimento(app: FastifyInstance, deps: { db: Pool; p
       usuarioReal(request),
       params.client_id ? provider.Client.find(params.client_id).catch(() => undefined) : undefined,
       slug
-        ? db.query<{ id: string; nome: string; descricao: string | null }>(
-          "SELECT id, nome, descricao FROM dna_work.mcp_integracao WHERE slug = $1 AND ativa = true", [slug],
+        ? db.query<{ id: string; nome: string; descricao: string | null; finalidade: string | null }>(
+          "SELECT id, nome, descricao, finalidade FROM dna_work.mcp_integracao WHERE slug = $1 AND ativa = true", [slug],
         ).then((resultado) => resultado.rows[0] ?? null)
         : null,
     ]);
@@ -68,11 +71,35 @@ export function registrarConsentimento(app: FastifyInstance, deps: { db: Pool; p
   app.get("/api/v1/mcp/interacao/:uid", { schema: { params: z.object({ uid: z.string().min(8).max(128) }) } }, async (request) => {
     const { uid } = request.params as { uid: string };
     const pedido = await carregar(request, uid);
+    // O que ESTE usuário realmente poderá fazer (a autorização nunca amplia o que a administração concedeu).
+    let modulos: Array<{ id: string; ferramentas: string[] }> = [];
+    let abrangencia: string | null = null;
+    let contato = false;
+    if (pedido.usuario && pedido.integracao && !pedido.motivo) {
+      const slug = slugDoRecurso(mcp, pedido.recurso!)!;
+      const r = await carregarContexto(db, acesso, { usuarioId: pedido.usuario.id, slug, escopos: pedido.escopos.concedidos });
+      if (r.ok) {
+        const efetivas = registro.listar().filter((f) => motivoDaNegativa(r.contexto, f) === null);
+        const porModulo = new Map<string, string[]>();
+        for (const f of efetivas) porModulo.set(f.modulo, [...(porModulo.get(f.modulo) ?? []), f.titulo]);
+        modulos = [...porModulo].map(([id, ferramentas]) => ({ id, ferramentas }));
+        abrangencia = r.contexto.abrangencia;
+        contato = r.contexto.permissoes.has("candidatos:contato");
+      }
+    }
     return ok({
       pode: pedido.motivo === null,
       motivo: pedido.motivo,
       aplicativo: pedido.cliente ? { id: pedido.cliente.clientId, nome: pedido.cliente.clientName ?? pedido.cliente.clientId } : null,
-      integracao: pedido.integracao ? { nome: pedido.integracao.nome, descricao: pedido.integracao.descricao } : null,
+      integracao: pedido.integracao ? { nome: pedido.integracao.nome, descricao: pedido.integracao.descricao, finalidade: pedido.integracao.finalidade } : null,
+      modulos, abrangencia, contato,
+      privacidade: [
+        "O assistente só consulta: não cria, altera nem apaga nada no painel.",
+        "Ele enxerga apenas o que a administração liberou e o que o seu acesso no painel permite; autorizar não amplia isso.",
+        "CPF, RG, documentos, dados bancários e endereço completo nunca são enviados.",
+        "Cada consulta fica registrada (quem, quando e qual ferramenta), sem o conteúdo dos dados.",
+        "Você pode revogar o acesso a qualquer momento pedindo ao administrador.",
+      ],
       acesso: "Somente leitura, com as mesmas permissões que você tem no painel.",
       escopos: pedido.escopos,
       usuario: pedido.usuario ? { nome: pedido.usuario.nome } : null,

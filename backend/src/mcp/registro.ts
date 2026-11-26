@@ -44,7 +44,25 @@ export type ContextoFerramenta = {
   link(tipo: TipoLink, id: string | number): string | null;
   /** O usuário tem esta página do painel (admin tem todas)? Para ferramentas que juntam dados de mais de um módulo. */
   temPagina(pagina: string): boolean;
+  /** Abrangência dos registros concedida a este usuário nesta integração (camada própria do MCP). */
+  escopo: EscopoRegistros;
 };
+
+/**
+ * Abrangência dos registros. `todos` = qualquer registro que a página permita; `autorizados` = só os ids expressamente
+ * listados pelo administrador. (`nenhuma` nunca chega aqui: a ferramenta nem é oferecida.)
+ * "próprios" e "equipe" não existem: o banco não registra responsável, dono nem equipe (docs/mcp/abrangencia.md).
+ */
+export type EscopoRegistros = {
+  tipo: "todos" | "autorizados";
+  candidatoPermitido(id: string): boolean;
+  empresaPermitida(id: string): boolean;
+  /** Ids expressamente autorizados (vazio quando `todos`). */
+  autorizados: { candidatos: readonly string[]; empresas: readonly string[] };
+};
+
+/** Natureza dos dados que a ferramenta devolve, para a abrangência: lista/busca, registro por id, ou agregado de todos os registros. */
+export type NaturezaDados = "lista" | "registro" | "agregado";
 
 export type ResultadoFerramenta = { dados: Record<string, unknown> };
 
@@ -70,6 +88,16 @@ export type Ferramenta<E extends ZodTypeAny = ZodTypeAny> = {
   limitePorHora?: number;
   /** Permissões individuais (por usuário/integração) que liberam CAMPOS da resposta, ex.: candidatos:contato. */
   permissoesIndividuais?: readonly string[];
+  /**
+   * Dados individuais de pessoas (candidatos, dossiês, processos, contratações) ou agregados sobre todos eles.
+   * Sem concessão de abrangência a ferramenta fica bloqueada; `lista` e `agregado` exigem abrangência `todos`;
+   * `registro` com `autorizados` só devolve registros da lista do administrador (a própria ferramenta confere).
+   */
+  dados?: NaturezaDados;
+  /** Permissão individual OBRIGATÓRIA para usar a ferramenta (administrador efetivo dispensa). Ex.: gestao:indicadores. */
+  exigePermissao?: string;
+  /** Descrição da finalidade, para a tela de gestão e o consentimento. */
+  finalidade?: string;
   entrada: E;
   /** Contrato da resposta: validado (estrito) antes de sair do monólito. Campo fora do contrato derruba a resposta. */
   saida: ZodTypeAny;

@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { AppError } from "../../lib/errors.js";
+import type { ContextoFerramenta } from "../registro.js";
 
 /** Máximo de itens por página em qualquer ferramenta. */
 export const LIMITE_MAXIMO = 25;
@@ -99,4 +101,20 @@ export function removerChavesSensiveis<T>(valor: T): T {
     return Object.fromEntries(Object.entries(valor as Record<string, unknown>).filter(([k]) => !CHAVE_SENSIVEL.test(k)).map(([k, v]) => [k, removerChavesSensiveis(v)])) as T;
   }
   return valor;
+}
+
+// ---------------------------------------------------------------- abrangência dos registros
+
+/** Mesma resposta para "não existe" e "fora da sua abrangência": não revela se o registro existe. */
+export const foraDaAbrangencia = () => new AppError(404, "REGISTRO_NAO_ENCONTRADO", "Registro não encontrado ou fora da sua abrangência.");
+
+export function exigirCandidato(ctx: ContextoFerramenta, idCandidato: unknown): void {
+  if (idCandidato === null || idCandidato === undefined || !ctx.escopo.candidatoPermitido(String(idCandidato))) throw foraDaAbrangencia();
+}
+
+/** Processo ou contratação: vale se o candidato OU a empresa do registro foram autorizados (vínculos reais do banco). */
+export function exigirCandidatoOuEmpresa(ctx: ContextoFerramenta, idCandidato: unknown, idEmpresa: unknown): void {
+  const c = idCandidato !== null && idCandidato !== undefined && ctx.escopo.candidatoPermitido(String(idCandidato));
+  const e = idEmpresa !== null && idEmpresa !== undefined && ctx.escopo.empresaPermitida(String(idEmpresa));
+  if (!c && !e) throw foraDaAbrangencia();
 }

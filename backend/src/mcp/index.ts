@@ -39,7 +39,7 @@ export async function iniciarMcp(app: FastifyInstance, deps: { db: Pool; config:
   const provider = criarProvider(deps.db, deps.config, mcp, await chaveAssinaturaPersistente(deps.db));
   const registro = criarRegistroPadrao();
   montarOAuth(app, provider, deps.config.MCP_OAUTH_RATE_POR_MIN, mcp.escopoPadrao);
-  registrarConsentimento(app, { db: deps.db, provider, mcp });
+  registrarConsentimento(app, { db: deps.db, provider, mcp, acesso: deps.acesso, registro });
   const interno = criarAppInterno({ db: deps.db, config: deps.config, mcp, provider, acesso: deps.acesso, registro, servicos: deps.servicos });
   const runtime: McpRuntime = { config: mcp, provider, registro, servicos: deps.servicos, integracoes: new IntegracoesMcpService(deps.db, mcp, registro), interno };
   app.decorate("mcp", runtime);

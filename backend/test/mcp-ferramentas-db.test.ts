@@ -65,9 +65,11 @@ after(async () => { globalThis.fetch = fetchOriginal; await amb?.fechar(); });
 test("catálogo efetivo por usuário: cada um vê só as ferramentas dos seus módulos; admin vê tudo, inclusive métricas", async () => {
   const a = await nomesDoCatalogo(tAna);
   assert.ok(a.includes("buscar_vagas") && a.includes("buscar_candidatos") && a.includes("listar_contratacoes") && a.includes("gerar_dossie"));
-  assert.ok(!a.includes("consultar_metricas_clt") && !a.includes("consultar_dashboard") && !a.includes("consultar_origem_candidatos") && !a.includes("consultar_indicadores_contratacoes") === false, "ana tem contratacoes");
+  assert.ok(!a.includes("consultar_metricas_clt"));
+  // Indicadores gerenciais: restritos à administração por padrão; a página (contratacoes) sozinha não basta, exige a permissão individual gestao:indicadores.
+  assert.ok(!a.includes("consultar_indicadores_contratacoes"), "sem a permissão gestao:indicadores");
   assert.ok(!a.includes("consultar_dashboard") && !a.includes("consultar_origem_candidatos"), "sem a página painel");
-  assert.deepEqual(await nomesDoCatalogo(tBia), ["buscar_empresas", "consultar_empresa", "consultar_vagas_empresa"]);
+  assert.deepEqual(await nomesDoCatalogo(tBia), ["buscar_empresas", "consultar_empresa", "consultar_vagas_empresa", "listar_registros_autorizados"]); // + a lista de registros autorizados, que não exige página
   const todas = await nomesDoCatalogo(tAdm);
   assert.equal(todas.length, amb.app.mcp!.registro.nomes().length);
   assert.ok(todas.includes("consultar_metricas_clt") && todas.includes("consultar_metricas_estagio"));

@@ -15,6 +15,8 @@ const MONOLITO = re(
 const CONTRATO = re(
   "^backend/src/mcp/(assinatura|interno|tls-interno)\\.ts$", "^mcp-server/src/(assinatura|monolito|tls)\\.ts$", "^docs/mcp/contrato", "^backend/src/mcp/config\\.ts$",
 );
+// Testes e fixtures do monólito: rodam a suíte do monólito, mas não implantam nada.
+const MONOLITO_TESTE = re("^backend/test/", "^database/schema/");
 const MIGRACAO = re("^prisma/migrations/");
 const MCP_NO_MONOLITO = re("^backend/(src/mcp/|test/(mcp|pki))"); // código MCP do monólito: conta como monólito
 
@@ -30,10 +32,11 @@ export function classificar(arquivos) {
     if (alguma(MIGRACAO, a)) r.migracao = true;
     if (!/^(docs\/|.*\.md$|\.github\/|\.gitignore$|\.env\.example$)/.test(a)) r.somente_docs = false;
   }
+  const soTeste = arquivos.some((a) => alguma(MONOLITO_TESTE, a));
   const backendMcp = arquivos.some((a) => alguma(MCP_NO_MONOLITO, a));
   if (backendMcp) r.monolito = true;
   // Testes: tudo que muda código roda a suíte do lado correspondente; contrato roda os dois.
-  r.testar_monolito = r.monolito || r.contrato || r.migracao;
+  r.testar_monolito = r.monolito || r.contrato || r.migracao || soTeste;
   r.testar_mcp = r.mcp_codigo || r.mcp_teste || r.contrato;
   r.deploy_monolito = r.monolito || r.contrato || r.migracao;
   r.deploy_mcp = r.mcp_codigo || r.contrato;

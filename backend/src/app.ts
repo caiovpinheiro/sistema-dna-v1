@@ -55,6 +55,8 @@ import { usarBancoTracker } from "./origem/tracker-db.js";
 import { criarAcessoLms } from "./lib/lms-acesso.js";
 import { z } from "zod";
 import { iniciarMcp } from "./mcp/index.js";
+import { registrarAdminMcp } from "./mcp/admin.js";
+import { criarRegistroPadrao } from "./mcp/ferramentas/index.js";
 import { origemComCache } from "./origem/cache.js";
 
 export type AppContext = {
@@ -186,7 +188,7 @@ export async function buildApp(context: AppContext): Promise<FastifyInstance> {
 
   await registerRoutes(app, context.config, services, context.db);
   // MCP: desligado por padrão (MCP_ENABLED). Ligado, registra OAuth/consentimento aqui e a API interna em app separado.
-  await iniciarMcp(app, {
+  const mcpRuntime = await iniciarMcp(app, {
     db: context.db, config: context.config, acesso: services.acesso,
     servicos: {
       db: context.db, vagas: services.vagas, cadastro: services.cadastro, empresas, candidatos: services.candidatos, processos: services.processos,
@@ -195,6 +197,8 @@ export async function buildApp(context: AppContext): Promise<FastifyInstance> {
       origem: (from, to) => origemComCache(context.db, from, to),
     },
   });
+  // Gestão administrativa do MCP (aba Integrações MCP): só administrador (prefixo /configuracoes), funciona também com o MCP desligado.
+  registrarAdminMcp(app, { db: context.db, config: context.config, acesso: services.acesso, registro: mcpRuntime?.registro ?? criarRegistroPadrao(), runtime: mcpRuntime });
   app.withTypeProvider<ZodTypeProvider>().post("/api/v1/candidatos/:id/acesso-lms", {
     schema: {
       tags: ["candidatos"],

@@ -3,7 +3,7 @@ import { AppError } from "../../lib/errors.js";
 import type { ContratacaoListQuery } from "../../schemas/contratacao.js";
 import type { ProcessoListQuery } from "../../schemas/processo.js";
 import type { ContextoFerramenta } from "../registro.js";
-import { AVISO_TEXTO_LIVRE, ausentesDe, dataIso, entradaPagina, limpar, meta, saidaAusentes, saidaAviso, saidaLink, saidaMeta, textoSeguro } from "./comum.js";
+import { AVISO_TEXTO_LIVRE, ausentesDe, dataIso, entradaPagina, exigirCandidatoOuEmpresa, limpar, meta, saidaAusentes, saidaAviso, saidaLink, saidaMeta, textoSeguro } from "./comum.js";
 import { definir } from "./tipos.js";
 
 type Linha = Record<string, any>;
@@ -40,7 +40,7 @@ export const listarProcessos = definir({
   nome: "listar_processos",
   titulo: "Listar processos seletivos",
   descricao: `Lista processos seletivos (mais recentes primeiro) com filtros por etapa, origem (dnawork/empresa), empresa, vaga, candidato ou nome. Mostra o deal_id do CRM quando existir. ${DESC}`,
-  modulo: "processos", paginas: PAG_PROC, consumo: "puro",
+  modulo: "processos", paginas: PAG_PROC, consumo: "puro", dados: "lista",
   entrada: z.object({
     etapa: z.string().trim().min(2).max(60).optional(), origem: z.enum(["dnawork", "empresa"]).optional(), id_empresa: z.string().trim().min(1).max(40).optional(),
     id_vaga: z.string().trim().min(1).max(64).optional(), id_candidato: z.string().trim().min(1).max(64).optional(), nome: z.string().trim().min(2).max(80).optional(), ...entradaPagina,
@@ -57,13 +57,14 @@ export const consultarProcesso = definir({
   nome: "consultar_processo",
   titulo: "Consultar processo seletivo",
   descricao: `Detalhe de UM processo seletivo: etapa atual, vínculos (candidato, empresa, vaga, contratação), datas, referência do CRM e histórico de movimentações. ${DESC}`,
-  modulo: "processos", paginas: PAG_PROC, consumo: "puro",
+  modulo: "processos", paginas: PAG_PROC, consumo: "puro", dados: "registro",
   entrada: z.object({ id_processo: z.string().trim().uuid("Informe o id do processo (uuid).") }).strict(),
   saida: z.object({
     processo: itemProcesso, historico: z.array(z.object({ etapa: z.string().nullable(), observacao: z.string().nullable(), em: z.string().nullable() }).strict()), ausentes: saidaAusentes, aviso: saidaAviso,
   }).strict(),
   async executar(ctx, { id_processo }) {
     const p = (await ctx.servicos.processos.get(id_processo)) as unknown as Linha;
+    exigirCandidatoOuEmpresa(ctx, p.id_candidato, p.id_empresa);
     const processo = resumoProcesso(ctx, p);
     const historico = ((p.historico ?? []) as Linha[]).slice(-30).map((m) => ({ etapa: limpar(m.etapa, 60), observacao: textoSeguro(m.observacao, 400), em: dataIso(m.criado_em) }));
     return { dados: { processo, historico, ausentes: ausentesDe({ deal_id: processo.referencias.deal_id, id_contratacao: processo.id_contratacao, encaminhado_em: processo.encaminhado_em }, ["deal_id", "id_contratacao", "encaminhado_em"]), aviso: AVISO_TEXTO_LIVRE } };
@@ -99,7 +100,7 @@ export const listarContratacoes = definir({
   nome: "listar_contratacoes",
   titulo: "Listar contratações",
   descricao: `Lista contratações (mais recentes primeiro) por empresa, vaga, candidato, regime, situação ou período de início. A busca livre (q) é por nome/cargo e NÃO aceita números de documento. ${DESC}`,
-  modulo: "contratacoes", paginas: PAG_CONTR, consumo: "puro",
+  modulo: "contratacoes", paginas: PAG_CONTR, consumo: "puro", dados: "lista",
   entrada: z.object({
     q: z.string().trim().min(2).max(80).refine((t) => !/\d{4,}/.test(t), "A busca por números de documento não é permitida.").optional().describe("Nome do candidato, empresa ou cargo."),
     id_empresa: z.string().trim().min(1).max(40).optional(), id_vaga: z.string().trim().min(1).max(64).optional(), id_candidato: z.string().trim().min(1).max(64).optional(),
@@ -119,12 +120,13 @@ export const consultarContratacao = definir({
   nome: "consultar_contratacao",
   titulo: "Consultar contratação",
   descricao: `Detalhe de UMA contratação (candidato, empresa, vaga, regime, situação e datas). Não inclui salário, CPF, documentos, assinatura nem rescisão. ${DESC}`,
-  modulo: "contratacoes", paginas: PAG_CONTR, consumo: "puro",
+  modulo: "contratacoes", paginas: PAG_CONTR, consumo: "puro", dados: "registro",
   entrada: z.object({ id_contratacao: z.number().int().min(1).max(2_000_000_000) }).strict(),
   saida: z.object({ contratacao: itemContratacao, ausentes: saidaAusentes, aviso: saidaAviso }).strict(),
   async executar(ctx, { id_contratacao }) {
     const c = (await ctx.servicos.contratacoes.get(id_contratacao)) as unknown as Linha | null;
     if (!c) throw new AppError(404, "CONTRATACAO_NAO_ENCONTRADA", "Contratação não encontrada.");
+    exigirCandidatoOuEmpresa(ctx, c.id_candidato, c.id_empresa);
     const contratacao = resumoContratacao(ctx, c);
     return { dados: { contratacao, ausentes: ausentesDe(contratacao as Linha, ["data_inicio", "data_fim_prevista", "data_encerramento", "carga_horaria"]), aviso: AVISO_TEXTO_LIVRE } };
   },

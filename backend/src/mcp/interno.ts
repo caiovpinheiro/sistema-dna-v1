@@ -10,7 +10,7 @@ import { opcoesServidor, validarMaterialTls } from "./tls-interno.js";
 import type { TLSSocket } from "node:tls";
 import { recursoDaIntegracao, type McpConfig } from "./config.js";
 import { ESCOPO_LEITURA } from "./oauth.js";
-import { carregarContexto, ferramentasEfetivas, motivoDaNegativa, type ContextoAcesso } from "./politica.js";
+import { carregarContexto, escopoDe, ferramentasEfetivas, motivoDaNegativa, type ContextoAcesso } from "./politica.js";
 import { descreverFerramenta, type RegistroFerramentas, type ServicosMcp, type TipoLink } from "./registro.js";
 import { auditar, auditarTentativa, consumirLimite, consumirNonce, type EventoAuditoria } from "./seguranca-db.js";
 import { agoraEmSegundos } from "./util.js";
@@ -302,6 +302,7 @@ export function criarAppInterno(deps: DepsInterno): FastifyInstance {
           usuario: contexto.usuario, integracao: { id: contexto.integracao.id, slug, nome: contexto.integracao.nome }, permissoes: contexto.permissoes, servicos,
           requestId: requestId ?? "", link: (tipo, id) => linkInterno(mcp.appUrl, tipo, id),
           temPagina: (pagina) => contexto.sessao.admin || contexto.sessao.paginas.includes(pagina),
+          escopo: escopoDe(contexto),
         }, entrada.data),
         new Promise<never>((_resolve, rejeitar) => setTimeout(() => rejeitar(new AppError(504, "FERRAMENTA_DEMOROU", "A consulta demorou demais.")), config.MCP_FERRAMENTA_TIMEOUT_MS).unref()),
       ]);

@@ -41,3 +41,8 @@ test("só documentação ou workflows: nada para testar nem implantar além do q
   assert.equal(r.somente_docs, true);
   assert.deepEqual([r.deploy_monolito, r.deploy_mcp, r.ordem], [false, false, "nenhum"]);
 });
+
+test("mudança só em testes ou fixtures do monólito roda a suíte do monólito, sem implantar nada", () => {
+  const r = classificar(["backend/test/esquema-legado.ts", "database/schema/local-dev.sql"]);
+  assert.deepEqual([r.testar_monolito, r.deploy_monolito, r.deploy_mcp], [true, false, false]);
+});

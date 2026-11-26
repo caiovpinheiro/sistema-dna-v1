@@ -2,7 +2,7 @@ import { z } from "zod";
 import { AppError } from "../../lib/errors.js";
 import type { CandidatoListQuery } from "../../schemas/candidato.js";
 import type { ContextoFerramenta } from "../registro.js";
-import { AVISO_TEXTO_LIVRE, ausentesDe, dataIso, entradaPagina, limpar, meta, saidaAusentes, saidaAviso, saidaLink, saidaMeta, textoSeguro } from "./comum.js";
+import { AVISO_TEXTO_LIVRE, ausentesDe, dataIso, entradaPagina, exigirCandidato, limpar, meta, saidaAusentes, saidaAviso, saidaLink, saidaMeta, textoSeguro } from "./comum.js";
 import { definir } from "./tipos.js";
 
 type Linha = Record<string, any>;
@@ -40,7 +40,7 @@ export const buscarCandidatos = definir({
   nome: "buscar_candidatos",
   titulo: "Buscar candidatos",
   descricao: `Busca candidatos do painel por nome, cidade, UF, empresa, regime (clt/estagio), situação do vínculo ou tipo de vínculo (dna/empresa). Não há busca por CPF. A busca por telefone ou e-mail exige a permissão candidatos:contato. ${DESC}`,
-  modulo: "candidatos", paginas: PAGINAS, consumo: "puro", permissoesIndividuais: [PERMISSAO_CONTATO],
+  modulo: "candidatos", paginas: PAGINAS, consumo: "puro", permissoesIndividuais: [PERMISSAO_CONTATO], dados: "lista",
   entrada: z.object({
     nome: z.string().trim().min(2).max(80).optional(), cidade: z.string().trim().min(2).max(80).optional(), uf: z.string().trim().length(2).optional(),
     id_empresa: z.string().trim().min(1).max(40).optional(), regime: z.enum(["clt", "estagio"]).optional(),
@@ -66,13 +66,14 @@ export const consultarCandidato = definir({
   nome: "consultar_candidato",
   titulo: "Consultar candidato",
   descricao: `Ficha resumida de UM candidato (nome, cidade/UF, formação, vínculo, datas) e a referência do negócio no CRM (deal_id), quando houver. ${DESC}`,
-  modulo: "candidatos", paginas: PAGINAS, consumo: "puro", permissoesIndividuais: [PERMISSAO_CONTATO],
+  modulo: "candidatos", paginas: PAGINAS, consumo: "puro", permissoesIndividuais: [PERMISSAO_CONTATO], dados: "registro",
   entrada: z.object({ id_candidato: z.string().trim().min(1).max(64) }).strict(),
   saida: z.object({
     candidato: itemCandidato.extend({ formacao: itemFormacao, atualizado_em: z.string().nullable() }).strict(),
     referencias: z.object({ deal_id: z.string().nullable() }).strict(), contato_liberado: z.boolean(), ausentes: saidaAusentes, aviso: saidaAviso,
   }).strict(),
   async executar(ctx, { id_candidato }) {
+    exigirCandidato(ctx, id_candidato);
     const r = (await ctx.servicos.candidatos.get(id_candidato)) as unknown as Linha;
     const base = resumoCandidato(ctx, r);
     const candidato = {
@@ -90,7 +91,7 @@ export const consultarPerfilProfissional = definir({
   nome: "consultar_perfil_profissional",
   titulo: "Consultar perfil profissional do candidato",
   descricao: `Perfil profissional de UM candidato: escolaridade, formação, objetivo, último cargo, experiências e conhecimentos cadastrados. Use para analisar requisitos de vaga. Não inclui dados pessoais nem testes comportamentais. ${DESC}`,
-  modulo: "candidatos", paginas: PAGINAS, consumo: "puro",
+  modulo: "candidatos", paginas: PAGINAS, consumo: "puro", dados: "registro",
   entrada: z.object({ id_candidato: z.string().trim().min(1).max(64) }).strict(),
   saida: z.object({
     id_candidato: z.string(), link: saidaLink,
@@ -104,6 +105,7 @@ export const consultarPerfilProfissional = definir({
     ausentes: saidaAusentes, aviso: saidaAviso,
   }).strict(),
   async executar(ctx, { id_candidato }) {
+    exigirCandidato(ctx, id_candidato);
     const r = (await ctx.servicos.candidatos.get(id_candidato)) as unknown as Linha;
     const c = (r.curriculo ?? {}) as Linha;
     const inst = (c.instituicao ?? {}) as Linha;
@@ -122,7 +124,7 @@ export const consultarHistoricoCandidato = definir({
   nome: "consultar_historico_candidato",
   titulo: "Histórico do candidato (processos e contratações)",
   descricao: `Histórico de UM candidato no DNA Work (cada parte só aparece se o seu usuário tem a página do módulo: Processos e Contratações): processos seletivos (etapa, empresa, vaga, datas, referência do CRM) e contratações (cargo, empresa, regime, situação, datas). Não inclui salário nem CPF. Não substitui o histórico de conversas do CRM. ${DESC}`,
-  modulo: "candidatos", paginas: PAGINAS, consumo: "puro",
+  modulo: "candidatos", paginas: PAGINAS, consumo: "puro", dados: "registro",
   entrada: z.object({ id_candidato: z.string().trim().min(1).max(64), incluir_movimentos: z.boolean().default(false).describe("Inclui as últimas movimentações dos 5 processos mais recentes."), limite: z.number().int().min(1).max(25).default(10) }).strict(),
   saida: z.object({
     id_candidato: z.string(), link: saidaLink,
@@ -136,6 +138,7 @@ export const consultarHistoricoCandidato = definir({
     aviso: saidaAviso,
   }).strict(),
   async executar(ctx, e) {
+    exigirCandidato(ctx, e.id_candidato);
     const sv = ctx.servicos;
     const veProcessos = ctx.temPagina("processos");
     const veContratacoes = ctx.temPagina("contratacoes");
@@ -172,7 +175,7 @@ export const localizarCandidatoPorDeal = definir({
   descricao:
     "Liga o CRM Bwipo ao painel DNA Work por um identificador CONFIÁVEL: o deal_id exato do negócio. Devolve o candidato do painel que tem esse deal_id gravado (id, nome e link). " +
     "Não faz correspondência por nome, telefone ou CPF: sem deal_id igual, diz que não encontrou. O histórico de conversas continua no MCP do CRM. " + DESC,
-  modulo: "candidatos", paginas: PAGINAS, consumo: "puro",
+  modulo: "candidatos", paginas: PAGINAS, consumo: "puro", dados: "registro",
   entrada: z.object({ deal_id: z.string().trim().min(1).max(64).regex(/^[A-Za-z0-9_.:-]+$/, "deal_id inválido.") }).strict(),
   saida: z.object({
     encontrado: z.boolean(),
@@ -181,7 +184,8 @@ export const localizarCandidatoPorDeal = definir({
   }).strict(),
   async executar(ctx, { deal_id }) {
     const r = (await ctx.servicos.processos.buscarCandidato({ dealId: deal_id })) as unknown as Linha;
-    const achou = r.existe === true && r.id_candidato;
+    // Fora da abrangência = mesma resposta de "não encontrado" (não revela que o candidato existe).
+    const achou = r.existe === true && r.id_candidato && ctx.escopo.candidatoPermitido(String(r.id_candidato));
     return {
       dados: {
         encontrado: Boolean(achou),
@@ -193,4 +197,38 @@ export const localizarCandidatoPorDeal = definir({
   },
 });
 
-export const ferramentasCandidatos = [buscarCandidatos, consultarCandidato, consultarPerfilProfissional, consultarHistoricoCandidato, localizarCandidatoPorDeal];
+export const listarRegistrosAutorizados = definir({
+  nome: "listar_registros_autorizados",
+  titulo: "Listar candidatos e empresas autorizados para você",
+  descricao:
+    "Mostra os candidatos e as empresas que o administrador autorizou EXPRESSAMENTE para o seu usuário nesta integração (id, nome e link). " +
+    "Use antes de consultar um candidato, processo ou contratação quando a sua abrangência for 'autorizados'. Não faz busca livre e não devolve nenhum outro registro.",
+  modulo: "candidatos", paginas: [], consumo: "puro",
+  finalidade: "Descobrir quais registros o seu usuário pode consultar.",
+  entrada: z.object({}).strict(),
+  saida: z.object({
+    abrangencia: z.enum(["todos", "autorizados"]),
+    candidatos: z.array(z.object({ id_candidato: z.string(), nome: z.string().nullable(), link: saidaLink }).strict()),
+    empresas: z.array(z.object({ id_empresa: z.string(), nome: z.string().nullable(), link: saidaLink }).strict()),
+    aviso: saidaAviso,
+  }).strict(),
+  async executar(ctx) {
+    if (ctx.escopo.tipo === "todos") return { dados: { abrangencia: "todos" as const, candidatos: [], empresas: [], aviso: "Sua abrangência é todos os registros (dentro das permissões do painel): use as ferramentas de busca." } };
+    const ids = ctx.escopo.autorizados;
+    const candidatos = ctx.temPagina("candidatos")
+      ? await Promise.all(ids.candidatos.slice(0, 50).map(async (id) => {
+        const r = (await ctx.servicos.candidatos.get(id).catch(() => null)) as unknown as Linha | null;
+        return { id_candidato: id, nome: limpar(r?.nome, 120), link: ctx.link("candidatos", id) };
+      }))
+      : [];
+    const empresas = ctx.temPagina("empresas")
+      ? await Promise.all(ids.empresas.slice(0, 50).map(async (id) => {
+        const r = (await ctx.servicos.empresas.findById(ctx.servicos.db, id).catch(() => null)) as unknown as Linha | null;
+        return { id_empresa: id, nome: limpar(r?.nome_fantasia ?? r?.razao_social, 120), link: ctx.link("empresas", id) };
+      }))
+      : [];
+    return { dados: { abrangencia: "autorizados" as const, candidatos, empresas, aviso: "Somente registros expressamente autorizados pelo administrador. Você só vê as listas das páginas que o seu usuário tem no painel." } };
+  },
+});
+
+export const ferramentasCandidatos = [listarRegistrosAutorizados, buscarCandidatos, consultarCandidato, consultarPerfilProfissional, consultarHistoricoCandidato, localizarCandidatoPorDeal];

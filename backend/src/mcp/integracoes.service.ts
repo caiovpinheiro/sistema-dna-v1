@@ -12,7 +12,7 @@ const SLUG = /^[a-z0-9][a-z0-9-]{0,58}[a-z0-9]$/;
  * Tudo nasce desligado: integração sem ferramenta e sem usuário não entrega nada (deny-by-default).
  */
 export class IntegracoesMcpService {
-  constructor(private readonly db: Pool, private readonly mcp: McpConfig, private readonly registro: RegistroFerramentas) {}
+  constructor(private readonly db: Pool, private readonly mcp: Pick<McpConfig, "publicUrl">, private readonly registro: RegistroFerramentas) {}
 
   async criar(input: { slug: string; nome: string; descricao?: string; instrucoes?: string }) {
     if (!SLUG.test(input.slug)) throw new AppError(422, "SLUG_INVALIDO", "Use letras minúsculas, números e hífens (2 a 60 caracteres).");
@@ -56,11 +56,13 @@ export class IntegracoesMcpService {
     }
   }
 
-  async vincularUsuario(idIntegracao: string, idUsuario: string, opcoes: { ferramentas?: string[] | null; permissoes?: string[] } = {}) {
+  /** Vincula (ou atualiza) um usuário. Sem `abrangencia`, um vínculo novo nasce `nenhuma` (ferramentas com dados individuais bloqueadas) e um existente mantém a que tinha. */
+  async vincularUsuario(idIntegracao: string, idUsuario: string, opcoes: { ferramentas?: string[] | null; permissoes?: string[]; abrangencia?: "nenhuma" | "autorizados" | "todos" } = {}) {
     await this.db.query(
-      `INSERT INTO dna_work.mcp_integracao_usuario (id_integracao, id_usuario, ferramentas, permissoes) VALUES ($1, $2, $3, $4)
-       ON CONFLICT (id_integracao, id_usuario) DO UPDATE SET ferramentas = EXCLUDED.ferramentas, permissoes = EXCLUDED.permissoes`,
-      [idIntegracao, idUsuario, opcoes.ferramentas ?? null, opcoes.permissoes ?? []],
+      `INSERT INTO dna_work.mcp_integracao_usuario (id_integracao, id_usuario, ferramentas, permissoes, abrangencia) VALUES ($1, $2, $3, $4, coalesce($5, 'nenhuma'))
+       ON CONFLICT (id_integracao, id_usuario) DO UPDATE SET ferramentas = EXCLUDED.ferramentas, permissoes = EXCLUDED.permissoes,
+         abrangencia = coalesce($5, dna_work.mcp_integracao_usuario.abrangencia)`,
+      [idIntegracao, idUsuario, opcoes.ferramentas ?? null, opcoes.permissoes ?? [], opcoes.abrangencia ?? null],
     );
   }
 
