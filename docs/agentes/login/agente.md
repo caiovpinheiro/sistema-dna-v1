@@ -1,6 +1,6 @@
 # Agente — Login
 
-> Última revisão: 2026-11-12 (commit 5f1e2d0)
+> Última revisão: 2026-11-26 (limite de pedidos por pessoa atrás do proxy)
 
 ## Para que serve
 
@@ -50,7 +50,7 @@ Variáveis de ambiente (só nomes): `JWT_SECRET`, `ADMIN_EMAIL`, `ADMIN_PASSWORD
 ## Regras e comportamentos importantes
 
 - Login (`routes/index.ts` ~87-104): e-mail é `trim().toLowerCase()`. Se existe usuário em `app_usuario` com esse e-mail, só vale a senha dele e só se `ativo = true`. O administrador do ambiente (`ADMIN_EMAIL` + senha do ambiente) só entra se **não** existir linha em `app_usuario` com esse e-mail; aí o JWT recebe `sub = "bootstrap-admin"`.
-- Erro de credencial: 401 `CREDENCIAIS_INVALIDAS` "E-mail ou senha inválidos." Limite de 10 tentativas por minuto nessa rota (429 `MUITAS_REQUISICOES`); limite global de 300/min.
+- Erro de credencial: 401 `CREDENCIAIS_INVALIDAS` "E-mail ou senha inválidos." Limite de 10 tentativas por minuto nessa rota (429 `MUITAS_REQUISICOES`); limite global de 300/min por IP, só nas rotas `/api/` (arquivos da tela não contam). O IP real vem do X-Forwarded-For do proxy do Easypanel (`trustProxy` só para rede interna, `CONFIAR_NO_PROXY` em `backend/src/app.ts`); sem isso a equipe inteira dividia um único limite e recebia "Muitas tentativas".
 - Todo JWT sai com `role: "admin"`; `authenticate` recusa outro role (403). A permissão real **não** está no token: `daSessao` consulta o banco a cada requisição, então desativar ou trocar páginas vale na hora, sem novo login.
 - `daSessao` (`acesso.service.ts:20-33`): `sub = "bootstrap-admin"` ou e-mail igual a `ADMIN_EMAIL` → admin com todas as páginas; usuário inexistente ou inativo → sem páginas; `admin = true` → todas; senão as páginas de `app_usuario_pagina`.
 - Cookie: `dnawork_session`, httpOnly, `sameSite=lax`, `path=/`, `secure` conforme `COOKIE_SECURE`, validade `SESSAO_HORAS` horas (igual à do JWT) (`plugins/auth.ts:55-63`).

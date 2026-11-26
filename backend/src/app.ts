@@ -63,8 +63,25 @@ export type AppContext = {
   agendarSyncNotion?: boolean;
 };
 
+/**
+ * Em produção a API fica atrás do proxy do Easypanel: sem isso todo pedido chega com o IP do proxy e
+ * o limite de pedidos vira um só para a equipe inteira. Confia só em quem está na rede interna (o
+ * proxy, na rede do Docker), que acrescenta o IP real ao X-Forwarded-For; um X-Forwarded-For
+ * inventado pelo navegador fica antes desse IP real e é ignorado.
+ */
+export const CONFIAR_NO_PROXY = "loopback, linklocal, uniquelocal";
+
+/** Limite geral por IP. Só conta a API: os arquivos da tela (JS, CSS, imagens, index.html) ficam de fora. */
+export const LIMITE_GERAL = {
+  global: true,
+  max: 300,
+  timeWindow: "1 minute",
+  allowList: (request: { url: string }) => !request.url.startsWith("/api/"),
+};
+
 export async function buildApp(context: AppContext): Promise<FastifyInstance> {
   const app = Fastify({
+    trustProxy: CONFIAR_NO_PROXY,
     logger: process.env.NODE_ENV === "test" ? false : {
       level: "info",
       redact: ["req.headers.authorization", "req.headers.cookie", "req.body.password", "req.body.cpf", "req.body.chave_pix", "req.body.cnpj", "res.body.data.password"],
@@ -106,7 +123,7 @@ export async function buildApp(context: AppContext): Promise<FastifyInstance> {
 
   await app.register(helmet, { contentSecurityPolicy: false });
   await app.register(cors, { origin: context.config.corsOrigins, credentials: true });
-  await app.register(rateLimit, { global: true, max: 300, timeWindow: "1 minute" });
+  await app.register(rateLimit, LIMITE_GERAL);
   await app.register(swagger, {
     openapi: {
       info: {
