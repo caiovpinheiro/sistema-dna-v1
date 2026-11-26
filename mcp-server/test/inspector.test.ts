@@ -16,13 +16,16 @@ let catalogo: string;
 before(async () => {
   s = await subirSistema();
   const ana = await criarUsuario(s.amb, "Ana", ["vagas"]);
-  await criarIntegracao(s.amb, "recrutamento", { usuarios: [{ id: ana.id }] });
-  await s.amb.db.query("INSERT INTO dna_work.empresa (id_empresa, nome_fantasia) VALUES ('E1', 'Loja Alfa')");
-  await s.amb.db.query("INSERT INTO dna_work.vaga (id_vaga, id_empresa, cargo, tipo_vaga, status) VALUES ('V1', 'E1', 'Atendente', 2, 0)");
+  await criarIntegracao(s.amb, "recrutamento", { ferramentas: s.amb.app.mcp!.registro.nomes(), usuarios: [{ id: ana.id }] });
+  await s.amb.db.query("INSERT INTO dna_work.empresa (id_empresa, nome_fantasia, cnpj, cidade, uf) VALUES ('E1', 'Loja Alfa', '12345678000199', 'São Paulo', 'SP')");
+  await s.amb.db.query("INSERT INTO dna_work.vaga (id_vaga, id_empresa, cargo, tipo_vaga, salario, status, dataabertura, obs) VALUES ('V1', 'E1', 'Atendente', 2, '2000', 0, '2026-11-01', 'OBS INTERNA')");
   token = (await obterTokens(s.amb, ana, `${MCP_URL}/mcp/recrutamento`)).access_token;
   catalogo = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "insp-")), "mcp.json");
 });
 after(async () => { await s?.parar(); });
+
+/** O Inspector pode imprimir avisos depois do JSON: extrai do primeiro "{" ao último "}". */
+const extrairJson = (saida: string) => JSON.parse(saida.slice(saida.indexOf("{"), saida.lastIndexOf("}") + 1));
 
 function inspector(args: string[], comToken = true): Promise<{ codigo: number | null; saida: string }> {
   return new Promise((ok) => {
@@ -38,25 +41,37 @@ function inspector(args: string[], comToken = true): Promise<{ codigo: number | 
 test("MCP Inspector (CLI): tools/list descobre a ferramenta pelo gateway", async () => {
   const r = await inspector(["--method", "tools/list"]);
   assert.equal(r.codigo, 0, r.saida);
-  const json = JSON.parse(r.saida.slice(r.saida.indexOf("{")));
-  assert.deepEqual(json.tools.map((t: any) => t.name), ["consultar_filtros_vagas"]);
-  assert.equal(json.tools[0].annotations.readOnlyHint, true);
-  console.log("INSPECTOR tools/list:", JSON.stringify(json.tools.map((t: any) => ({ name: t.name, annotations: t.annotations }))));
+  const json = extrairJson(r.saida);
+  const nomes = json.tools.map((t: any) => t.name);
+  // Ana só tem a página "vagas": vê as ferramentas de vagas (catálogo efetivo), não as de candidatos, gestão ou métricas.
+  for (const esperado of ["buscar_vagas", "consultar_vaga", "listar_vagas_abertas", "consultar_filtros_vagas"]) assert.ok(nomes.includes(esperado), esperado);
+  for (const proibida of ["buscar_candidatos", "consultar_metricas_clt", "consultar_dashboard", "gerar_dossie"]) assert.ok(!nomes.includes(proibida), proibida);
+  assert.ok(json.tools.every((t: any) => t.annotations.readOnlyHint === true && t.outputSchema && t._meta.securitySchemes));
+  console.log("INSPECTOR tools/list (com token):", nomes.length, "ferramentas:", nomes.join(", "));
 });
 
 test("MCP Inspector (CLI): tools/call executa a ferramenta e devolve conteúdo estruturado", async () => {
-  const r = await inspector(["--method", "tools/call", "--tool-name", "consultar_filtros_vagas", "--tool-arg", "limite=5"]);
+  const r = await inspector(["--method", "tools/call", "--tool-name", "buscar_vagas", "--tool-arg", "cargo=atend"]);
   assert.equal(r.codigo, 0, r.saida);
-  const json = JSON.parse(r.saida.slice(r.saida.indexOf("{")));
-  assert.ok(!json.isError);
-  assert.deepEqual(json.structuredContent.empresas, [{ id: "E1", nome: "Loja Alfa" }]);
-  console.log("INSPECTOR tools/call:", JSON.stringify(json.structuredContent));
+  const json = extrairJson(r.saida);
+  assert.ok(!json.isError, r.saida);
+  assert.equal(json.structuredContent.vagas[0].id_vaga, "V1");
+  assert.ok(!r.saida.includes("OBS INTERNA") && !r.saida.includes("12345678000199"), "campo interno vazou");
+  console.log("INSPECTOR tools/call buscar_vagas:", JSON.stringify(json.structuredContent.vagas[0]));
+  const negada = await inspector(["--method", "tools/call", "--tool-name", "buscar_candidatos", "--tool-arg", "nome=ana"]);
+  assert.notEqual(negada.codigo, 0, "ferramenta sem permissão foi executada");
+  console.log("INSPECTOR tools/call sem permissão:", JSON.stringify(negada.saida.slice(0, 160)));
 });
 
-test("MCP Inspector (CLI): sem token a conexão falha (401) e nada é executado", async () => {
-  const r = await inspector(["--method", "tools/list"], false);
-  assert.notEqual(r.codigo, 0, r.saida);
-  console.log("INSPECTOR sem token (saida):", JSON.stringify(r.saida.slice(0, 400)));
-  assert.match(r.saida, /401|nauthorized|unauthor|auth/i);
-  console.log("INSPECTOR sem token:", r.saida.split("\n").slice(0, 2).join(" | "));
+test("MCP Inspector (CLI): sem token a descoberta mostra só metadados (com securitySchemes) e a execução é recusada", async () => {
+  const lista = await inspector(["--method", "tools/list"], false);
+  assert.equal(lista.codigo, 0, lista.saida);
+  const json = extrairJson(lista.saida);
+  assert.equal(json.tools.length, s.amb.app.mcp!.registro.nomes().length);
+  assert.ok(json.tools.every((t: any) => JSON.stringify(t._meta) === JSON.stringify({ securitySchemes: [{ type: "oauth2", scopes: ["mcp:read"] }] })));
+  console.log("INSPECTOR sem token / tools/list:", json.tools.length, "ferramentas, só metadados; exemplo:", JSON.stringify({ name: json.tools[0].name, securitySchemes: json.tools[0].securitySchemes }));
+  const chamada = await inspector(["--method", "tools/call", "--tool-name", "buscar_vagas", "--tool-arg", "limite=5"], false);
+  assert.notEqual(chamada.codigo, 0, chamada.saida);
+  assert.ok(!chamada.saida.includes("Loja Alfa") && !chamada.saida.includes("V1"), "dados saíram sem login");
+  console.log("INSPECTOR sem token / tools/call:", JSON.stringify(chamada.saida.slice(0, 200)));
 });

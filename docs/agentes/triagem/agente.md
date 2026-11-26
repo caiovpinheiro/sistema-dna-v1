@@ -1,6 +1,6 @@
 # Agente — Triagem
 
-> Última revisão: 2026-11-18 (sistema desligado do Lightsail; sync agendado parado; triagem só com vagas abertas no cadastro)
+> Última revisão: 2026-11-26 (Fase 3 do MCP: TriagemService.buscarSemSincronizar para o MCP)
 
 ## Para que serve
 
@@ -151,3 +151,10 @@ O menu fica em `frontend/src/components/shell.tsx` (`triagemLinks`, linhas 16-19
 - Teste do frontend: `frontend/test/triagem-matching.test.ts` (inclui alta no topo e baixa no fim da busca inteligente).
 - Prioridade: em `/vagas`, ponha uma vaga aberta como Alta e outra como Baixa; em `/triagem`, busque por um CEP perto delas e confira a Alta em primeiro (selo vermelho) e a Baixa em último (selo cinza). Volte as duas para Média depois.
 - Comandos: `npm run lint -w frontend`, `npm run lint -w backend`, `npm test -w backend`, `npm test -w frontend`.
+
+## Consumo pelo MCP
+
+- `TriagemService.buscar` (usada por `POST /api/v1/triagem/vagas`) **continua igual**: sincroniza endereços das empresas (Google + `UPDATE` em `public.empresa`/`public.vaga`), alinha `public.vaga` às vagas abertas (`INSERT`/`UPDATE`/`DELETE`) e só então mede.
+- A medição foi movida para o método privado `buscarNoPostgres`; `buscar` chama os dois passos de sincronização e depois ele. O novo `buscarSemSincronizar(input)` chama **só** `buscarNoPostgres`: apenas `SELECT`, sem `INSERT`/`UPDATE`/`DELETE`. Ainda consulta serviços externos de CEP/mapas (Google, AwesomeAPI, ViaCEP), que não gravam no banco.
+- O MCP usa `buscarSemSincronizar` (ferramenta `buscar_vagas_por_cep`), `TriagemMatchingService.avaliar` (`consultar_compatibilidade_profissional`, com mascaramento de dados pessoais e remoção de trechos sobre características protegidas **antes** do envio ao JEV) e `DossieService` (`consultar_dados_dossie` e `gerar_dossie`, que **nunca** chama `salvarNota` nem o CRM e não envia sexo, idade, telefone ou CEP à IA). Detalhes e limites por hora em [docs/mcp/ferramentas.md](../../mcp/ferramentas.md).
+- Cuidado: ao mudar `buscar`/`buscarNoPostgres`, rode `backend/test/triagem*.test.ts` e `backend/test/mcp-ferramentas-db.test.ts` (prova que `buscarSemSincronizar` não grava e que `buscar` continua alinhando as vagas).

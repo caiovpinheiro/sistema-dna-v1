@@ -35,7 +35,8 @@ test("fila única de produção, sem cancelar deploy em andamento", () => {
 
 test("ordem segura: o MCP só implanta depois do monólito (ou com ele ignorado), nunca se o monólito falhou", () => {
   const b = blocos(deploy).find((x) => x.nome === "deploy-mcp");
-  assert.match(b.texto, /needs: \[plano, testes, imagem-mcp, deploy-monolito\]/);
+  assert.match(b.texto, /needs: \[plano, testes, imagem-mcp, deploy-monolito, aguardar-monolito\]/);
+  assert.match(b.texto, /needs\.aguardar-monolito\.result == 'success' \|\| needs\.aguardar-monolito\.result == 'skipped'/);
   assert.match(b.texto, /needs\.deploy-monolito\.result == 'success' \|\| needs\.deploy-monolito\.result == 'skipped'/);
 });
 
@@ -56,4 +57,23 @@ test("o deploy.yml existente continua o mesmo (build do monólito e webhook)", (
   const d = readFileSync(new URL("../.github/workflows/deploy.yml", import.meta.url), "utf8");
   assert.match(d, /WEBHOOK_DEPLOY_SISTEMA_DNA/);
   assert.match(d, /context: \./);
+});
+
+test("um dono por componente: o webhook do monólito só dispara quando este workflow é o dono; senão ele apenas espera o deploy.yml", () => {
+  assert.match(deploy, /MONOLITO_DEPLOY_DONO \|\| 'deploy\.yml'/);
+  assert.match(deploy, /if \[ "\$dm" = "true" \] && \[ "\$DONO" != "deploy-independente" \]; then esperar=true; dm_aqui=false/);
+  const espera = blocos(deploy).find((x) => x.nome === "aguardar-monolito");
+  assert.ok(espera, "falta o job que espera o deploy.yml");
+  assert.ok(!/WEBHOOK/.test(espera.texto), "o job de espera não pode disparar webhook");
+  assert.match(espera.texto, /--workflow deploy\.yml --commit/);
+  // O webhook do monólito aparece uma única vez, dentro do job deploy-monolito.
+  assert.equal((deploy.match(/secrets\.WEBHOOK_DEPLOY_SISTEMA_DNA/g) ?? []).length, 1);
+  assert.match(blocos(deploy).find((x) => x.nome === "deploy-monolito").texto, /WEBHOOK_DEPLOY_SISTEMA_DNA/);
+  // O alvo "monolito" manual é recusado enquanto o dono for o deploy.yml.
+  assert.match(deploy, /O deploy do monólito pertence ao deploy\.yml/);
+});
+
+test("CI imprime o resumo das falhas do monólito", () => {
+  assert.match(ci, /Resumo das falhas do monólito/);
+  assert.match(ci, /GITHUB_STEP_SUMMARY/);
 });

@@ -269,7 +269,7 @@ test("executar: devolve projeção explícita, sem campos sensíveis da empresa"
   assert.equal(r.statusCode, 200, r.body);
   const d = dados(r);
   assert.equal(d.isError, false);
-  assert.deepEqual(Object.keys(d.structuredContent).sort(), ["cargos", "empresas", "grupos", "total", "truncado"]);
+  assert.deepEqual(Object.keys(d.structuredContent).sort(), ["cargos", "empresas", "grupos", "prioridades", "regimes", "situacoes", "total", "truncado"]);
   assert.deepEqual(d.structuredContent.empresas[0], { id: "E1", nome: "Loja Alfa" });
   assert.equal(d.structuredContent.grupos[0].nome, "Grupo Varejo");
   const bruto = JSON.stringify(d);

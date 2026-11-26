@@ -55,6 +55,7 @@ import { usarBancoTracker } from "./origem/tracker-db.js";
 import { criarAcessoLms } from "./lib/lms-acesso.js";
 import { z } from "zod";
 import { iniciarMcp } from "./mcp/index.js";
+import { origemComCache } from "./origem/cache.js";
 
 export type AppContext = {
   config: AppConfig;
@@ -185,7 +186,15 @@ export async function buildApp(context: AppContext): Promise<FastifyInstance> {
 
   await registerRoutes(app, context.config, services, context.db);
   // MCP: desligado por padrão (MCP_ENABLED). Ligado, registra OAuth/consentimento aqui e a API interna em app separado.
-  await iniciarMcp(app, { db: context.db, config: context.config, acesso: services.acesso, servicos: { vagas: services.vagas } });
+  await iniciarMcp(app, {
+    db: context.db, config: context.config, acesso: services.acesso,
+    servicos: {
+      db: context.db, vagas: services.vagas, cadastro: services.cadastro, empresas, candidatos: services.candidatos, processos: services.processos,
+      contratacoes: services.contratacoes, dashboard: services.dashboard, metricas: services.metricas, triagem: services.triagem,
+      matching: services.matching, dossie: services.dossie,
+      origem: (from, to) => origemComCache(context.db, from, to),
+    },
+  });
   app.withTypeProvider<ZodTypeProvider>().post("/api/v1/candidatos/:id/acesso-lms", {
     schema: {
       tags: ["candidatos"],

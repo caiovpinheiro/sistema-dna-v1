@@ -72,8 +72,8 @@ test("CIMD do ChatGPT (token_endpoint_auth_method none): fluxo completo, resourc
   assert.equal(novo.json().scope, "mcp:read");
 });
 
-test("escopo: omitido, com offline_access junto, ou só offline_access → sempre mcp:read efetivo", async () => {
-  for (const scope of ["", "mcp:read offline_access", "offline_access", "openid mcp:read"]) {
+test("escopo (política explícita): omitido → padrão; com mcp:read + desconhecidos → só mcp:read; só desconhecidos (ex.: offline_access) → recusado, nunca vira mcp:read", async () => {
+  for (const scope of ["", "mcp:read offline_access", "openid mcp:read"]) {
     const { verifier, challenge } = pkce();
     const passo = await percorrerAutorizacao(amb, ana, { ...tokenOpcoes, resource: recurso, challenge, scope });
     assert.ok(passo.final, `scope "${scope}": ${passo.decisao?.body}`);
@@ -83,6 +83,10 @@ test("escopo: omitido, com offline_access junto, ou só offline_access → sempr
     assert.equal(troca.statusCode, 200, `scope "${scope}": ${troca.body}`);
     assert.equal(troca.json().scope, "mcp:read", `scope "${scope}"`);
   }
+  const { challenge } = pkce();
+  const soDesconhecido = await percorrerAutorizacao(amb, ana, { ...tokenOpcoes, resource: recurso, challenge, scope: "offline_access" });
+  assert.ok(!soDesconhecido.final, "escopo só desconhecido foi aprovado");
+  assert.equal(soDesconhecido.decisao.statusCode, 403);
 });
 
 test("cliente que não declara refresh_token no documento não recebe refresh token (comportamento explícito)", async () => {

@@ -133,7 +133,11 @@ export async function buildGateway(cfg: GatewayConfig, opcoes: { relogio?: () =>
       return rpc(400, -32600, "Requisição JSON-RPC inválida (lotes não são aceitos).");
     }
     const token = bearerDe(request.headers.authorization);
-    if (!token) return reply.code(401).header("www-authenticate", wwwAuth(slug)(false)).send({ error: { code: "TOKEN_AUSENTE", message: "Autenticação necessária." } });
+    // Descoberta inicial sem login (ChatGPT): só initialize/ping/notificações/tools/list, e apenas metadados das ferramentas
+    // LIGADAS na integração. Qualquer outra coisa (inclusive tools/call) exige OAuth.
+    const metodoAnonimo = String(mensagem.method);
+    const anonimoPermitido = cfg.descobertaPublica && ["initialize", "ping", "notifications/initialized", "tools/list"].includes(metodoAnonimo);
+    if (!token && !anonimoPermitido) return reply.code(401).header("www-authenticate", wwwAuth(slug)(false)).send({ error: { code: "TOKEN_AUSENTE", message: "Autenticação necessária." } });
 
     let tools: unknown[] = [];
     let resultado: unknown = null;
@@ -143,6 +147,7 @@ export async function buildGateway(cfg: GatewayConfig, opcoes: { relogio?: () =>
       const metodo = String(mensagem.method);
       const nome = mensagem.params?.name;
       if (metodo === "tools/call" && typeof nome === "string" && nome.length > 0 && nome.length <= 80) {
+        if (!token) throw new FalhaHttp({ status: 401, codigo: "TOKEN_AUSENTE", mensagem: "Autenticação necessária.", headers: { "www-authenticate": wwwAuth(slug)(false) } });
         const r = await monolito.executar(slug, token, { ferramenta: nome, argumentos: mensagem.params?.arguments ?? {} }, request.id);
         if (r.status === 200) {
           const d = r.json.data;
@@ -153,9 +158,17 @@ export async function buildGateway(cfg: GatewayConfig, opcoes: { relogio?: () =>
           erroRpc = { code: ErrorCode.InvalidParams, message: "Parâmetros inválidos." };
         } else throw new FalhaHttp(falhaDe(r, wwwAuth(slug)));
       } else if (metodo === "tools/list") {
-        const r = await monolito.ferramentas(slug, token, request.id);
+        // Com token: catálogo EFETIVO do usuário (permissões de agora). Sem token: catálogo inicial da integração (só metadados).
+        const r = token ? await monolito.ferramentas(slug, token, request.id) : await monolito.catalogo(slug, request.id);
         if (r.status !== 200) throw new FalhaHttp(falhaDe(r, wwwAuth(slug)));
-        tools = (r.json.data.ferramentas as any[]).map((f) => ({ name: f.nome, title: f.titulo, description: f.descricao, inputSchema: f.inputSchema, annotations: f.annotations }));
+        tools = (r.json.data.ferramentas as any[]).map((f) => ({
+          name: f.nome, title: f.titulo, description: f.descricao, inputSchema: f.inputSchema, ...(f.outputSchema ? { outputSchema: f.outputSchema } : {}),
+          annotations: f.annotations, securitySchemes: f.securitySchemes ?? f._meta?.securitySchemes, _meta: f._meta,
+        }));
+      } else if (!token) {
+        // initialize/ping/notificações sem login: a integração precisa existir e estar ativa; sem instruções internas.
+        const r = await monolito.integracao(slug, request.id);
+        if (r.status !== 200) throw new FalhaHttp(falhaDe(r, wwwAuth(slug)));
       } else {
         const r = await monolito.autenticar(slug, token, request.id);
         if (r.status !== 200) throw new FalhaHttp(falhaDe(r, wwwAuth(slug)));

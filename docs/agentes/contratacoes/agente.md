@@ -1,6 +1,6 @@
 # Agente — Contratações
 
-> Última revisão: 2026-11-25 ("Editar rescisão" no vínculo encerrado, bloqueado depois de assinada; aba Rescisão também acha quem já teve a rescisão gerada, com a situação da assinatura; "Trocar vaga" na ficha da contratação ativa; CNPJ de quem paga nos documentos da empresa sem CNPJ)
+> Última revisão: 2026-11-26 (Fase 3 do MCP: nota sobre o consumo pelo MCP)
 
 ## Para que serve
 
@@ -145,3 +145,7 @@ Listagem:
 - Tela: abrir `/contratacoes`, filtrar; `/contratacoes/nova`, escolher empresa (≥2 letras), vaga com posição livre, candidato e registrar; abrir a ficha e clicar "Fazer a rescisão" (abre a rescisão da mesma contratação). Em `/contratacoes/rescisao/:id`, preencher motivo/data, "Gerar rescisão e demitir", responder o modal e abrir "Imprimir original" (PDF). Envio real à ZapSign só com `ZAPSIGN_API_TOKEN` configurado.
 - Testes: `backend/test/escopo.test.ts` (Postgres embutido) cobre a listagem da aba Rescisão (`rescisao=1`: ativo, demitido com rescisão e demitido sem rescisão) e a edição da rescisão (dados, data, assinatura zerada, 422 antes do início, 409 assinada, 404 sem rescisão), contratar até o limite, sexta bloqueada, duplicada, sem vaga, empresa divergente, concorrência na última posição e encerramento preservando histórico, troca de vaga (regime diferente, mesma vaga, posição saindo da antiga e entrando na nova, colaborador com a nova empresa). Não há teste para rescisão/ZapSign (não encontrado).
 - Comandos: `npm run lint -w frontend`, `npm run lint -w backend`, `npm test -w backend`, `npm run agentes:conferir`.
+
+## Consumo pelo MCP
+
+`ContratacaoService.list/get/listByCandidato` alimentam `listar_contratacoes`, `consultar_contratacao` e o histórico do candidato. **Nunca saem**: CPF, salário, rescisão, documentos e assinatura. O filtro `rescisao` não é repassado (ele executa DDL ao ler) e a busca livre `q` recusa números de documento. A projeção é estrita e validada: campo novo na resposta do service **não** chega ao MCP sem ser incluído de propósito em `backend/src/mcp/ferramentas/processos.ts`. Rode `backend/test/mcp-ferramentas-*.test.ts` ao mudar o que este service devolve. Visão geral: [docs/mcp/ferramentas.md](../../mcp/ferramentas.md).

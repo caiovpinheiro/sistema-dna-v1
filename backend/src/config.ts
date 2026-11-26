@@ -99,11 +99,24 @@ const envSchema = z.object({
   MCP_OAUTH_REDIRECT_URIS: z.string().optional().default(""),
   // client_id (URL do CIMD) EXATOS permitidos (ex.: https://chatgpt.com/oauth/client.json). Vazio = qualquer https público.
   MCP_OAUTH_CIMD_URLS: z.string().optional().default(""),
+  // Escopo concedido SÓ quando o cliente não informa `scope` (política explícita; vazio = exigir escopo). Mostrado no consentimento.
+  MCP_ESCOPO_PADRAO: z.string().optional().default("mcp:read"),
+  // Cache do jwks_uri dos clientes CIMD (segundos; 0 = sem cache). Rotação: uma falha de autenticação invalida o cache.
+  MCP_JWKS_CACHE_S: z.coerce.number().int().min(0).max(600).default(60),
   MCP_OAUTH_COOKIE_SECRET: z.string().optional().default(""),
   // Limite por IP nos endpoints /oauth/token, /oauth/revoke e /oauth/register (por minuto).
   MCP_OAUTH_RATE_POR_MIN: z.coerce.number().int().min(1).max(10_000).default(30),
   MCP_ACCESS_TTL_S: z.coerce.number().int().min(60).max(86_400).default(3_600),
   MCP_REFRESH_TTL_S: z.coerce.number().int().min(3_600).max(7_776_000).default(2_592_000),
+  // Tempo máximo de uma ferramenta (ms). Estourou: resposta de erro controlada e auditoria.
+  MCP_FERRAMENTA_TIMEOUT_MS: z.coerce.number().int().min(100).max(120_000).default(20_000),
+  // Manutenção (limpeza) — executada por UMA réplica por vez (trava no banco).
+  // Auditoria: dias de retenção (mínimo 30; 0 = nunca apagar). OAuth: dias de guarda DEPOIS de vencer. Intervalo em minutos (0 = desligado).
+  MCP_AUDITORIA_RETENCAO_DIAS: z.coerce.number().int().min(0).max(3650).default(180),
+  MCP_OAUTH_RETENCAO_DIAS: z.coerce.number().int().min(0).max(365).default(7),
+  MCP_MANUTENCAO_INTERVALO_MIN: z.coerce.number().int().min(0).max(1440).default(60),
+  // Quanto tempo um nonce fica registrado (s). Nunca menos que 2x a janela do HMAC (senão abriria brecha de replay).
+  MCP_NONCE_TTL_S: z.coerce.number().int().min(0).max(3600).default(0),
   MCP_RATE_USUARIO_POR_MIN: z.coerce.number().int().min(1).max(10_000).default(120),
 });
 

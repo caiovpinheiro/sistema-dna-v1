@@ -82,8 +82,22 @@ jobs:
       - run: npm run lint
       - run: npm run build
       - run: npm run agentes:conferir
-      # Suíte completa do monólito (inclui as 22 que dependem do embedded-postgres, que roda sem root no runner).
-      - run: npm test
+      # Suíte completa do monólito (inclui as que dependem do embedded-postgres, que roda sem root no runner).
+      # Em caso de falha, imprime o RESUMO (nomes e motivos) para não depender do log gigante do TAP.
+      - name: Testes do monólito
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee /tmp/testes-monolito.log
+        continue-on-error: true
+        id: testes
+      - name: Resumo das falhas do monólito
+        if: always()
+        run: |
+          echo "### Falhas dos testes do monólito" >> "$GITHUB_STEP_SUMMARY"
+          { grep -E "^# (tests|pass|fail|skipped)" /tmp/testes-monolito.log || true; echo; grep -E "^not ok|^\s+error:|^\s+failureType:|^\s+location:" /tmp/testes-monolito.log | head -150 || true; } | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Falhar se os testes falharam
+        if: steps.testes.outcome == 'failure'
+        run: exit 1
 
   testes-mcp:
     needs: detectar

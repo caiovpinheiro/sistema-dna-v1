@@ -12,6 +12,10 @@ export type McpConfig = {
   redirectUris: string[];
   cimdUrls: string[];
   contratos: number[];
+  /** Tempo de vida do registro de um nonce (s): sempre >= 2x a janela do HMAC. */
+  nonceTtlS: number;
+  /** Escopos concedidos só quando o cliente omite `scope`. */
+  escopoPadrao: string[];
   clientesInternos: string[];
   /** true = listener interno em texto puro (só dev/teste). false = mTLS validado. */
   inseguro: boolean;
@@ -57,12 +61,16 @@ export function lerMcpConfig(config: AppConfig): McpConfig {
     throw new Error("MCP: o listener interno exige mTLS (MCP_INTERNAL_TLS_CERT, _KEY e _CA). Texto puro só fora de produção, com MCP_INTERNAL_INSECURE=1.");
   }
   if (temTls) validarMaterialTls({ cert: config.MCP_INTERNAL_TLS_CERT, key: config.MCP_INTERNAL_TLS_KEY, ca: config.MCP_INTERNAL_TLS_CA });
+  const escopoPadrao = lista((config.MCP_ESCOPO_PADRAO ?? "mcp:read").replace(/\s+/g, ","));
+  if (escopoPadrao.some((e) => e !== "mcp:read")) throw new Error("MCP_ESCOPO_PADRAO: escopo desconhecido (suportado: mcp:read).");
   const contratos = lista(config.MCP_CONTRATOS).map(Number);
   if (!contratos.length || contratos.some((n) => !Number.isInteger(n) || n < 1)) throw new Error("MCP_CONTRATOS inválido (ex.: 1 ou 1,2).");
   for (const uri of lista(config.MCP_OAUTH_REDIRECT_URIS)) if (!redirectPermitido({ hostsRedirect: [], redirectUris: [] }, uri)) throw new Error(`MCP_OAUTH_REDIRECT_URIS: URI não permitida (${uri}).`);
   return {
     inseguro: !temTls,
     contratos,
+    escopoPadrao,
+    nonceTtlS: Math.max(config.MCP_HMAC_JANELA_S * 2 + 5, config.MCP_NONCE_TTL_S ?? 0),
     clientesInternos: lista(config.MCP_INTERNAL_CLIENTES),
     redirectUris: lista(config.MCP_OAUTH_REDIRECT_URIS),
     cimdUrls: lista(config.MCP_OAUTH_CIMD_URLS),

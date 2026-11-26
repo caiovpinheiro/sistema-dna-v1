@@ -25,6 +25,7 @@ after(async () => { await s?.parar(); });
 
 const post = (slug: string, corpo: unknown, headers: Record<string, string> = {}, base = s.base) =>
   fetch(`${base}/mcp/${slug}`, { method: "POST", headers: { "content-type": "application/json", accept: "application/json, text/event-stream", ...headers }, body: typeof corpo === "string" ? corpo : JSON.stringify(corpo) });
+const chamada = { jsonrpc: "2.0", id: 9, method: "tools/call", params: { name: "consultar_filtros_vagas", arguments: {} } };
 const init = { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "t", version: "1" } } };
 
 test("SDK: conecta, descobre instruções e ferramentas, executa e recebe conteúdo estruturado", async () => {
@@ -50,7 +51,7 @@ test("SDK: conecta, descobre instruções e ferramentas, executa e recebe conte�
 });
 
 test("RFC 9728/9207: o 401 aponta o metadado do recurso (caminho exato) e o issuer é idêntico ao do servidor de autorização", async () => {
-  const r = await post("recrutamento", init);
+  const r = await post("recrutamento", chamada);
   assert.equal(r.status, 401);
   const www = r.headers.get("www-authenticate")!;
   assert.equal(www, `Bearer resource_metadata="${MCP_URL}/.well-known/oauth-protected-resource/mcp/recrutamento"`);
@@ -69,7 +70,7 @@ test("token inválido: 401 com invalid_token; sem token: 401 sem erro de token",
   const lixo = await post("recrutamento", init, { authorization: `Bearer ${"a".repeat(43)}` });
   assert.equal(lixo.status, 401);
   assert.match(lixo.headers.get("www-authenticate")!, /error="invalid_token"/);
-  assert.match((await post("recrutamento", init)).headers.get("www-authenticate")!, /^Bearer resource_metadata=/);
+  assert.match((await post("recrutamento", chamada)).headers.get("www-authenticate")!, /^Bearer resource_metadata=/);
 });
 
 test("OAuth completo → gateway: o token do consentimento funciona; refresh gera novo token que funciona; o antigo refresh não", async () => {
@@ -200,4 +201,61 @@ test("logs estruturados do gateway: registram requisição, status e duração; 
   for (const proibido of [tokenAna, "z".repeat(43), "segredo-do-gateway", "texto-sigiloso-do-usuario", "x-mcp-signature", "x-mcp-nonce", "authorization", "Bearer "]) {
     assert.ok(!tudo.toLowerCase().includes(proibido.toLowerCase()), `log contém: ${proibido}`);
   }
+});
+
+test("descoberta inicial sem login (ChatGPT): initialize e tools/list anônimos devolvem só metadados com securitySchemes; nada executa sem OAuth", async () => {
+  const anonInit = await post("recrutamento", init);
+  assert.equal(anonInit.status, 200);
+  const corpoInit = await anonInit.json() as any;
+  assert.ok(!("instructions" in (corpoInit.result ?? {})), "instruções internas vazaram sem login");
+  const lista = await post("recrutamento", { jsonrpc: "2.0", id: 2, method: "tools/list" });
+  assert.equal(lista.status, 200);
+  const tools = ((await lista.json()) as any).result.tools as any[];
+  assert.deepEqual(tools.map((t) => t.name), ["consultar_filtros_vagas"]);
+  const t = tools[0];
+  assert.deepEqual(t.securitySchemes, [{ type: "oauth2", scopes: ["mcp:read"] }]);
+  assert.deepEqual(t._meta.securitySchemes, [{ type: "oauth2", scopes: ["mcp:read"] }]);
+  assert.equal(t.inputSchema.type, "object");
+  assert.equal(t.outputSchema.type, "object");
+  assert.equal(t.annotations.readOnlyHint, true);
+  // Metadados internos (módulo, limites, páginas) e dados operacionais não saem sem login.
+  assert.ok(!("dnawork" in t._meta), "metadados internos expostos sem login");
+  const texto = JSON.stringify(tools);
+  for (const proibido of ["Loja Alfa", "12345678000199", "Use só dados do sistema", "paginas"]) assert.ok(!texto.includes(proibido), `vazou: ${proibido}`);
+  // Executar, listar recursos/prompts ou qualquer outro método exige OAuth.
+  for (const corpo of [chamada, { jsonrpc: "2.0", id: 3, method: "resources/list" }, { jsonrpc: "2.0", id: 4, method: "prompts/list" }]) {
+    const r = await post("recrutamento", corpo);
+    assert.equal(r.status, 401, JSON.stringify(corpo));
+    assert.match(r.headers.get("www-authenticate")!, /resource_metadata=/);
+  }
+  // Integração inexistente/desativada não faz descoberta.
+  assert.equal((await post("naoexiste", { jsonrpc: "2.0", id: 5, method: "tools/list" })).status, 404);
+  await s.amb.app.mcp!.integracoes.definirAtiva(integracaoId, false);
+  assert.equal((await post("recrutamento", { jsonrpc: "2.0", id: 6, method: "tools/list" })).status, 404);
+  await s.amb.app.mcp!.integracoes.definirAtiva(integracaoId, true); // desativar revoga os grants: obtém novo token
+  tokenAna = (await obterTokens(s.amb, ana, RECURSO)).access_token;
+  // Depois do login, o catálogo é o EFETIVO do usuário e tem os metadados completos.
+  const logado = await post("recrutamento", { jsonrpc: "2.0", id: 7, method: "tools/list" }, { authorization: `Bearer ${tokenAna}` });
+  const tl = ((await logado.json()) as any).result.tools[0];
+  assert.equal(tl._meta.dnawork.modulo, "vagas");
+  assert.equal(tl._meta.dnawork.consumo, "puro");
+});
+
+test("descoberta pública desligável (MCP_DESCOBERTA_PUBLICA=0): sem login volta tudo a 401", async () => {
+  const g = await s.novoGateway({ MCP_DESCOBERTA_PUBLICA: "0" });
+  try {
+    for (const corpo of [init, { jsonrpc: "2.0", id: 2, method: "tools/list" }]) {
+      const r = await post("recrutamento", corpo, {}, g.base);
+      assert.equal(r.status, 401);
+    }
+    assert.equal((await post("recrutamento", { jsonrpc: "2.0", id: 2, method: "tools/list" }, { authorization: `Bearer ${tokenAna}` }, g.base)).status, 200);
+  } finally { await g.parar(); }
+});
+
+test("o catálogo anônimo só inclui ferramentas LIGADAS na integração (deny-by-default)", async () => {
+  await s.amb.app.mcp!.integracoes.definirFerramentas(integracaoId, []);
+  try {
+    const lista = await post("recrutamento", { jsonrpc: "2.0", id: 8, method: "tools/list" });
+    assert.deepEqual(((await lista.json()) as any).result.tools, []);
+  } finally { await s.amb.app.mcp!.integracoes.definirFerramentas(integracaoId, ["consultar_filtros_vagas"]); }
 });

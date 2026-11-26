@@ -54,6 +54,15 @@ Configuração necessária no GitHub (não feita): Environments `producao-monoli
 
 Ordem segura: **migrations e mudanças de contrato vão sempre no monólito primeiro** (ele aceita contratos N e N-1 via `MCP_CONTRATOS`); o gateway só sobe depois do monólito saudável. Gateway N+1 contra monólito N fica "não pronto" (503 controlado), sem quebrar nada.
 
+## Um dono por componente (sem deploy duplicado)
+
+| Componente | Quem implanta (padrão) | Como o outro se comporta |
+|---|---|---|
+| Monólito | `deploy.yml` (existente, inalterado) a cada push na `main` | `deploy-independente.yml` **não** dispara o webhook do monólito: o job `aguardar-monolito` espera o `deploy.yml` do mesmo commit e o monólito saudável, e só então implanta o MCP |
+| Gateway MCP | `deploy-independente.yml` (manual com aprovação, ou push em `mcp-server/**` com `MCP_DEPLOY_AUTOMATICO=true`) | `deploy.yml` não o toca |
+
+A titularidade do monólito só muda com **autorização expressa**: defina `MONOLITO_DEPLOY_DONO=deploy-independente` e, **no mesmo momento**, desative o gatilho do `deploy.yml`. Enquanto a variável não existir, o alvo manual `monolito` é recusado. Atenção: o `deploy.yml` não filtra por pasta, então todo push na `main` (inclusive só em `mcp-server/`) redeploya o monólito até essa troca.
+
 ## Go-live (sequência)
 
 1. Autorização expressa do merge; deploy do monólito com a migration `20261126120000_mcp_base` e `MCP_ENABLED` ainda **desligado**.
@@ -69,3 +78,9 @@ Ordem segura: **migrations e mudanças de contrato vão sempre no monólito prim
 | Gateway com defeito | Workflow com `rollback_mcp_para_sha` (reaponta `:latest`), ou parar o serviço no EasyPanel; o monólito não é afetado |
 | Monólito com defeito | Redeploy da imagem anterior (`ghcr.io/<repo>:<sha>`); as migrations são aditivas e o código antigo as ignora |
 | Credencial exposta | Revogar tokens, rotacionar `MCP_GATEWAY_SECRETS` (dois segredos) e/ou reemitir certificados (`docs/mcp/mtls.md`) |
+
+## Variáveis novas da Fase 3
+
+Monólito: `MCP_ESCOPO_PADRAO` (mcp:read), `MCP_JWKS_CACHE_S` (60), `MCP_FERRAMENTA_TIMEOUT_MS` (20000), `MCP_AUDITORIA_RETENCAO_DIAS` (180), `MCP_OAUTH_RETENCAO_DIAS` (7), `MCP_MANUTENCAO_INTERVALO_MIN` (60), `MCP_NONCE_TTL_S`. Gateway: `MCP_DESCOBERTA_PUBLICA` (ligada). GitHub (variável): `MONOLITO_DEPLOY_DONO`.
+
+Para o ChatGPT (CIMD com `private_key_jwt`, preferencial): `MCP_OAUTH_CIMD_URLS=https://chatgpt.com/oauth/client.json` e `MCP_OAUTH_REDIRECT_URIS=https://chatgpt.com/connector_platform_oauth_redirect` (mais URIs por conexão, se o ChatGPT fornecer). O servidor de autorização precisa de saída HTTPS para `chatgpt.com` (busca do documento e do `jwks_uri`).

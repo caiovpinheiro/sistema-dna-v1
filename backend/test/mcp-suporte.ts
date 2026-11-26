@@ -68,12 +68,36 @@ async function criarBanco(): Promise<{ url: string; limpar(): Promise<void> }> {
   await cliente.connect();
   const sql = (arquivo: string) => fs.readFileSync(path.join(raiz, arquivo), "utf8");
   await cliente.query(sql("database/schema/local-dev.sql"));
-  await cliente.query(sql("prisma/migrations/20261025040000_acesso_paginas/migration.sql"));
-  // Tabelas do espelho que a ferramenta de filtros lê (o local-dev.sql só cria o schema dna_work).
+  // Tabelas legadas do espelho (public.*) que os services de leitura consultam: o local-dev.sql só cria o schema dna_work.
   await cliente.query(`
     CREATE TABLE IF NOT EXISTS public.grupo (id serial PRIMARY KEY, nome text NOT NULL);
-    CREATE TABLE IF NOT EXISTS public.empresa (id text PRIMARY KEY, nome_fantasia text, grupo_id integer, cnpj text);
+    CREATE TABLE IF NOT EXISTS public.empresa (id text PRIMARY KEY, nome_fantasia text, grupo_id integer, cnpj text, local text, cep text, latitude double precision, longitude double precision);
+    CREATE TABLE IF NOT EXISTS public.cargo (id serial PRIMARY KEY, nome text, descricao text, requisitos text);
+    CREATE TABLE IF NOT EXISTS public.vaga (
+      id text PRIMARY KEY, vaga_id text, empresa_id text, tipo_vaga integer, cargo text, cargo_id integer, salario numeric, beneficios text,
+      sexo text, idade integer, idade_ate integer, horario text, tipo_trabalho text, cep text, latitude double precision, longitude double precision,
+      atividades text, descricao text, requisitos text, escolaridade text, carga_horaria text);
+    CREATE TABLE IF NOT EXISTS dna_work.usuario_empresa (id serial PRIMARY KEY, id_empresa text, email text, senha_hash text, senha_envio text);
+    ALTER TABLE dna_work.vaga ADD COLUMN IF NOT EXISTS codigo text, ADD COLUMN IF NOT EXISTS texto_carga text, ADD COLUMN IF NOT EXISTS horabase text,
+      ADD COLUMN IF NOT EXISTS hora_saida_base text, ADD COLUMN IF NOT EXISTS sexo text, ADD COLUMN IF NOT EXISTS idade text, ADD COLUMN IF NOT EXISTS idadeate text,
+      ADD COLUMN IF NOT EXISTS beneficios_texto text, ADD COLUMN IF NOT EXISTS comparador text, ADD COLUMN IF NOT EXISTS atribuicaoes text,
+      ADD COLUMN IF NOT EXISTS atribu_contrato text, ADD COLUMN IF NOT EXISTS requisitos_desejaveis text, ADD COLUMN IF NOT EXISTS destaque text,
+      ADD COLUMN IF NOT EXISTS segunda_entrada text, ADD COLUMN IF NOT EXISTS segunda_saida text, ADD COLUMN IF NOT EXISTS terca_entrada text, ADD COLUMN IF NOT EXISTS terca_saida text,
+      ADD COLUMN IF NOT EXISTS quarta_entrada text, ADD COLUMN IF NOT EXISTS quarta_saida text, ADD COLUMN IF NOT EXISTS quinta_entrada text, ADD COLUMN IF NOT EXISTS quinta_saida text,
+      ADD COLUMN IF NOT EXISTS sexta_entrada text, ADD COLUMN IF NOT EXISTS sexta_saida text, ADD COLUMN IF NOT EXISTS sab_entrada text, ADD COLUMN IF NOT EXISTS sab_saida text,
+      ADD COLUMN IF NOT EXISTS domindo_entrada text, ADD COLUMN IF NOT EXISTS domindo_saida text, ADD COLUMN IF NOT EXISTS modalidade integer, ADD COLUMN IF NOT EXISTS prioridade text, ADD COLUMN IF NOT EXISTS km text;
+    CREATE TABLE IF NOT EXISTS dna_work.vaga_endereco (comparador text, logradouro text, numero text, complemento text, bairro text, cidade text, uf text, cep text);
+    CREATE TABLE IF NOT EXISTS dna_work.beneficio (id int, beneficios text);
+    CREATE TABLE IF NOT EXISTS dna_work.beneficio_vaga (id_vaga text, id_beneficio int);
+    ALTER TABLE dna_work.candidato ADD COLUMN IF NOT EXISTS data_adicao timestamp, ADD COLUMN IF NOT EXISTS atendimento jsonb;
+    ALTER TABLE dna_work.empresa ADD COLUMN IF NOT EXISTS data_adicao timestamp;
   `);
+  // Migrations do repositório, na ordem. Uma que dependa de tabela legada ausente é ignorada (o banco de teste é parcial).
+  const pasta = path.join(raiz, "prisma/migrations");
+  for (const nome of fs.readdirSync(pasta).filter((n) => /^\d{14}_/.test(n)).sort()) {
+    if (nome.endsWith("_mcp_base")) continue;
+    try { await cliente.query(fs.readFileSync(path.join(pasta, nome, "migration.sql"), "utf8")); } catch { /* tabela legada ausente no banco de teste */ }
+  }
   await cliente.query(sql("prisma/migrations/20261126120000_mcp_base/migration.sql"));
   await cliente.end();
   return { url: urlBase.toString(), limpar };

@@ -2,6 +2,13 @@
 #  - o deploy.yml continua construindo e implantando o monólito a cada push na main (inalterado);
 #  - este workflow cuida do gateway MCP e permite um deploy coordenado e aprovado, em ordem segura.
 #
+# UM DONO POR COMPONENTE (sem deploy duplicado):
+#  - MCP: este workflow.
+#  - Monólito: o `deploy.yml` (padrão, variável MONOLITO_DEPLOY_DONO ausente ou "deploy.yml"). Neste caso este workflow NÃO dispara
+#    o webhook do monólito: apenas ESPERA o deploy.yml do mesmo commit terminar e o monólito ficar saudável, e só então implanta o MCP.
+#  - Só quando houver autorização para desligar o gatilho do deploy.yml, defina MONOLITO_DEPLOY_DONO=deploy-independente: aí este
+#    workflow passa a ser o único a implantar o monólito (e o deploy.yml deve ser desativado NO MESMO MOMENTO).
+#
 # Segurança:
 #  - NENHUM push em branch de desenvolvimento implanta: os jobs de deploy exigem refs/heads/main;
 #  - push na main só implanta o MCP se a variável do repositório MCP_DEPLOY_AUTOMATICO for "true" (padrão: desligado);
@@ -49,6 +56,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       deploy_monolito: ${{ steps.p.outputs.deploy_monolito }}
+      esperar_monolito: ${{ steps.p.outputs.esperar_monolito }}
       deploy_mcp: ${{ steps.p.outputs.deploy_mcp }}
       rollback: ${{ steps.p.outputs.rollback }}
       motivo: ${{ steps.p.outputs.motivo }}
@@ -80,6 +88,7 @@ jobs:
           ALVO: ${{ inputs.alvo || 'auto' }}
           ROLLBACK: ${{ inputs.rollback_mcp_para_sha || '' }}
           AUTOMATICO: ${{ vars.MCP_DEPLOY_AUTOMATICO || 'false' }}
+          DONO: ${{ vars.MONOLITO_DEPLOY_DONO || 'deploy.yml' }}
           EVENTO: ${{ github.event_name }}
         run: |
           set -euo pipefail
@@ -100,9 +109,13 @@ jobs:
             [[ "$ROLLBACK" =~ ^[0-9a-f]{40}$ ]] || { echo "SHA de rollback inválido"; exit 1; }
             rb=true; dm=false; dc=true; motivo="rollback do gateway para $ROLLBACK"
           fi
-          echo "deploy_monolito=$dm" >> "$GITHUB_OUTPUT"; echo "deploy_mcp=$dc" >> "$GITHUB_OUTPUT"
+          # Dono do deploy do monólito: só quem é dono dispara o webhook; o outro caminho apenas espera.
+          esperar=false
+          if [ "$dm" = "true" ] && [ "$DONO" != "deploy-independente" ]; then esperar=true; dm_aqui=false; else dm_aqui=$dm; fi
+          [ "$EVENTO" = "workflow_dispatch" ] && [ "$ALVO" = "monolito" ] && [ "$DONO" != "deploy-independente" ] && { echo "O deploy do monólito pertence ao deploy.yml (MONOLITO_DEPLOY_DONO='$DONO'). Use o workflow deploy.yml ou transfira a titularidade com autorização."; exit 1; }
+          echo "deploy_monolito=$dm_aqui" >> "$GITHUB_OUTPUT"; echo "esperar_monolito=$esperar" >> "$GITHUB_OUTPUT"; echo "deploy_mcp=$dc" >> "$GITHUB_OUTPUT"
           echo "rollback=$rb" >> "$GITHUB_OUTPUT"; echo "motivo=$motivo" >> "$GITHUB_OUTPUT"
-          { echo "### Plano"; echo "- motivo: $motivo"; echo "- monólito: $dm"; echo "- MCP: $dc"; echo "- ordem: monólito → MCP (migrations e contrato interno sempre primeiro no monólito)"; } >> "$GITHUB_STEP_SUMMARY"
+          { echo "### Plano"; echo "- motivo: $motivo"; echo "- monólito necessário: $dm (dono do deploy: $DONO; este workflow dispara: $dm_aqui; apenas espera: $esperar)"; echo "- MCP: $dc"; echo "- ordem: monólito → MCP (migrations e contrato interno sempre primeiro no monólito)"; } >> "$GITHUB_STEP_SUMMARY"
 
   testes:
     needs: plano
@@ -172,13 +185,43 @@ jobs:
           done
           echo "monólito não ficou saudável a tempo"; exit 1
 
+  aguardar-monolito:
+    # Dono do deploy do monólito = deploy.yml: aqui NÃO se implanta; só se garante a ORDEM (monólito antes do MCP).
+    needs: [plano, testes]
+    if: >-
+      always() && needs.plano.outputs.esperar_monolito == 'true' && needs.testes.result == 'success'
+      && github.ref == 'refs/heads/main' && inputs.simular != true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Esperar o deploy.yml deste commit (build + webhook do monólito)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 60); do
+            r="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow deploy.yml --commit "$GITHUB_SHA" --json status,conclusion --jq '.[0] | "\(.status) \(.conclusion)"' || true)"
+            echo "deploy.yml: ${r:-sem execução}"
+            case "$r" in "completed success") break;; "completed "*) echo "o deploy.yml falhou: o MCP não será implantado antes do monólito"; exit 1;; esac
+            [ "$i" = 60 ] && { echo "tempo esgotado esperando o deploy.yml (rode-o manualmente neste commit)"; exit 1; }
+            sleep 20
+          done
+      - name: Esperar o monólito ficar saudável
+        env:
+          URL: ${{ vars.MONOLITO_URL_SAUDE }}
+        run: |
+          [ -n "$URL" ] || { echo "Defina a variável MONOLITO_URL_SAUDE."; exit 1; }
+          sleep 30
+          for i in $(seq 1 40); do curl --fail --silent --max-time 10 "$URL" >/dev/null && { echo "monólito saudável"; exit 0; }; sleep 15; done
+          echo "monólito não ficou saudável a tempo"; exit 1
+
   deploy-mcp:
-    needs: [plano, testes, imagem-mcp, deploy-monolito]
+    needs: [plano, testes, imagem-mcp, deploy-monolito, aguardar-monolito]
     # O MCP só vai depois do monólito (quando há deploy dele) e nunca se o monólito falhou.
     if: >-
       always() && needs.plano.outputs.deploy_mcp == 'true' && github.ref == 'refs/heads/main' && inputs.simular != true
       && (needs.plano.outputs.rollback == 'true' || (needs.testes.result == 'success' && needs.imagem-mcp.result == 'success'))
       && (needs.deploy-monolito.result == 'success' || needs.deploy-monolito.result == 'skipped')
+      && (needs.aguardar-monolito.result == 'success' || needs.aguardar-monolito.result == 'skipped')
     runs-on: ubuntu-latest
     environment: producao-mcp # exige aprovação (Required reviewers) configurada no GitHub
     steps:
@@ -213,7 +256,7 @@ jobs:
           echo "gateway não ficou pronto a tempo (veja os motivos em /ready)"; exit 1
 
   registrar:
-    needs: [plano, deploy-monolito, deploy-mcp]
+    needs: [plano, deploy-monolito, aguardar-monolito, deploy-mcp]
     if: >-
       always() && github.ref == 'refs/heads/main' && inputs.simular != true && needs.plano.outputs.rollback != 'true'
       && (needs.deploy-monolito.result == 'success' || needs.deploy-mcp.result == 'success')

@@ -4,12 +4,12 @@ import type { Pool } from "pg";
 import { z } from "zod";
 import { AppError } from "../lib/errors.js";
 import { redirectPermitido, slugDoRecurso, type McpConfig } from "./config.js";
-import { ESCOPO_LEITURA } from "./oauth.js";
+import { ESCOPOS_SUPORTADOS } from "./oauth.js";
 import { agoraEmSegundos } from "./util.js";
 
 const ok = <T>(data: T) => ({ success: true as const, data, meta: {} });
 
-type Pedido = { client_id?: string; resource?: string | string[]; redirect_uri?: string; scope?: string };
+type Pedido = { client_id?: string; resource?: string | string[]; redirect_uri?: string; scope?: string; mcp_escopo_padrao?: string };
 
 /**
  * Tela de consentimento (a página React vem na Fase 4): estas duas rotas usam a sessão do painel (cookie).
@@ -41,8 +41,17 @@ export function registrarConsentimento(app: FastifyInstance, deps: { db: Pool; p
         ).then((resultado) => resultado.rows[0] ?? null)
         : null,
     ]);
+    // Escopos: só os suportados são concedidos; os demais são ignorados (nunca viram mcp:read). O padrão só vale quando o cliente omitiu `scope`.
+    const solicitados = (params.scope ?? "").split(/\s+/).filter(Boolean);
+    const escopos = {
+      solicitados,
+      concedidos: solicitados.filter((e) => ESCOPOS_SUPORTADOS.includes(e)),
+      ignorados: solicitados.filter((e) => !ESCOPOS_SUPORTADOS.includes(e)),
+      padraoAplicado: params.mcp_escopo_padrao === "1",
+    };
     let motivo: string | null = null;
-    if (!usuario) motivo = "Somente usuários cadastrados e ativos do painel podem autorizar.";
+    if (!escopos.concedidos.length) motivo = "O aplicativo não solicitou nenhum escopo suportado.";
+    else if (!usuario) motivo = "Somente usuários cadastrados e ativos do painel podem autorizar.";
     else if (!cliente) motivo = "Aplicativo desconhecido.";
     else if (!integracao || !recurso) motivo = "Integração inexistente ou desativada.";
     else if (!(cliente.redirectUris ?? []).every((uri) => redirectPermitido(mcp, uri))) motivo = "Endereço de retorno do aplicativo não permitido.";
@@ -53,7 +62,7 @@ export function registrarConsentimento(app: FastifyInstance, deps: { db: Pool; p
       );
       if (!rows.length) motivo = "Você não foi autorizado nesta integração. Peça ao administrador.";
     }
-    return { interacao, params, recurso, usuario, cliente, integracao, motivo };
+    return { interacao, params, recurso, usuario, cliente, integracao, motivo, escopos };
   }
 
   app.get("/api/v1/mcp/interacao/:uid", { schema: { params: z.object({ uid: z.string().min(8).max(128) }) } }, async (request) => {
@@ -65,6 +74,7 @@ export function registrarConsentimento(app: FastifyInstance, deps: { db: Pool; p
       aplicativo: pedido.cliente ? { id: pedido.cliente.clientId, nome: pedido.cliente.clientName ?? pedido.cliente.clientId } : null,
       integracao: pedido.integracao ? { nome: pedido.integracao.nome, descricao: pedido.integracao.descricao } : null,
       acesso: "Somente leitura, com as mesmas permissões que você tem no painel.",
+      escopos: pedido.escopos,
       usuario: pedido.usuario ? { nome: pedido.usuario.nome } : null,
     });
   });
@@ -88,7 +98,7 @@ export function registrarConsentimento(app: FastifyInstance, deps: { db: Pool; p
       throw new AppError(403, "AUTORIZACAO_NEGADA", pedido.motivo ?? "Autorização negada.");
     }
     const concessao = new provider.Grant({ accountId: pedido.usuario.id, clientId: pedido.params.client_id });
-    concessao.addResourceScope(pedido.recurso, ESCOPO_LEITURA);
+    concessao.addResourceScope(pedido.recurso, pedido.escopos.concedidos.join(" "));
     const grantId = await concessao.save();
     pedido.interacao.result = { login: { accountId: pedido.usuario.id, remember: false }, consent: { grantId } };
     await pedido.interacao.save(pedido.interacao.exp - agoraEmSegundos());

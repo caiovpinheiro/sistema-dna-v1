@@ -1,6 +1,6 @@
 # Agente — Vagas
 
-> Última revisão: 2026-11-18 (voltar da ficha da vaga leva à página de origem (empresa, consulta etc.); filtro de cargo junta Operadora de Caixa, Operador de Caixa/loja e com Delivery em Operador de Caixa; sistema desligado do Lightsail)
+> Última revisão: 2026-11-26 (Fase 3 do MCP: CadastroService.modelosSomenteLeitura para o MCP)
 
 ## Para que serve
 
@@ -175,3 +175,9 @@ Menu: `vagaLinks` em `frontend/src/components/shell.tsx` (linhas 36-39). Para li
 - `/vagas`: troque a prioridade de uma vaga, recarregue a página e confira que ficou salva. Use o filtro "Prioridade" e confira o total. Volte a vaga para Média depois.
 - Testes do backend: `backend/test/vaga-prioridade.test.ts` (Postgres embutido: começa média, grava alta/baixa, CHECK do banco, filtro por prioridade), `backend/test/vaga-consulta.test.ts` (status, posições, unidades, cargos), `vaga-id.test.ts`, `mensagem-vaga.test.ts`, `horario-escala.test.ts`, `cargo.test.ts` e `triagem.test.ts` (horário e Notion).
 - Comandos: `npm run lint -w frontend`, `npm run lint -w backend`, `npm test -w backend`.
+
+## Consumo pelo MCP
+
+- `CadastroService.modelosSomenteLeitura` é uma leitura **pura** dos modelos (`public.vaga_repetida`): não executa o DDL de `ensureMirror` e devolve lista vazia se a tabela ainda não existe. Usada por `consultar_modelo_vaga`. Os demais métodos de modelos (`listarModelos`, `obterModelo`, `consultarModelos`, `opcoesModelos`) continuam iguais e **executam DDL** na primeira chamada: não use em leitura pelo MCP.
+- Ferramentas `buscar_vagas`, `consultar_vaga`, `listar_vagas_abertas`, `listar_vagas_por_empresa` e `consultar_filtros_vagas` usam `VagaService.list/get/opcoesFiltro` (só `SELECT`) e projetam campos: **não saem** `obs`, `comparador`, `publicar`, `salario_legado`, `sexo`, `idade`, `idade_ate`, razão social nem logradouro. O local sai como bairro e cidade/UF. Filtros de cidade, bairro, remuneração, benefício e horário são aplicados em até 300 vagas.
+- Cuidado: mudar campos de `presentVaga`/`VagaService.get` pode quebrar a projeção do MCP (a saída é validada de forma estrita); rode `backend/test/mcp-ferramentas-*.test.ts`.

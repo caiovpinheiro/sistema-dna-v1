@@ -87,6 +87,7 @@ export class MonolitoClient {
   }
 
   integracao = (slug: string, requestId?: string) => this.chamar(`/internal/mcp/${slug}/integracao`, { requestId });
+  catalogo = (slug: string, requestId?: string) => this.chamar(`/internal/mcp/${slug}/catalogo`, { requestId });
   autenticar = (slug: string, token: string, requestId?: string) => this.chamar(`/internal/mcp/${slug}/autenticar`, { token, requestId });
   ferramentas = (slug: string, token: string, requestId?: string) => this.chamar(`/internal/mcp/${slug}/ferramentas`, { token, requestId });
   executar = (slug: string, token: string, corpo: { ferramenta: string; argumentos: unknown }, requestId?: string) => this.chamar(`/internal/mcp/${slug}/executar`, { token, corpo, requestId });

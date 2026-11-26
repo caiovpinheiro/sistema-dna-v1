@@ -26,6 +26,8 @@ const schema = z.object({
   MCP_ALLOWED_HOSTS: z.string().default(""),
   MCP_ALLOWED_ORIGINS: z.string().default(""),
   TRUST_PROXY: bool,
+  /** Descoberta inicial de ferramentas sem login (OpenAI/ChatGPT). Só metadados; nenhuma ferramenta executa sem OAuth. */
+  MCP_DESCOBERTA_PUBLICA: z.string().optional().transform((v) => v === undefined || v === "" ? true : v === "1" || v === "true"),
   REQUEST_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(25_000),
   CONNECT_TIMEOUT_MS: z.coerce.number().int().min(200).max(30_000).default(3_000),
   MAX_BODY_BYTES: z.coerce.number().int().min(1024).max(4_000_000).default(262_144),
@@ -49,6 +51,7 @@ export type GatewayConfig = {
   allowedHosts: string[];
   allowedOrigins: string[];
   trustProxy: boolean;
+  descobertaPublica: boolean;
   requestTimeoutMs: number;
   connectTimeoutMs: number;
   maxBodyBytes: number;
@@ -94,7 +97,7 @@ export function lerConfig(env: NodeJS.ProcessEnv = process.env): GatewayConfig {
     tls: temTls ? { ca: e.MCP_TLS_CA, cert: e.MCP_TLS_CERT, key: e.MCP_TLS_KEY } : null,
     allowedHosts: lista(e.MCP_ALLOWED_HOSTS).length ? lista(e.MCP_ALLOWED_HOSTS) : [new URL(publicUrl).host.toLowerCase()],
     allowedOrigins: lista(e.MCP_ALLOWED_ORIGINS),
-    trustProxy: e.TRUST_PROXY, requestTimeoutMs: e.REQUEST_TIMEOUT_MS, connectTimeoutMs: e.CONNECT_TIMEOUT_MS,
+    trustProxy: e.TRUST_PROXY, descobertaPublica: e.MCP_DESCOBERTA_PUBLICA, requestTimeoutMs: e.REQUEST_TIMEOUT_MS, connectTimeoutMs: e.CONNECT_TIMEOUT_MS,
     maxBodyBytes: e.MAX_BODY_BYTES, rateLimitPorMin: e.RATE_LIMIT_POR_MIN, shutdownTimeoutMs: e.SHUTDOWN_TIMEOUT_MS, certRecheckMs: e.CERT_RECHECK_MS,
   };
 }

@@ -59,7 +59,7 @@ test("recurso OAuth é exatamente a URL do endpoint /mcp/:slug", () => {
 });
 
 const ferramentaOk = (extra: Partial<Ferramenta> = {}): Ferramenta => ({
-  nome: "consultar_algo", titulo: "Consultar algo", descricao: "Descrição.", modulo: "teste", tipo: "leitura", paginas: [], escopo: "mcp:read",
+  nome: "consultar_algo", titulo: "Consultar algo", descricao: "Descrição.", modulo: "teste", tipo: "leitura", paginas: [], escopo: "mcp:read", consumo: "puro", saida: z.object({ ok: z.boolean() }).strict(),
   entrada: z.object({ q: z.string().optional() }), async executar() { return { dados: {} }; }, ...extra,
 });
 
@@ -77,9 +77,13 @@ test("registro: nomes estáveis, sem repetição, só leitura na v1, módulo fin
 });
 
 test("catálogo: annotations coerentes com ferramenta somente leitura; openWorld só quando chama serviço externo", () => {
-  const d = descreverFerramenta(ferramentaOk({ abertoAoMundo: true }));
+  const d = descreverFerramenta(ferramentaOk({ consumo: "servico_externo", limitePorHora: 10 }));
   assert.deepEqual(d.annotations, { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true });
   assert.equal(descreverFerramenta(ferramentaOk()).annotations.openWorldHint, false);
   assert.equal(d.inputSchema.type, "object");
+  assert.equal(d.outputSchema.type, "object");
   assert.ok(!("$schema" in d.inputSchema));
+  assert.deepEqual(d.securitySchemes, [{ type: "oauth2", scopes: ["mcp:read"] }]);
+  assert.deepEqual(d._meta.securitySchemes, d.securitySchemes);
+  assert.throws(() => new RegistroFerramentas().registrar(ferramentaOk({ consumo: "servico_externo" })), /limitePorHora/);
 });

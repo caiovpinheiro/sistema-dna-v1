@@ -42,6 +42,54 @@ async function integracaoAtivaPorSlug(db: Pool, slug: string) {
   return rows[0] ?? null;
 }
 
+/** Grants que ESTA integração aceita. O documento CIMD do ChatGPT também declara jwt-bearer, que não habilitamos. */
+const GRANTS_SUPORTADOS = new Set(["authorization_code", "refresh_token"]);
+
+/** Cache do jwks_uri dos clientes CIMD: respeita um TTL curto e é invalidado por falha de autenticação (rotação de chaves). */
+export class CacheJwks {
+  private readonly urls = new Set<string>();
+  private readonly itens = new Map<string, { corpo: string; headers: Headers; expira: number }>();
+  constructor(private readonly ttlSegundos: number) {}
+  registrar(url: unknown) { if (typeof url === "string" && url.startsWith("https://")) this.urls.add(url); }
+  conhece(url: string) { return this.ttlSegundos > 0 && this.urls.has(url); }
+  obter(url: string) { const e = this.itens.get(url); return e && e.expira > Date.now() ? e : undefined; }
+  guardar(url: string, corpo: string, headers: Headers) { this.itens.set(url, { corpo, headers, expira: Date.now() + this.ttlSegundos * 1000 }); }
+  invalidar() { this.itens.clear(); }
+  buscasEmCache() { return this.itens.size; }
+}
+
+/**
+ * fetch usado pelo provider para o documento CIMD e o jwks_uri (já protegido contra SSRF pela biblioteca).
+ * - No documento do cliente, remove grant types que não suportamos (ex.: jwt-bearer): só REDUZ capacidades.
+ * - Guarda o jwks_uri em cache curto (a biblioteca o buscaria a cada requisição de token).
+ */
+export function criarFetchDoCliente(cache: CacheJwks) {
+  return async function fetchDoCliente(url: string | URL, options?: RequestInit): Promise<Response> {
+    const alvo = String(url);
+    if (cache.conhece(alvo)) {
+      const guardado = cache.obter(alvo);
+      if (guardado) return new Response(guardado.corpo, { status: 200, headers: guardado.headers });
+    }
+    const resposta = await globalThis.fetch(url as never, options);
+    if (resposta.status !== 200) return resposta;
+    const texto = await resposta.text();
+    const refazer = (corpo: string) => new Response(corpo, { status: 200, headers: resposta.headers });
+    if (cache.conhece(alvo)) {
+      try { if (Array.isArray((JSON.parse(texto) as { keys?: unknown }).keys)) cache.guardar(alvo, texto, resposta.headers); } catch { /* não guarda */ }
+      return refazer(texto);
+    }
+    try {
+      const doc = JSON.parse(texto) as Record<string, unknown>;
+      if (doc && typeof doc === "object" && !Array.isArray(doc) && doc.client_id === alvo) {
+        cache.registrar(doc.jwks_uri);
+        if (Array.isArray(doc.grant_types)) doc.grant_types = (doc.grant_types as unknown[]).filter((g) => typeof g === "string" && GRANTS_SUPORTADOS.has(g));
+        return refazer(JSON.stringify(doc));
+      }
+    } catch { /* não é JSON: segue como veio */ }
+    return refazer(texto);
+  };
+}
+
 function politicaSempreConfirma() {
   const { Check, base } = interactionPolicy;
   const politica = base();
@@ -63,6 +111,7 @@ export function criarProvider(db: Pool, config: AppConfig, mcp: McpConfig, chave
   const segredoCookie = config.MCP_OAUTH_COOKIE_SECRET
     || createHash("sha256").update(`dnawork-mcp-cookies:${config.JWT_SECRET}`).digest("hex");
 
+  const cacheJwks = new CacheJwks(config.MCP_JWKS_CACHE_S);
   const configuracao: Configuration = {
     adapter: class {
       constructor(nome: string) {
@@ -89,6 +138,11 @@ export function criarProvider(db: Pool, config: AppConfig, mcp: McpConfig, chave
       short: { signed: true, secure: producao, sameSite: "lax", httpOnly: true },
     },
     scopes: ESCOPOS_SUPORTADOS,
+    fetch: criarFetchDoCliente(cacheJwks) as never,
+    // Só os métodos que usamos: público (none), segredo de clientes pré-cadastrados e private_key_jwt (ChatGPT). Sem client_secret_jwt.
+    clientAuthMethods: ["none", "client_secret_basic", "client_secret_post", "private_key_jwt"],
+    enabledJWA: { clientAuthSigningAlgValues: ["RS256", "ES256"] },
+    extraParams: ["mcp_escopo_padrao"],
     claims: {},
     responseTypes: ["code"],
     pkce: { required: () => true },
@@ -167,6 +221,8 @@ export function criarProvider(db: Pool, config: AppConfig, mcp: McpConfig, chave
   };
 
   const provider = new Provider(mcp.appUrl, configuracao);
+  // Falha de autenticação de cliente (ex.: chave rotacionada): descarta o cache do JWKS para a próxima tentativa buscar o atual.
+  provider.on("grant.error", (_ctx, erro) => { if (erro.error === "invalid_client") cacheJwks.invalidar(); });
   provider.proxy = true; // atrás do proxy do EasyPanel (X-Forwarded-*)
   return provider;
 }
@@ -175,7 +231,7 @@ export function criarProvider(db: Pool, config: AppConfig, mcp: McpConfig, chave
  * Monta o provider no Fastify: o oidc-provider (Koa) atende /oauth/* e os metadados RFC 8414.
  * O corpo da requisição fica intocado para o provider ler.
  */
-export function montarOAuth(app: FastifyInstance, provider: Provider, limitePorMinuto: number): void {
+export function montarOAuth(app: FastifyInstance, provider: Provider, limitePorMinuto: number, escopoPadrao: string[]): void {
   provider.on("server_error", (_ctx, erro) => {
     app.log.error({ mensagem: erro.message }, "mcp oauth: erro interno do provider");
   });
@@ -195,11 +251,14 @@ export function montarOAuth(app: FastifyInstance, provider: Provider, limitePorM
     // Cliente que não manda `scope` recebe o escopo único da integração (mcp:read); escopos desconhecidos (ex.: offline_access) são ignorados pelo provider.
     oauth.get("/oauth/authorize", { config: { rateLimit: { max: 60, timeWindow: "1 minute" } } }, async (request, reply) => {
       const url = new URL(request.raw.url ?? "", "http://x");
-      const pedidos = (url.searchParams.get("scope") ?? "").split(/\s+/).filter(Boolean);
-      if (!pedidos.some((escopo) => ESCOPOS_SUPORTADOS.includes(escopo))) {
-        url.searchParams.set("scope", [...pedidos, ESCOPO_LEITURA].join(" "));
-        request.raw.url = `${url.pathname}${url.search}`;
+      // Política explícita: o escopo padrão só vale quando o cliente NÃO informa `scope`. Escopos desconhecidos
+      // (ex.: offline_access) nunca viram mcp:read; o provider os ignora e, se sobrar nenhum suportado, recusa (invalid_scope).
+      url.searchParams.delete("mcp_escopo_padrao"); // nunca vem do cliente
+      if (!(url.searchParams.get("scope") ?? "").trim() && escopoPadrao.length) {
+        url.searchParams.set("scope", escopoPadrao.join(" "));
+        url.searchParams.set("mcp_escopo_padrao", "1");
       }
+      request.raw.url = `${url.pathname}${url.search}`;
       return encaminhar(request, reply);
     });
     oauth.get("/oauth/authorize/:uid", encaminhar);

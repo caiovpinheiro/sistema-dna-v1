@@ -191,12 +191,29 @@ export class TriagemService {
     return ponto;
   }
 
+  /**
+   * Busca do painel: antes de medir, sincroniza endereços das empresas e alinha public.vaga (GRAVA no Postgres e usa o Google).
+   * O comportamento é o de sempre; a medição em si está em `buscarNoPostgres`.
+   */
   async buscar(input: BuscaTriagem) {
     await this.enderecosAtualizados();
     if (this.alinharVagas) {
       await this.alinharVagas().catch((error: unknown) =>
         this.log?.error({ erro: error instanceof Error ? error.message : String(error) }, "triagem: falha ao alinhar as vagas abertas"));
     }
+    return this.buscarNoPostgres(input);
+  }
+
+  /**
+   * Mesma busca, SEM as rotinas de sincronização: não faz INSERT, UPDATE nem DELETE em nenhuma tabela
+   * (só SELECT em public.vaga/public.empresa/dna_work.vaga). Ainda consulta serviços externos de CEP/geocodificação
+   * (Google, AwesomeAPI, ViaCEP), que não gravam no banco. É o que o MCP usa.
+   */
+  buscarSemSincronizar(input: BuscaTriagem) {
+    return this.buscarNoPostgres(input);
+  }
+
+  private async buscarNoPostgres(input: BuscaTriagem) {
     const [origem, originLabel, vagas] = await Promise.all([
       this.origem(input),
       rotuloDoCep(input.cep),

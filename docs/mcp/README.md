@@ -112,3 +112,11 @@ Cada arquivo cria e apaga seu próprio banco em um PostgreSQL local (nunca produ
 - Se o documento lista `private_key_jwt` em `token_endpoint_auth_methods_supported`, a biblioteca **exige `jwks` ou `jwks_uri`** e passa a **exigir a assertion** `private_key_jwt` no `/oauth/token` (sem ela, 401).
 - Documento sem `refresh_token` em `grant_types` → sem refresh token.
 - Conferir com o documento real do ChatGPT (`https://chatgpt.com/oauth/client.json`) antes do go-live.
+
+## Fase 3 — o que mudou
+
+- **28 ferramentas** somente leitura ([ferramentas.md](ferramentas.md)); saída validada de forma estrita; limites por hora para as que usam serviço externo; links internos; `ausentes`; `_meta.securitySchemes`.
+- **OAuth/ChatGPT**: documento real do ChatGPT (`private_key_jwt`, RS256, `jwks_uri`) coberto por teste com chaves descartáveis; o grant `jwt-bearer` do documento **não** é habilitado (o provider só aceita `authorization_code` e `refresh_token`); assertion validada (assinatura, alg, iss, sub, aud, exp, jti, replay entre réplicas); `jwks_uri` em cache curto (`MCP_JWKS_CACHE_S`, padrão 60 s) invalidado por falha de autenticação (rotação); escopo padrão só quando o cliente **omite** `scope` (`MCP_ESCOPO_PADRAO`, vazio = exigir) e mostrado no consentimento; escopos desconhecidos são ignorados e nunca viram `mcp:read` (só desconhecidos = recusa).
+- **Descoberta sem login** (`MCP_DESCOBERTA_PUBLICA`, gateway) — ver [ferramentas.md](ferramentas.md).
+- **Manutenção** (`MCP_AUDITORIA_RETENCAO_DIAS` 180, mínimo 30, 0 = não apagar; `MCP_OAUTH_RETENCAO_DIAS` 7; `MCP_MANUTENCAO_INTERVALO_MIN` 60, 0 = desligada; `MCP_NONCE_TTL_S`, nunca abaixo de 2x a janela do HMAC): limpa nonces, contadores, registros OAuth vencidos e auditoria antiga; uma réplica por vez (trava no banco).
+- `MCP_FERRAMENTA_TIMEOUT_MS` (20 s): tempo máximo de uma ferramenta.
