@@ -28,7 +28,8 @@ export async function completarEsquemaLegado(cliente: pg.Client): Promise<void> 
       ADD COLUMN IF NOT EXISTS quarta_entrada text, ADD COLUMN IF NOT EXISTS quarta_saida text, ADD COLUMN IF NOT EXISTS quinta_entrada text, ADD COLUMN IF NOT EXISTS quinta_saida text,
       ADD COLUMN IF NOT EXISTS sexta_entrada text, ADD COLUMN IF NOT EXISTS sexta_saida text, ADD COLUMN IF NOT EXISTS sab_entrada text, ADD COLUMN IF NOT EXISTS sab_saida text,
       ADD COLUMN IF NOT EXISTS domindo_entrada text, ADD COLUMN IF NOT EXISTS domindo_saida text, ADD COLUMN IF NOT EXISTS modalidade integer;
-    CREATE TABLE IF NOT EXISTS dna_work.usuario_empresa (id_u character varying PRIMARY KEY, nome_u character varying, email_u character varying, senha_u character varying, empresa_u character varying, status integer DEFAULT 1, atualiza_senha integer, senha_envio character varying);
+    CREATE TABLE IF NOT EXISTS dna_work.usuario_empresa (id_u character varying PRIMARY KEY, nome_u character varying, email_u character varying, senha_u character varying, empresa_u character varying, status integer DEFAULT 1, atualiza_senha integer, senha_envio character varying, telefone_u character varying, tipo integer, data_senha date);
+    CREATE TABLE IF NOT EXISTS dna_work.vinculo_empresa_usuario (id_usuario character varying, id_empresa character varying);
     CREATE TABLE IF NOT EXISTS dna_work.vaga_endereco (comparador text, logradouro text, numero text, complemento text, bairro text, cidade text, uf text, cep text);
     CREATE TABLE IF NOT EXISTS dna_work.beneficio (id int, beneficios text);
     CREATE TABLE IF NOT EXISTS dna_work.beneficio_vaga (id_vaga text, id_beneficio int);
