@@ -104,3 +104,8 @@ test("recibo de rescisão em PDF: uma página por estagiário", async () => {
   const pdf = await PDFDocument.load(bytes);
   assert.equal(pdf.getPageCount(), 2);
 });
+
+test("rescisão: data impossível não gera recibo", () => {
+  assert.equal(calcularRescisaoEstagio({ inicio: "2026-02-30", demissao: "2026-03-30", bolsa_base: 1200 }), null);
+  assert.equal(calcularRescisaoEstagio({ inicio: "2026-01-01", demissao: "2026-13-01", bolsa_base: 1200 }), null);
+});

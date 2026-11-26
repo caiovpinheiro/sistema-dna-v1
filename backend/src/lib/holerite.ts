@@ -1,3 +1,4 @@
+import { isRealIsoDate } from "./dates.js";
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 
 /** Lançamentos que o operador faz na folha de cada estagiário. */
@@ -108,8 +109,7 @@ function somaMeses(iso: string, n: number) {
  */
 export function calcularRescisaoEstagio(entrada: { inicio: string | null; demissao: string | null; bolsa_base: number }): CalculoRescisao | null {
   const { inicio, demissao } = entrada;
-  const formato = /^\d{4}-\d{2}-\d{2}$/;
-  if (!inicio || !demissao || !formato.test(inicio) || !formato.test(demissao) || demissao <= inicio) return null;
+  if (!inicio || !demissao || !isRealIsoDate(inicio) || !isRealIsoDate(demissao) || demissao <= inicio) return null;
   const fim = Date.parse(`${demissao}T00:00:00Z`);
   let fechados = 0;
   while (somaMeses(inicio, fechados + 1) - DIA_MS <= fim) fechados += 1;

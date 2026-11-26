@@ -162,7 +162,7 @@ export function HoleriteFolhaPage() {
                       <td className="min-w-52">
                         <p className="font-semibold text-navy-900">{item.nome}</p>
                         <p className="text-xs text-slate-500">{[item.cpf, item.cargo].filter(Boolean).join(", ")}</p>
-                        {item.demissao && item.demissao.slice(0, 7) === competencia ? <p className="text-xs font-medium text-amber-700">Desligado em {dateBr(item.demissao)}: o acerto sai no recibo de rescisão.</p> : null}
+                        {item.demissao && item.demissao !== item.inicio && item.demissao.slice(0, 7) === competencia ? <p className="text-xs font-medium text-amber-700">Desligado em {dateBr(item.demissao)}: veja o recibo na aba Rescisões antes de pagar o mês de novo.</p> : null}
                       </td>
                       <td className="whitespace-nowrap">
                         <p className="tabular-nums text-slate-700">{item.calculo.dias_trabalhados} de {item.calculo.dias_mes}</p>
