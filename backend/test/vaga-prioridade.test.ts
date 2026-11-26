@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import test, { after, before } from "node:test";
 import EmbeddedPostgres from "embedded-postgres";
 import pg from "pg";
+import { INICIAR_UTF8 } from "./esquema-legado.js";
 import { VagaRepository } from "../src/repositories/vaga.repository.js";
 import { vagaListSchema, vagaPrioridadeSchema } from "../src/schemas/vaga.js";
 import { presentVaga } from "../src/services/presenters.js";
@@ -14,7 +15,7 @@ const port = 55437;
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const embedded = new EmbeddedPostgres({
   databaseDir: fs.mkdtempSync(path.join(os.tmpdir(), "dnawork-prioridade-")),
-  user: "postgres", password: "postgres", port, persistent: false,
+  user: "postgres", password: "postgres", port, persistent: false, initdbFlags: INICIAR_UTF8,
 });
 let db: pg.Pool;
 const repo = new VagaRepository(1, [2]);

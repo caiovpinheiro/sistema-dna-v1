@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import test, { before, after } from "node:test";
 import EmbeddedPostgres from "embedded-postgres";
 import pg from "pg";
+import { INICIAR_UTF8, completarEsquemaLegado } from "./esquema-legado.js";
 import type { FastifyInstance } from "fastify";
 
 const port = 55433;
@@ -24,7 +25,7 @@ process.env.NODE_ENV = "test";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "dnawork-pg-"));
-const embedded = new EmbeddedPostgres({ databaseDir: dataDir, user: "postgres", password, port, persistent: false });
+const embedded = new EmbeddedPostgres({ databaseDir: dataDir, user: "postgres", password, port, persistent: false, initdbFlags: INICIAR_UTF8 });
 
 let app: FastifyInstance;
 let db: pg.Pool;
@@ -78,6 +79,7 @@ before(async () => {
   const client = new pg.Client({ host: "127.0.0.1", port, user: "postgres", password, database });
   await client.connect();
   await client.query(fs.readFileSync(path.join(root, "database/schema/local-dev.sql"), "utf8"));
+  await completarEsquemaLegado(client);
   await client.end();
 
   const { loadConfig } = await import("../src/config.js");
