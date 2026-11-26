@@ -1,7 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Save, Trash2, UserPlus } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { Alerta, CabecalhoPagina } from "@/components/pagina";
+import { useSearchParams } from "react-router-dom";
+import { IntegracoesMcp } from "@/components/integracoes-mcp";
+import { Alerta, CabecalhoPagina, FiltroChips } from "@/components/pagina";
 import { Badge, Button, Card, Empty, Field, Input, Skeleton, cn } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 
@@ -15,7 +17,26 @@ function mensagem(error: unknown) {
   return error instanceof ApiError ? error.message : "";
 }
 
+/** Abas de Configurações: acessos ao painel e integrações MCP (só administrador). */
 export function ConfiguracoesPage() {
+  const [params, setParams] = useSearchParams();
+  const aba = params.get("aba") === "mcp" ? "mcp" : "acessos";
+  const abas = (
+    <FiltroChips rotulo="Abas de Configurações" valor={aba} onChange={(id) => setParams(id === "mcp" ? { aba: "mcp" } : {})} opcoes={[{ id: "acessos", rotulo: "Acessos" }, { id: "mcp", rotulo: "Integrações MCP" }]} />
+  );
+  if (aba === "mcp") {
+    return (
+      <div className="grid gap-5">
+        <CabecalhoPagina titulo="Configurações" descricao="Integrações MCP: quais assistentes se conectam ao DNA Work, o que cada colaborador pode consultar e o histórico de uso." />
+        {abas}
+        <IntegracoesMcp />
+      </div>
+    );
+  }
+  return <AcessosAba abas={abas} />;
+}
+
+function AcessosAba({ abas }: { abas: ReactNode }) {
   const client = useQueryClient();
   const acessos = useQuery({ queryKey: ["acessos"], queryFn: () => api<Painel>("/api/v1/configuracoes/acessos") });
   const [escolhido, setEscolhido] = useState<string | null>(null);
@@ -64,6 +85,7 @@ export function ConfiguracoesPage() {
         descricao="Quem entra no sistema interno e quais páginas cada pessoa pode usar."
         acoes={<Button type="button" onClick={() => escolher(NOVO)}><UserPlus size={16} /> Novo usuário</Button>}
       />
+      {abas}
       {acessos.isLoading ? (
         <div className="grid gap-4">
           <Skeleton className="h-20" />

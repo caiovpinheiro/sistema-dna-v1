@@ -1,6 +1,6 @@
 # Agente — Login
 
-> Última revisão: 2026-11-12 (commit 5f1e2d0)
+> Última revisão: 2026-11-26 (commit df7000a, parâmetro next)
 
 ## Para que serve
 
@@ -77,3 +77,8 @@ Variáveis de ambiente (só nomes): `JWT_SECRET`, `ADMIN_EMAIL`, `ADMIN_PASSWORD
 - Com um usuário sem a página `painel`, conferir que o menu começa por Triagem e que `/` mostra "Você não tem acesso".
 - Testes: `backend/test/escopo.test.ts` (login do admin, 401 sem cookie, 401 com senha errada, `/auth/me`), `backend/test/triagem-rotas.test.ts` (rotas exigem login e a página `triagem`).
 - Comandos: `npm test -w backend`, `npm run lint -w backend`, `npm run lint -w frontend`. Para gerar hash de senha do admin: `npm run hash-password`.
+
+
+## Retorno após o login (`?next=`)
+
+`/login?next=/caminho` volta para esse caminho depois de entrar. Só vale caminho interno que começa com `/`; `//` e endereços externos são ignorados e vão para `/`. É usado pela tela de autorização do MCP quando a pessoa ainda não está logada.

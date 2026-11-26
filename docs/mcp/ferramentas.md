@@ -4,7 +4,7 @@
 
 ## Como uma ferramenta chega a um usuário (todas as condições, a cada chamada)
 
-integração ativa ∧ ferramenta ligada na integração ∧ ferramenta liberada ao usuário ∧ usuário real e ativo ∧ vínculo usuário↔integração ∧ escopo `mcp:read` ∧ página do módulo liberada (admin tem todas) ∧ (se `adminOnly`) administrador efetivo. Ferramenta nova nunca é liberada sozinha. O painel **não tem** regra de visibilidade por registro (carteira/responsável): quem tem a página vê todos os registros daquele módulo; o MCP segue a mesma regra e não inventa outra.
+integração ativa ∧ ferramenta ligada na integração ∧ ferramenta liberada ao usuário ∧ usuário real e ativo ∧ vínculo usuário↔integração ∧ escopo `mcp:read` ∧ página do módulo ∧ **abrangência dos registros** ∧ permissão individual quando exigida (ver `abrangencia.md`) liberada (admin tem todas) ∧ (se `adminOnly`) administrador efetivo. Ferramenta nova nunca é liberada sozinha. O painel **não tem** regra de visibilidade por registro (carteira/responsável): quem tem a página vê todos os registros daquele módulo; o MCP segue a mesma regra e não inventa outra.
 
 ## Padrão de cada ferramenta
 
@@ -38,9 +38,9 @@ Nome estável (nunca renomeado) · descrição em português dizendo quando e co
 | `consultar_processo` | processos | processos | puro | id_processo |
 | `listar_contratacoes` | contratacoes | contratacoes | puro | q, id_empresa, id_vaga, id_candidato, regime, situacao, inicio_de, inicio_ate, pagina, limite |
 | `consultar_contratacao` | contratacoes | contratacoes | puro | id_contratacao |
-| `consultar_dashboard` | gestao | painel | puro | dias, de, ate |
-| `consultar_indicadores_contratacoes` | gestao | contratacoes | puro | dias, de, ate |
-| `consultar_origem_candidatos` | gestao | painel | serviço externo, 6/h | de, ate |
+| `consultar_dashboard` | gestao | painel + gestao:indicadores | puro | dias, de, ate |
+| `consultar_indicadores_contratacoes` | gestao | contratacoes + gestao:indicadores | puro | dias, de, ate |
+| `consultar_origem_candidatos` | gestao | painel + gestao:indicadores | serviço externo, 6/h | de, ate |
 | `consultar_metricas_clt` | gestao | somente administrador | puro | de, ate |
 | `consultar_metricas_estagio` | gestao | somente administrador | puro | de, ate, modo |
 

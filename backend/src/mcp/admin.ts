@@ -341,6 +341,17 @@ export class AdminMcpService {
     return { usuario: { id: u.id, nome: u.nome, email: u.email, ativo: u.ativo, admin: u.admin === true }, integracoes };
   }
 
+  /** Busca para escolher registros autorizados: só id, nome e cidade (nada de documento nem contato). */
+  async buscarRegistros(tipo: "candidato" | "empresa", q: string) {
+    const termo = `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+    if (tipo === "candidato") {
+      const { rows } = await this.deps.db.query("SELECT id_candidato AS id, nome, cidade, estado AS uf FROM dna_work.candidato WHERE nome ILIKE $1 ORDER BY nome LIMIT 8", [termo]);
+      return rows.map((r) => ({ id: String(r.id), nome: r.nome as string | null, detalhe: [r.cidade, r.uf].filter(Boolean).join("/") || null }));
+    }
+    const { rows } = await this.deps.db.query("SELECT id_empresa AS id, coalesce(nome_fantasia, razao_social) AS nome, cidade, uf FROM dna_work.empresa WHERE nome_fantasia ILIKE $1 OR razao_social ILIKE $1 ORDER BY 2 LIMIT 8", [termo]);
+    return rows.map((r) => ({ id: String(r.id), nome: r.nome as string | null, detalhe: [r.cidade, r.uf].filter(Boolean).join("/") || null }));
+  }
+
   // ---------------------------------------------------------------- auditoria
 
   async auditoria(f: { integracao?: string; usuario?: string; ferramenta?: string; de?: string; ate?: string; resultado?: string; pagina: number; limite: number }) {
@@ -480,6 +491,8 @@ export function registrarAdminMcp(app: FastifyInstance, deps: DepsAdmin): AdminM
     async (request) => { const { id, usuario } = request.params as { id: string; usuario: string }; return ok(await svc.desvincular(id, usuario)); });
   app.post(`${base}/integracoes/:id/revogar`, { schema: { ...p({ id: idInteg }), body: z.object({ usuario: idUsuario.optional() }) } },
     async (request) => ok(await svc.revogar({ integracaoId: (request.params as { id: string }).id, usuarioId: (request.body as { usuario?: string }).usuario })));
+  app.get(`${base}/registros/busca`, { schema: { querystring: z.object({ tipo: z.enum(["candidato", "empresa"]), q: z.string().trim().min(2).max(80) }) } },
+    async (request) => { const { tipo, q } = request.query as { tipo: "candidato" | "empresa"; q: string }; return ok(await svc.buscarRegistros(tipo, q)); });
   app.get(`${base}/colaboradores`, async () => ok(await svc.usuarios()));
   app.get(`${base}/colaboradores/:id`, { schema: p({ id: idUsuario }) }, async (request) => ok(await svc.usuario((request.params as { id: string }).id)));
   app.post(`${base}/colaboradores/:id/revogar`, { schema: p({ id: idUsuario }) },

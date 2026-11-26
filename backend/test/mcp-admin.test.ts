@@ -303,6 +303,17 @@ test("consentimento OAuth: mostra integração, usuário, finalidade, módulos r
   assert.equal(negar.statusCode, 200);
 });
 
+test("busca de registros para autorizar: só id, nome e cidade; mínimo de 2 letras; só administrador", async () => {
+  const c = await A("GET", "/registros/busca?tipo=candidato&q=Beat");
+  assert.equal(c.status, 200); assert.ok(c.json.data.length <= 8);
+  assert.deepEqual(Object.keys(c.json.data[0] ?? { id: 1, nome: 1, detalhe: 1 }).sort(), ["detalhe", "id", "nome"]);
+  const e = await A("GET", "/registros/busca?tipo=empresa&q=Alfa");
+  assert.equal(e.json.data[0].id, "E1");
+  assert.equal((await A("GET", "/registros/busca?tipo=candidato&q=a")).status, 422);
+  assert.equal((await api(comum, "GET", "/registros/busca?tipo=candidato&q=Ana")).status, 403);
+  assert.ok(!c.corpo.includes("cpf") && !c.corpo.includes("celular"));
+});
+
 test("preservação: com o MCP desligado a aba ainda administra, e as rotas atuais do painel seguem iguais", async () => {
   const lista = await amb.app.inject({ method: "GET", url: "/api/v1/configuracoes/acessos", headers: { cookie: admin.cookie } });
   assert.equal(lista.statusCode, 200);

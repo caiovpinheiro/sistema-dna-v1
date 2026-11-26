@@ -22,6 +22,7 @@ import { ComissaoConsultarPage, ComissaoEmpresasPage, GerarFaturamentoPage, Gera
 import { ContasReceberPage } from "@/pages/ContasReceberPage";
 import { ReguaCobrancaPage } from "@/pages/ReguaCobrancaPage";
 import { LoginPage } from "@/pages/LoginPage";
+import { McpAutorizarPage } from "@/pages/McpAutorizarPage";
 import { CadastrarInstituicaoPage, ConsultarInstituicoesPage, ConsultarModelosPage, DocumentosPendentesPage } from "@/pages/NovasAbasPage";
 import { NovaContratacaoPage } from "@/pages/NovaContratacaoPage";
 import { ProcessoDetailPage } from "@/pages/ProcessoDetailPage";
@@ -64,6 +65,7 @@ export function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/mcp/autorizar/:uid" element={<McpAutorizarPage />} />
           <Route element={<Protected />}>
             <Route path="/" element={<DashboardPage />} />
             <Route path="/triagem" element={<TriagemPage />} />

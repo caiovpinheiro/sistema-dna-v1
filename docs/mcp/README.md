@@ -120,3 +120,12 @@ Cada arquivo cria e apaga seu próprio banco em um PostgreSQL local (nunca produ
 - **Descoberta sem login** (`MCP_DESCOBERTA_PUBLICA`, gateway) — ver [ferramentas.md](ferramentas.md).
 - **Manutenção** (`MCP_AUDITORIA_RETENCAO_DIAS` 180, mínimo 30, 0 = não apagar; `MCP_OAUTH_RETENCAO_DIAS` 7; `MCP_MANUTENCAO_INTERVALO_MIN` 60, 0 = desligada; `MCP_NONCE_TTL_S`, nunca abaixo de 2x a janela do HMAC): limpa nonces, contadores, registros OAuth vencidos e auditoria antiga; uma réplica por vez (trava no banco).
 - `MCP_FERRAMENTA_TIMEOUT_MS` (20 s): tempo máximo de uma ferramenta.
+
+
+## Fase 4 — gestão administrativa
+
+- Aba **Integrações MCP** em Configurações (`/configuracoes?aba=mcp`, só administrador): integrações, ferramentas por módulo, colaboradores, abrangência, auditoria e status da infraestrutura. Detalhes em `docs/agentes/configuracoes/agente.md`.
+- **Abrangência dos registros** (nenhuma, autorizados, todos; "próprios" e "equipe" indisponíveis por falta de vínculo no banco): `docs/mcp/abrangencia.md`.
+- **Tela de autorização OAuth** (`/mcp/autorizar/:uid`): `docs/agentes/mcp-autorizar/agente.md`.
+- Migration aditiva `20261127120000_mcp_gestao`. Nada de segredo na interface: chaves e segredos HMAC continuam só no EasyPanel.
+- Total de ferramentas: 29 (a nova é `listar_registros_autorizados`). Indicadores gerenciais agora exigem `gestao:indicadores` (ou administrador) e abrangência `todos`.
