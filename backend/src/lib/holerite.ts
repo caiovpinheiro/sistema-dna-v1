@@ -262,3 +262,86 @@ export async function gerarHoleritesPdf(lista: HoleritePdf[]): Promise<Uint8Arra
   }
   return pdf.save();
 }
+
+export type RescisaoPdf = {
+  empresa: { razao_social: string; cnpj: string };
+  estagiario: { nome: string; cpf: string; cargo: string; inicio: string | null; demissao: string | null };
+  calculo: CalculoRescisao;
+};
+
+/** Um recibo de rescisão de estágio por página, A4 retrato: dias trabalhados e férias proporcionais separados, mais o total. */
+export async function gerarRecibosRescisaoPdf(lista: RescisaoPdf[]): Promise<Uint8Array> {
+  const pdf = await PDFDocument.create();
+  pdf.setTitle(lista.length === 1 ? `Rescisão ${lista[0].estagiario.nome}` : "Recibos de rescisão");
+  const regular = await pdf.embedFont(StandardFonts.Helvetica);
+  const negrito = await pdf.embedFont(StandardFonts.HelveticaBold);
+  for (const dados of lista) {
+    const c = dados.calculo;
+    const page = pdf.addPage([595.28, 841.89]);
+    const m = 48;
+    const largura = 595.28 - m * 2;
+    let y = 790;
+    texto(page, "DNA WORK", m, y, negrito, 16, NAVY);
+    direita(page, "Recibo de rescisão de estágio", m + largura, y + 2, negrito, 11, NAVY);
+    y -= 16;
+    direita(page, `Desligamento: ${dataBr(dados.estagiario.demissao)}`, m + largura, y, regular, 9, MUTED);
+    y -= 14;
+    page.drawLine({ start: { x: m, y }, end: { x: m + largura, y }, thickness: 1.2, color: NAVY });
+
+    y -= 22;
+    texto(page, "Concedente", m, y, negrito, 8, MUTED);
+    texto(page, "CNPJ", m + 330, y, negrito, 8, MUTED);
+    y -= 13;
+    texto(page, caber(dados.empresa.razao_social || "—", 320, regular, 10), m, y, regular, 10);
+    texto(page, dados.empresa.cnpj || "—", m + 330, y, regular, 10);
+    y -= 22;
+    texto(page, "Estagiário", m, y, negrito, 8, MUTED);
+    texto(page, "CPF", m + 330, y, negrito, 8, MUTED);
+    y -= 13;
+    texto(page, caber(dados.estagiario.nome || "—", 320, regular, 10), m, y, regular, 10);
+    texto(page, dados.estagiario.cpf || "—", m + 330, y, regular, 10);
+    y -= 22;
+    texto(page, "Atividade", m, y, negrito, 8, MUTED);
+    texto(page, "Início do estágio", m + 330, y, negrito, 8, MUTED);
+    y -= 13;
+    texto(page, caber(dados.estagiario.cargo || "—", 320, regular, 10), m, y, regular, 10);
+    texto(page, dataBr(dados.estagiario.inicio), m + 330, y, regular, 10);
+
+    y -= 28;
+    const col = { ref: m + 250, valor: m + largura - 8 };
+    page.drawRectangle({ x: m, y: y - 6, width: largura, height: 20, color: SHADE });
+    texto(page, "Descrição", m + 8, y, negrito, 9);
+    texto(page, "Referência", col.ref, y, negrito, 9);
+    direita(page, "Valor", col.valor, y, negrito, 9);
+    y -= 12;
+    const linhas: Array<[string, string, number]> = [
+      ["Dias trabalhados", `${c.dias_trabalhados} ${c.dias_trabalhados === 1 ? "dia" : "dias"} (bolsa ÷ 30)`, c.valor_dias],
+      ["Férias proporcionais", `${c.meses}/12 (bolsa ÷ 12 × ${c.meses})`, c.valor_ferias],
+    ];
+    for (const [descricao, referencia, valor] of linhas) {
+      y -= 18;
+      texto(page, descricao, m + 8, y, regular, 9.5);
+      texto(page, referencia, col.ref, y, regular, 9.5, MUTED);
+      direita(page, real(valor), col.valor, y, regular, 9.5);
+      page.drawLine({ start: { x: m, y: y - 6 }, end: { x: m + largura, y: y - 6 }, thickness: 0.5, color: LINE });
+    }
+    y -= 12;
+    texto(page, `Bolsa-auxílio de referência: ${real(c.bolsa_base)}`, m + 8, y, regular, 8.5, MUTED);
+    y -= 26;
+    page.drawRectangle({ x: m, y: y - 9, width: largura, height: 28, color: SHADE, borderColor: NAVY, borderWidth: 0.8 });
+    texto(page, "Total da rescisão", m + 8, y, negrito, 11, NAVY);
+    direita(page, real(c.total), col.valor, y, negrito, 12, NAVY);
+
+    y -= 40;
+    texto(page, "Estágio regido pela Lei nº 11.788/2008: os valores não geram vínculo empregatício nem incidência de INSS, IRRF ou FGTS.", m, y, regular, 8, MUTED);
+    y -= 44;
+    texto(page, `Declaro ter recebido a importância de ${real(c.total)} referente à rescisão do estágio.`, m, y, regular, 9);
+    y -= 56;
+    page.drawLine({ start: { x: m, y }, end: { x: m + 230, y }, thickness: 0.7, color: INK });
+    page.drawLine({ start: { x: m + largura - 150, y }, end: { x: m + largura, y }, thickness: 0.7, color: INK });
+    y -= 12;
+    texto(page, caber(dados.estagiario.nome || "Estagiário", 230, regular, 8.5), m, y, regular, 8.5, MUTED);
+    texto(page, "Data", m + largura - 150, y, regular, 8.5, MUTED);
+  }
+  return pdf.save();
+}

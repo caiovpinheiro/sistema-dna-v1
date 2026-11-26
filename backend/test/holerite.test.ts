@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { PDFDocument } from "pdf-lib";
-import { calcularHolerite, calcularRescisaoEstagio, diasTrabalhados, gerarHoleritesPdf, linhasDoHolerite } from "../src/lib/holerite.js";
+import { calcularHolerite, calcularRescisaoEstagio, diasTrabalhados, gerarHoleritesPdf, gerarRecibosRescisaoPdf, linhasDoHolerite } from "../src/lib/holerite.js";
 
 const vazio = { faltas: 0, auxilio_transporte: 0, acrescimos: 0, descricao_acrescimos: "", descontos: 0, descricao_descontos: "" };
 
@@ -91,4 +91,16 @@ test("rescisão: sem cálculo quando as datas não servem e bolsa zero", () => {
   assert.equal(calcularRescisaoEstagio({ inicio: null, demissao: "2026-03-01", bolsa_base: 1000 }), null);
   assert.equal(calcularRescisaoEstagio({ inicio: "2026-03-01", demissao: null, bolsa_base: 1000 }), null);
   assert.equal(calcularRescisaoEstagio({ inicio: "2026-01-01", demissao: "2026-03-30", bolsa_base: 0 })?.total, 0);
+});
+
+test("recibo de rescisão em PDF: uma página por estagiário", async () => {
+  const calculo = calcularRescisaoEstagio({ inicio: "2026-01-01", demissao: "2026-03-30", bolsa_base: 1300 });
+  assert.ok(calculo);
+  const base = { empresa: { razao_social: "Empresa Teste Ltda", cnpj: "12.345.678/0001-90" }, calculo };
+  const bytes = await gerarRecibosRescisaoPdf([
+    { ...base, estagiario: { nome: "Ana Souza", cpf: "123.456.789-09", cargo: "Estagiária de Administração", inicio: "2026-01-01", demissao: "2026-03-30" } },
+    { ...base, estagiario: { nome: "Bruno Lima", cpf: "987.654.321-00", cargo: "Estagiário", inicio: "2026-01-01", demissao: "2026-03-30" } },
+  ]);
+  const pdf = await PDFDocument.load(bytes);
+  assert.equal(pdf.getPageCount(), 2);
 });
