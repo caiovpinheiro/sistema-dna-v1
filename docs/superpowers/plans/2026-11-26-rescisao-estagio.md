@@ -26,7 +26,7 @@
 - Desligamento antes do início ou igual ao início (desistência): sem recibo, nunca valor negativo.
 - Bolsa vazia ou 0 na vaga: recibo com R$ 0,00, sem NaN.
 - Fechou exatamente N meses (sem sobra): dias trabalhados 0 e férias de N meses.
-- Sobra de 31 dias (mês de 31 dias): dias trabalhados limitado a 30.
+- Sobra no limite (30 dias, mês de 31 dias): dias trabalhados não passa de 30.
 
 ---
 
@@ -43,7 +43,7 @@
   - `test("rescisão: exemplo do usuário")`: `calcularRescisaoEstagio({ inicio: "2026-01-01", demissao: "2026-03-30", bolsa_base: 1300 })` → `meses_fechados 2`, `dias_trabalhados 30`, `meses 3`, `valor_dias 1300`, `valor_ferias 325`, `total 1625`.
   - `test("rescisão: início no meio do mês")`: `2026-01-15` → `2026-03-30` com 1200: `meses_fechados 2`, `dias_trabalhados 16`, `meses 3`, `valor_dias 640`, `valor_ferias 300`, `total 940`.
   - `test("rescisão: meses exatos, sem sobra")`: `2026-01-15` → `2026-03-14` com 1200: `meses_fechados 2`, `dias_trabalhados 0`, `meses 2`, `valor_dias 0`, `valor_ferias 200`.
-  - `test("rescisão: sobra de 31 dias fica em 30")`: `2026-01-01` → `2026-03-31`... (fecha 3 meses, sem sobra → dias 0, meses 3) e `2026-02-01` → `2026-03-31` com 1200 (n=1... confirme pelo cálculo: fecha fev e mar → `meses_fechados 2`, dias 0). Para pinar o limite, use `2026-03-31` → `2026-05-31` com 1200 (início no dia 31): `meses_fechados 1`, `dias_trabalhados` ≤ 30.
+  - `test("rescisão: sobra máxima de um mês de 31 dias")`: `2026-03-01` → `2026-05-30` com 1200: `meses_fechados 2`, `dias_trabalhados 30`, `meses 3`, `valor_dias 1200`.
   - `test("rescisão: início no dia 31 e fevereiro")`: `2026-01-31` → `2026-03-10` não lança erro e `meses_fechados 1`.
   - `test("rescisão: sem cálculo")`: desligamento igual ao início, anterior ao início e datas `null` → `null`; bolsa 0 → `total 0`.
 
