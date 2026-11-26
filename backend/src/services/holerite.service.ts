@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto";
 import type { Pool } from "pg";
 import { legacyToIso } from "../lib/dates.js";
 import { AppError } from "../lib/errors.js";
-import { calcularHolerite, diasTrabalhados, gerarHoleritesPdf, lerCompetencia, type CalculoHolerite, type LancamentoHolerite } from "../lib/holerite.js";
+import { calcularHolerite, calcularRescisaoEstagio, diasTrabalhados, gerarHoleritesPdf, gerarRecibosRescisaoPdf, lerCompetencia, type CalculoHolerite, type CalculoRescisao, type LancamentoHolerite } from "../lib/holerite.js";
+import { condicaoPorPalavras, palavrasDaBusca } from "../lib/busca-texto.js";
 import { moneyToNumber } from "../lib/money.js";
 import { classifyRegime, onlyDigits, semEntidades } from "../lib/normalize.js";
 
@@ -33,6 +34,21 @@ export type ItemFolha = {
   salvo_em: string | null;
   salvo_por: string | null;
 };
+
+export type ItemRescisao = {
+  id_contratacao: number;
+  id_empresa: string;
+  empresa: string;
+  cnpj: string;
+  nome: string;
+  cpf: string;
+  cargo: string;
+  inicio: string;
+  demissao: string;
+  calculo: CalculoRescisao;
+};
+
+type LinhaRescisao = LinhaContrato & { id_empresa: string; razao_social: string | null; nome_fantasia: string | null; cnpj: string | null };
 
 const LANCAMENTO_VAZIO: LancamentoHolerite = { faltas: 0, auxilio_transporte: 0, acrescimos: 0, descricao_acrescimos: "", descontos: 0, descricao_descontos: "" };
 
@@ -185,6 +201,66 @@ export class HoleriteService {
       client.release();
     }
     return this.folha(idEmpresa, competenciaPedida);
+  }
+
+  /** Estagiários desligados (com data de desligamento diferente do início) que têm acerto calculado; `filtros` entra no WHERE. */
+  private async desligados(filtros: string, params: unknown[]): Promise<ItemRescisao[]> {
+    const { rows } = await this.db.query<LinhaRescisao>(`
+      SELECT cv.id_contratacao::int AS id_contratacao, cv.id_candidato::text AS id_candidato, cv.datainicio::text AS datainicio,
+             cv.data_demicao::text AS data_demicao, c.nome, c.cpf::text AS cpf, v.cargo, v.salario::text AS salario, m.descricao AS modalidade,
+             e.id_empresa::text AS id_empresa, e.razao_social, e.nome_fantasia, e.cnpj
+      FROM dna_work.conratacaovaga cv
+      JOIN dna_work.vaga v ON v.id_vaga = cv.id_vaga
+      JOIN dna_work.empresa e ON e.id_empresa::text = v.id_empresa::text
+      LEFT JOIN dna_work.modalidade_vaga m ON m.id = v.tipo_vaga
+      LEFT JOIN dna_work.candidato c ON c.id_candidato = cv.id_candidato
+      WHERE nullif(btrim(cv.data_demicao::text), '') IS NOT NULL AND ${filtros}
+      ORDER BY e.razao_social, c.nome
+    `, params);
+    const itens: ItemRescisao[] = [];
+    for (const row of rows) {
+      if (classifyRegime(row.modalidade) !== "estagio") continue;
+      const inicio = legacyToIso(row.datainicio);
+      const demissao = legacyToIso(row.data_demicao);
+      const calculo = calcularRescisaoEstagio({ inicio, demissao, bolsa_base: moneyToNumber(row.salario ?? "") ?? 0 });
+      if (!inicio || !demissao || !calculo) continue;
+      itens.push({
+        id_contratacao: Number(row.id_contratacao),
+        id_empresa: row.id_empresa,
+        empresa: semEntidades((row.razao_social ?? "").trim()) || semEntidades((row.nome_fantasia ?? "").trim()),
+        cnpj: cnpjFormatado(row.cnpj),
+        nome: semEntidades((row.nome ?? "").trim()) || "Sem nome",
+        cpf: cpfFormatado(row.cpf),
+        cargo: semEntidades((row.cargo ?? "").trim()),
+        inicio,
+        demissao,
+        calculo,
+      });
+    }
+    return itens;
+  }
+
+  /** Rescisões de estágio do mês (desligamento dentro da competência), com o acerto calculado. Nada é gravado. */
+  async rescisoes(competenciaPedida: string, empresa?: string) {
+    const competencia = this.competencia(competenciaPedida);
+    const itens = await this.desligados(
+      `replace(cv.data_demicao::text, '-', '/') LIKE $1 AND ${condicaoPorPalavras(["e.razao_social", "e.nome_fantasia"], "$2", ["e.cnpj"])}`,
+      [`${competencia.replace("-", "/")}/%`, palavrasDaBusca(empresa)],
+    );
+    return { competencia, itens, total: Math.round(itens.reduce((soma, item) => soma + item.calculo.total, 0) * 100) / 100 };
+  }
+
+  /** PDF do recibo de rescisão de um estagiário. */
+  async rescisaoPdf(idContratacao: number) {
+    const [item] = await this.desligados("cv.id_contratacao::int = $1", [idContratacao]);
+    if (!item) throw new AppError(404, "SEM_RESCISAO", "Esta contratação não é um desligamento de estágio com recibo.");
+    const bytes = await gerarRecibosRescisaoPdf([{
+      empresa: { razao_social: item.empresa, cnpj: item.cnpj },
+      estagiario: { nome: item.nome, cpf: item.cpf, cargo: item.cargo, inicio: item.inicio, demissao: item.demissao },
+      calculo: item.calculo,
+    }]);
+    const nome = item.nome.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "").toLowerCase();
+    return { bytes, arquivo: `rescisao-${nome}.pdf` };
   }
 
   /** PDF com um holerite por página: todos da folha ou só uma contratação. */

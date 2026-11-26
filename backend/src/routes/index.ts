@@ -919,6 +919,16 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
       }),
     },
   }, async (request) => ok(await services.holerites.salvar(request.params.id, request.body.competencia, request.body.itens, request.user.email)));
+  // Recibos de rescisão de estágio (calculados na hora, sem gravar).
+  api.get("/api/v1/holerite/rescisoes", {
+    schema: { tags: ["holerite"], querystring: z.object({ competencia: competenciaSchema, empresa: z.string().optional() }) },
+  }, async (request) => ok(await services.holerites.rescisoes(request.query.competencia, request.query.empresa)));
+  api.get("/api/v1/holerite/rescisoes/:contratacao/pdf", {
+    schema: { tags: ["holerite"], params: z.object({ contratacao: z.coerce.number().int().positive() }) },
+  }, async (request, reply) => {
+    const { bytes, arquivo } = await services.holerites.rescisaoPdf(request.params.contratacao);
+    return reply.header("Content-Type", "application/pdf").header("Content-Disposition", `inline; filename="${arquivo}"`).send(Buffer.from(bytes));
+  });
   api.get("/api/v1/holerite/empresas/:id/pdf", {
     schema: {
       tags: ["holerite"],
