@@ -1,0 +1,68 @@
+# Diagnóstico: roda a suíte do monólito em cada commit de referência, nas MESMAS condições (Node 22, Postgres 16, npm ci),
+# para separar falhas que já existiam antes do MCP das introduzidas por ele. NUNCA implanta nada.
+# Dispara quando este arquivo muda na branch de desenvolvimento (ou manualmente, se estiver disponível).
+name: Diagnóstico de testes (base x 2B x Fase 3)
+
+on:
+  push:
+    paths:
+      - ".github/workflows/diagnostico-testes.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  suite:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { nome: base, sha: 8f60e806ad9a37c3e8e3674c5edb2e4168a74266 }
+          - { nome: fase-2b, sha: 1fed368b3b1c2e0e20325089c6e534ce80a0eb29 }
+          - { nome: fase-3, sha: 3c2e32c86e0a9ba36f6c80289c6ab7c92353403a }
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      MCP_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.sha }}
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Testes do monólito
+        id: testes
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee /tmp/testes.log
+      - name: Resultado
+        if: always()
+        run: |
+          {
+            echo "### ${{ matrix.nome }} (${{ matrix.sha }})"
+            grep -E "^# (tests|pass|fail)" /tmp/testes.log || true
+            echo '```'
+            grep -E "^not ok" /tmp/testes.log | sort -u || true
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          grep -E "^not ok" /tmp/testes.log | sed 's/^not ok [0-9]* - //' | sort -u > /tmp/falhas.txt || true
+          grep -B2 -A14 -E "^not ok" /tmp/testes.log | grep -E "not ok|location:|error:|^\s+[0-9]+ !==|Error" | head -120 > /tmp/detalhes.txt || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: falhas-${{ matrix.nome }}
+          path: |
+            /tmp/falhas.txt
+            /tmp/detalhes.txt

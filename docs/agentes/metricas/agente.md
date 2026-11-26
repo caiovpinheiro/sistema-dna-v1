@@ -1,6 +1,6 @@
 # Agente — Métricas
 
-> Última revisão: 2026-11-16 (aba Geral: dica com quantidades e receita recorrente)
+> Última revisão: 2026-11-26 (Fase 3 do MCP: nota sobre o consumo pelo MCP)
 
 ## Para que serve
 
@@ -123,3 +123,7 @@ A aba fica na URL (`tipo=clt` ou `tipo=geral`; sem o parâmetro, Estágio). O pe
 - Aba CLT (`/metricas?tipo=clt`): sem filtro, confira ≈ 148 contratações e ≈ R$ 1.451 por contratação, o bloco Projeções (≈ R$ 65 mil nos próximos 12 meses em 16/11/2026) e as 12 barras claras variando no fim do gráfico; escolha 2025 e veja as projeções iguais e o gráfico sem as barras projetadas.
 - Entre como administrador e abra `/metricas`: confira os indicadores, o bloco de receita, os atalhos de período (2025 deve dar 700 contratos e ≈ 4,5 meses, igual à linha 2025 da tabela), a curva (começa em 100% e cruza a linha de 50% perto de 3,3 meses), as faixas e a tabela por ano.
 - Com um usuário que não é administrador: o menu não mostra "Métricas", `/metricas` mostra "Somente o administrador vê as métricas." e a API responde 403.
+
+## Consumo pelo MCP
+
+`MetricasService` alimenta `consultar_metricas_clt` e `consultar_metricas_estagio`, **somente para administradores**; preço, taxa, receita, salário e dados de pessoas são removidos da resposta. A projeção é estrita e validada: campo novo na resposta do service **não** chega ao MCP sem ser incluído de propósito em `backend/src/mcp/ferramentas/gestao.ts`. Rode `backend/test/mcp-ferramentas-*.test.ts` ao mudar o que este service devolve. Visão geral: [docs/mcp/ferramentas.md](../../mcp/ferramentas.md).

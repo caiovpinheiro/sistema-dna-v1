@@ -1,0 +1,132 @@
+# CI do MCP e do monólito: testes independentes, escolhidos pelo que mudou. NUNCA implanta nada.
+# Roda em qualquer push/PR (inclusive nas branches de desenvolvimento) e pode ser chamado pelo deploy-independente.yml.
+name: CI (monólito e MCP)
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      base:
+        type: string
+        default: ""
+      forcar_tudo:
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  detectar:
+    runs-on: ubuntu-latest
+    outputs:
+      testar_monolito: ${{ steps.d.outputs.testar_monolito }}
+      testar_mcp: ${{ steps.d.outputs.testar_mcp }}
+      deploy_monolito: ${{ steps.d.outputs.deploy_monolito }}
+      deploy_mcp: ${{ steps.d.outputs.deploy_mcp }}
+      contrato: ${{ steps.d.outputs.contrato }}
+      migracao: ${{ steps.d.outputs.migracao }}
+      ordem: ${{ steps.d.outputs.ordem }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: d
+        env:
+          BASE_PR: ${{ github.event.pull_request.base.sha }}
+          BASE_PUSH: ${{ github.event.before }}
+          BASE_INPUT: ${{ inputs.base }}
+          FORCAR: ${{ inputs.forcar_tudo }}
+        run: |
+          base="${BASE_INPUT:-${BASE_PR:-$BASE_PUSH}}"
+          # Execução manual, base ausente ou "forçar tudo": compara com o primeiro commit (tudo mudou).
+          if [ "$FORCAR" = "true" ] || [ -z "$base" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then base="0000000000000000000000000000000000000000"; fi
+          node scripts/detectar-mudancas.mjs --base "$base" --head "${GITHUB_SHA}"
+
+  scripts-e-workflows:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --test scripts/*.test.mjs
+
+  testes-monolito:
+    needs: detectar
+    if: needs.detectar.outputs.testar_monolito == 'true'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      MCP_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+      - run: npm run agentes:conferir
+      # Suíte completa do monólito (inclui as que dependem do embedded-postgres, que roda sem root no runner).
+      # Em caso de falha, imprime o RESUMO (nomes e motivos) para não depender do log gigante do TAP.
+      - name: Testes do monólito
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee /tmp/testes-monolito.log
+        continue-on-error: true
+        id: testes
+      - name: Resumo das falhas do monólito
+        if: always()
+        run: |
+          echo "### Falhas dos testes do monólito" >> "$GITHUB_STEP_SUMMARY"
+          { grep -E "^# (tests|pass|fail|skipped)" /tmp/testes-monolito.log || true; echo; grep -E "^not ok|^\s+error:|^\s+failureType:|^\s+location:" /tmp/testes-monolito.log | head -150 || true; } | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Falhar se os testes falharam
+        if: steps.testes.outcome == 'failure'
+        run: exit 1
+
+  testes-mcp:
+    needs: detectar
+    if: needs.detectar.outputs.testar_mcp == 'true'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      MCP_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # Os testes ponta a ponta sobem o monólito REAL: precisam das dependências dos dois lados.
+      - run: npm ci
+      - run: npm ci --prefix mcp-server
+      - run: npm run lint --prefix mcp-server
+      - run: npm run build --prefix mcp-server
+      - run: npm test --prefix mcp-server
+      - name: Build da imagem do gateway (sem publicar)
+        run: docker build -t mcp-server:ci mcp-server
+      - name: Imagem roda sem root e sem banco
+        run: |
+          test "$(docker run --rm --entrypoint id mcp-server:ci -u)" != "0"
+          ! docker run --rm --entrypoint sh mcp-server:ci -c 'ls node_modules | grep -x pg'

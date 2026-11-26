@@ -1,6 +1,6 @@
 # Agente — Empresas
 
-> Última revisão: 2026-11-26 (commit "Login do portal compartilhado não é renomeado e a ficha troca o e-mail de acesso")
+> Última revisão: 2026-11-26 (commit "Login do portal compartilhado não é renomeado e a ficha troca o e-mail de acesso"); (Fase 3 do MCP: nota sobre o consumo pelo MCP)
 
 ## Para que serve
 
@@ -117,3 +117,7 @@ Serviços externos: nenhum.
 - Testes backend em `backend/test/escopo.test.ts` (Postgres embutido): "cadastra empresa e bloqueia CNPJ duplicado", "pesquisa candidatos e empresas com filtro e paginação", "gera acesso ao portal, mostra a senha só na resposta e não a guarda".
 - Frontend: sem teste específico.
 - Comandos: `npm run lint -w frontend`, `npm run lint -w backend`, `npm test -w backend`.
+
+## Consumo pelo MCP
+
+O MCP lê empresas pelo `EmpresaRepository` (só `SELECT`), porque `EmpresaService.list/get` criam tabela do portal e limpam senha de envio ao ler. **Nunca saem**: CNPJ, IE, e-mail, telefones, responsável, observações, matriz, endereço completo, cobrança e portal. A projeção é estrita e validada: campo novo na resposta do service **não** chega ao MCP sem ser incluído de propósito em `backend/src/mcp/ferramentas/empresas.ts`. Rode `backend/test/mcp-ferramentas-*.test.ts` ao mudar o que este service devolve. Visão geral: [docs/mcp/ferramentas.md](../../mcp/ferramentas.md).

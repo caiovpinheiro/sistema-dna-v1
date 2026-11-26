@@ -1,6 +1,6 @@
 # Agente — Candidatos
 
-> Última revisão: 2026-11-17 (anexar e trocar arquivo dos documentos na ficha)
+> Última revisão: 2026-11-26 (Fase 3 do MCP: nota sobre o consumo pelo MCP)
 
 ## Para que serve
 
@@ -136,3 +136,7 @@ Variáveis de config que mudam a lista: `CONTRATACAO_STATUS_ATIVO` (padrão 1) e
   - Não encontrado teste de rota para `/candidatos/:id/documentos`, para a ficha (`fichaDoCandidato`) nem para vagas sugeridas.
 - Frontend: não há teste específico desta seção (só `frontend/test/triagem-matching.test.ts`).
 - Comandos: `npm run lint -w frontend`, `npm run lint -w backend`, `npm test -w backend`.
+
+## Consumo pelo MCP
+
+`CandidatoService.list/get` alimentam `buscar_candidatos`, `consultar_candidato`, `consultar_perfil_profissional` e `consultar_historico_candidato` (somente leitura). **Nunca saem**: CPF, RG, CTPS, nascimento, sexo, estado civil, PCD, observações, endereço, dados bancários, PIX e documentos. Celular, telefone e e-mail só com a permissão individual `candidatos:contato`. A projeção é estrita e validada: campo novo na resposta do service **não** chega ao MCP sem ser incluído de propósito em `backend/src/mcp/ferramentas/candidatos.ts`. Rode `backend/test/mcp-ferramentas-*.test.ts` ao mudar o que este service devolve. Visão geral: [docs/mcp/ferramentas.md](../../mcp/ferramentas.md).

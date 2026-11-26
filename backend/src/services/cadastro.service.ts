@@ -448,6 +448,38 @@ export class CadastroService {
     return { vagaId: row.vaga_id, formulario: formularioDaLinha(row) };
   }
 
+  /**
+   * Leitura PURA dos modelos de vaga (public.vaga_repetida) para o MCP: não executa o DDL de `ensureMirror` e
+   * não falha se a tabela ainda não existe (devolve lista vazia).
+   */
+  async modelosSomenteLeitura(filtro: { cargo?: string; tipo?: "estagio" | "clt" | "pj"; vagaId?: string; limite: number; offset?: number }) {
+    const tipo = filtro.tipo === "estagio" ? "1" : filtro.tipo === "clt" ? "2" : filtro.tipo === "pj" ? "4" : null;
+    try {
+      const consulta = await this.db.query<RepetidaLinha & { total: string }>(
+        `SELECT ${CAMPOS_REPETIDA}, count(*) OVER () AS total
+         FROM public.vaga_repetida
+         WHERE ($1::text IS NULL OR cargo ILIKE '%' || $1 || '%')
+           AND ($2::text IS NULL OR tipo_vaga = $2)
+           AND ($3::text IS NULL OR vaga_id::text = $3)
+         ORDER BY lower(cargo) NULLS LAST, tipo_vaga
+         LIMIT $4 OFFSET $5`,
+        [filtro.cargo || null, tipo, filtro.vagaId || null, filtro.limite, filtro.offset ?? 0],
+      );
+      return {
+        total: consulta.rows[0] ? Number(consulta.rows[0].total) : 0,
+        modelos: consulta.rows.map((row) => ({
+          vagaId: String(row.vaga_id),
+          tipo: TIPO_MODELO[String(row.tipo_vaga)] ?? "Estágio",
+          salarioTexto: salarioTexto(row.salario) || null,
+          formulario: formularioDaLinha(row),
+        })),
+      };
+    } catch (error) {
+      if ((error as { code?: string }).code === "42P01") return { total: 0, modelos: [] };
+      throw error;
+    }
+  }
+
   async opcoesModelos() {
     await this.ensureMirror();
     const cargos = await this.db.query<{ cargo: string }>(

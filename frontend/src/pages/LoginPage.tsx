@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button, Card, Field, Input } from "@/components/ui";
 import { FundoLiquido } from "@/components/fundo-liquido";
 import { ApiError, api } from "@/lib/api";
@@ -11,6 +11,9 @@ export function LoginPage() {
   const [error, setError] = useState("");
   const [entrou, setEntrou] = useState("");
   const navigate = useNavigate();
+  // Volta para onde a pessoa estava indo (ex.: autorização do MCP). Só caminho interno: nunca endereço externo.
+  const [params] = useSearchParams();
+  const proximo = (() => { const n = params.get("next") ?? ""; return n.startsWith("/") && !n.startsWith("//") && !n.includes("\\") ? n : "/"; })();
   const client = useQueryClient();
   const login = useMutation({
     mutationFn: () => api<{ nome?: string }>("/api/v1/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
@@ -23,9 +26,9 @@ export function LoginPage() {
 
   useEffect(() => {
     if (!entrou) return;
-    const timer = window.setTimeout(() => navigate("/"), 8000);
+    const timer = window.setTimeout(() => navigate(proximo), 8000);
     return () => window.clearTimeout(timer);
-  }, [entrou, navigate]);
+  }, [entrou, navigate, proximo]);
 
   if (entrou) {
     return (
@@ -38,7 +41,7 @@ export function LoginPage() {
             muted
             playsInline
             aria-label={`Login realizado, ${entrou}`}
-            onEnded={() => navigate("/")}
+            onEnded={() => navigate(proximo)}
           />
           <p className="mt-4 text-lg font-extrabold text-navy-900">Login realizado</p>
           <p className="text-sm text-slate-500">{entrou}</p>

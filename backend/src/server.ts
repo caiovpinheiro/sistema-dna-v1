@@ -18,6 +18,10 @@ const agendarSyncNotion = process.env.NOTION_SYNC_AGENDA === "1";
 const app = await buildApp({ config, db, capabilities, agendarSyncNotion });
 const host = process.env.NODE_ENV === "production" ? "0.0.0.0" : config.HOST;
 await app.listen({ port: config.PORT, host });
+// MCP: API interna só na rede privada, em porta própria (nunca no domínio público). Só existe com MCP_ENABLED.
+if (app.mcp) {
+  await app.mcp.interno.listen({ port: config.MCP_INTERNAL_PORT, host: config.MCP_INTERNAL_HOST });
+}
 
 const shutdown = async () => {
   await app.close();

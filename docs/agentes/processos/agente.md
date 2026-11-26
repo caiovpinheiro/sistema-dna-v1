@@ -1,6 +1,6 @@
 # Agente — Processos
 
-> Última revisão: 2026-11-18 (voltar da ficha e do novo processo leva à página de origem; pesquisa inteligente nas buscas)
+> Última revisão: 2026-11-26 (Fase 3 do MCP: nota sobre o consumo pelo MCP)
 
 ## Para que serve
 
@@ -112,3 +112,7 @@ Tudo no **Postgres, schema `dna_work`**. As duas tabelas de processo existem só
 - `/processos/:id`: avance as etapas, marque Reprovado e confira que os botões somem e o histórico registra. Use "Contratar" e confira que o processo vira "Contratado" com link para a contratação.
 - Teste do backend: `backend/test/processo.test.ts` (etapa inicial, trilha, conversão).
 - Comandos: `npm run lint -w frontend`, `npm run lint -w backend`, `npm test -w backend`.
+
+## Consumo pelo MCP
+
+`ProcessoService.list/get` alimentam `listar_processos` e `consultar_processo`. O JSON de `atendimento` não sai (resumos, testes, condução): só o `deal_id` como referência ao CRM Bwipo. Observações de movimentação saem com telefone/e-mail/CPF mascarados. A projeção é estrita e validada: campo novo na resposta do service **não** chega ao MCP sem ser incluído de propósito em `backend/src/mcp/ferramentas/processos.ts`. Rode `backend/test/mcp-ferramentas-*.test.ts` ao mudar o que este service devolve. Visão geral: [docs/mcp/ferramentas.md](../../mcp/ferramentas.md).

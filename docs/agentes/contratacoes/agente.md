@@ -1,6 +1,6 @@
 # Agente — Contratações
 
-> Última revisão: 2026-11-25 ("Editar rescisão" no vínculo encerrado, bloqueado depois de assinada; aba Rescisão também acha quem já teve a rescisão gerada, com a situação da assinatura; "Trocar vaga" na ficha da contratação ativa; CNPJ de quem paga nos documentos da empresa sem CNPJ)
+> Última revisão: 2026-11-26 (recusa VAGA_SEM_POSICAO em vaga contratada e lotada)
 
 ## Para que serve
 
@@ -89,6 +89,7 @@ Criação (`contratacao.service.ts:93-207`, tudo numa transação):
 - Regime vem de `modalidade_vaga.descricao` via `classifyRegime`: só "estágio" ou "clt"; outro → 422 `MODALIDADE_NAO_SUPORTADA`.
 - 409 `VINCULO_DUPLICADO` se já ativo na mesma vaga; 409 `CANDIDATO_JA_ATIVO` se ativo em outra vaga e `ALLOW_MULTIPLE_ACTIVE_LINKS` for falso.
 - Capacidade = `quantidade_posicoes ?? 1`; cheia → 409 `VAGA_SEM_POSICAO`. Ao ocupar a última, vaga vai para `VAGA_STATUS_OCUPADA`.
+- Recusa por status (`recusaPorStatus` em `lib/vaga-status.ts`, sempre 409, nunca reabre a vaga): vaga **contratada e lotada** → `VAGA_SEM_POSICAO` ("Todas as posições desta vaga já estão ocupadas."), conferida depois da duplicidade e do vínculo ativo; pausada, fechada (demitida/cancelada/desativada), código desconhecido ou contratada com posição livre → `VAGA_ENCERRADA`. Vale também para "Trocar vaga" (mensagem "da nova vaga"). Antes, a vaga lotada pelo próprio sistema respondia `VAGA_ENCERRADA`; o frontend e as integrações não dependem desses códigos (mostram a mensagem). Testes: `backend/test/vaga-recusa.test.ts` e `escopo.test.ts`.
 - `id_contratacao`: antes do `nextval`, faz `setval` com o maior id existente (sync do legado grava ids explícitos) — `contratacao.repository.ts:103-117`.
 - Com `id_processo`, o processo precisa ser do mesmo candidato/vaga e não estar encerrado (409 `PROCESSO_DIVERGENTE`/`PROCESSO_ENCERRADO`); sem `id_processo`, vincula o processo aberto mais recente do par candidato+vaga, se houver.
 - Se faltar migration (`vaga.quantidade_posicoes`, sequence, `colaborador.id_contratacao`, `api_idempotencia`), `create/encerrar/documentos/assinatura` respondem erro de migration pendente (`ensureReady`).
@@ -145,3 +146,7 @@ Listagem:
 - Tela: abrir `/contratacoes`, filtrar; `/contratacoes/nova`, escolher empresa (≥2 letras), vaga com posição livre, candidato e registrar; abrir a ficha e clicar "Fazer a rescisão" (abre a rescisão da mesma contratação). Em `/contratacoes/rescisao/:id`, preencher motivo/data, "Gerar rescisão e demitir", responder o modal e abrir "Imprimir original" (PDF). Envio real à ZapSign só com `ZAPSIGN_API_TOKEN` configurado.
 - Testes: `backend/test/escopo.test.ts` (Postgres embutido) cobre a listagem da aba Rescisão (`rescisao=1`: ativo, demitido com rescisão e demitido sem rescisão) e a edição da rescisão (dados, data, assinatura zerada, 422 antes do início, 409 assinada, 404 sem rescisão), contratar até o limite, sexta bloqueada, duplicada, sem vaga, empresa divergente, concorrência na última posição e encerramento preservando histórico, troca de vaga (regime diferente, mesma vaga, posição saindo da antiga e entrando na nova, colaborador com a nova empresa). Não há teste para rescisão/ZapSign (não encontrado).
 - Comandos: `npm run lint -w frontend`, `npm run lint -w backend`, `npm test -w backend`, `npm run agentes:conferir`.
+
+## Consumo pelo MCP
+
+`ContratacaoService.list/get/listByCandidato` alimentam `listar_contratacoes`, `consultar_contratacao` e o histórico do candidato. **Nunca saem**: CPF, salário, rescisão, documentos e assinatura. O filtro `rescisao` não é repassado (ele executa DDL ao ler) e a busca livre `q` recusa números de documento. A projeção é estrita e validada: campo novo na resposta do service **não** chega ao MCP sem ser incluído de propósito em `backend/src/mcp/ferramentas/processos.ts`. Rode `backend/test/mcp-ferramentas-*.test.ts` ao mudar o que este service devolve. Visão geral: [docs/mcp/ferramentas.md](../../mcp/ferramentas.md).

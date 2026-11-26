@@ -1,6 +1,6 @@
 # Agente — Painel
 
-> Última revisão: 2026-11-17 (commit "Painel: origem das contratações além do processo seletivo")
+> Última revisão: 2026-11-26 (Fase 3 do MCP: nota sobre o consumo pelo MCP)
 
 ## Para que serve
 
@@ -97,3 +97,7 @@ Serviço externo: **CRM DNA** (`backend/src/origem/crm-dna.ts`), chamadas `GET /
 - Rolar até "Origem dos candidatos" e trocar o período (precisa das variáveis do CRM; sem elas aparece erro).
 - Testes: `backend/test/dashboard-periodo.test.ts` (cálculo do intervalo) e `backend/test/dashboard-origem.test.ts` (os quatro critérios da origem das contratações; precisa de `DASHBOARD_PG_URL` apontando para um PostgreSQL local, senão é pulado). Não encontrei teste do `DashboardService` nem do módulo `origem`.
 - Comandos: `npm test -w backend`, `npm run lint -w backend`, `npm run lint -w frontend`.
+
+## Consumo pelo MCP
+
+`DashboardService.get` alimenta `consultar_dashboard` e `consultar_indicadores_contratacoes`; a lista `ultimas_contratacoes` (CPF e salário) é descartada e chaves financeiras/pessoais são removidas. `origemComCache` alimenta `consultar_origem_candidatos` (chama o CRM; limite de 6 consultas por hora por usuário). A projeção é estrita e validada: campo novo na resposta do service **não** chega ao MCP sem ser incluído de propósito em `backend/src/mcp/ferramentas/gestao.ts`. Rode `backend/test/mcp-ferramentas-*.test.ts` ao mudar o que este service devolve. Visão geral: [docs/mcp/ferramentas.md](../../mcp/ferramentas.md).

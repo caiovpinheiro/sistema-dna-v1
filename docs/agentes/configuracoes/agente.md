@@ -1,6 +1,6 @@
 # Agente — Configurações
 
-> Última revisão: 2026-11-18 (sistema desligado do Lightsail; sync agendado parado; triagem só com vagas abertas no cadastro)
+> Última revisão: 2026-11-26 (Fase 5: aba Base de conhecimento)
 
 ## Para que serve
 
@@ -82,3 +82,32 @@ Variável usada: `ADMIN_EMAIL` (o administrador do ambiente). Nenhum serviço ex
 - Disparador: marcar e desmarcar "Disparador Infojobs" (Geral) num usuário de teste, recarregar o sistema com ele e conferir o item "Disparador" no menu.
 - Testes: `backend/test/paginas.test.ts` (catálogo, migration e menu do Disparador). Não encontrei teste específico do `AcessoService` nem das rotas `/configuracoes`. `backend/test/triagem-rotas.test.ts` simula `app_usuario`/`app_usuario_pagina` para checar a permissão de página.
 - Comandos: `npm test -w backend`, `npm run lint -w backend`, `npm run lint -w frontend`.
+
+
+## Aba "Integrações MCP" (Fase 4)
+
+Rota `/configuracoes?aba=mcp` (chips "Acessos" e "Integrações MCP"; só administrador, pelo mesmo hook de `/api/v1/configuracoes*`). Componente: `frontend/src/components/integracoes-mcp.tsx`. Quatro áreas:
+
+- **Integrações**: lista, nova (nasce desativada, sem ferramentas e sem colaboradores), editar nome, descrição, finalidade e instruções (o slug não muda), ativar/desativar (desativar revoga as conexões), duplicar (copia só configuração e ferramentas), copiar URL de conexão, ferramentas por módulo (individual ou módulo inteiro, com finalidade, página exigida, permissão e selo de serviço externo) e colaboradores (abrangência, permissões individuais, limite de ferramentas, registros autorizados, revogar, desvincular).
+- **Colaboradores**: visão por pessoa. Por integração mostra ferramentas disponíveis e bloqueadas com a origem do bloqueio (painel, integração, colaborador, abrangência, permissão, OAuth), conexões ativas, chamadas, negados e último acesso; revoga por integração ou tudo.
+- **Auditoria**: filtros (integração, colaborador, ferramenta, período, resultado), indicadores (chamadas, sucesso, erros, negados, limite, tempo médio, mais usadas, mais ativos, serviços externos: quantidade de chamadas, não custo) e tabela paginada. Sem token, segredo nem payload; respeita a retenção.
+- **Infraestrutura**: MCP ligado, contrato, OAuth, modo do canal interno e validade do certificado, última chamada do gateway, prontidão e passos para o ChatGPT. Nunca mostra chave privada nem segredo HMAC (só no EasyPanel).
+
+API (`backend/src/mcp/admin.ts`, prefixo `/api/v1/configuracoes/mcp`): GET `resumo`, `ferramentas`, `integracoes`, `colaboradores`, `auditoria`, `registros/busca`; POST `integracoes`; GET e PATCH `integracoes/:id`; POST `integracoes/:id/ativa`, `duplicar`, `revogar`; PUT `integracoes/:id/ferramentas`; PUT e DELETE `integracoes/:id/colaboradores/:usuario`; GET `.../registros`; GET `colaboradores/:id`; POST `colaboradores/:id/revogar`.
+
+Dados: tabelas `dna_work.mcp_*` (migrations `20261126120000_mcp_base` e `20261127120000_mcp_gestao`, esta com `abrangencia` e `mcp_integracao_usuario_registro`). Regras e limites da abrangência em `docs/mcp/abrangencia.md`.
+
+Cuidados: "próprios" e "equipe" ficam indisponíveis (o banco não registra responsável nem equipe); toda mudança vale na próxima chamada, sem rebuild; não expor segredos. Testes: `backend/test/mcp-admin.test.ts` e `backend/test/mcp-abrangencia.test.ts`.
+
+
+## Aba "Base de conhecimento" (Fase 5)
+
+Rota `/configuracoes?aba=conhecimento` (só administrador). Componentes: `frontend/src/components/base-conhecimento.tsx`, `frontend/src/components/markdown.tsx` e `frontend/src/lib/markdown.ts` (Markdown seguro, sem HTML cru). Três áreas:
+
+- **Artigos**: lista com pesquisa e filtros (categoria, módulo, status, só desatualizados) e selos (rascunho pendente, revisar, acesso restrito); editor com título, resumo, Markdown com pré-visualização (lado a lado em tela larga, alternado no celular), tags, palavras-chave, referência, fonte e nota; organização (categoria, módulo, revisar em); permissões (só administradores, páginas exigidas, integrações); ações Salvar rascunho, Publicar (confirmação), Arquivar/Reativar, Duplicar e Histórico (ver versão, restaurar como novo rascunho).
+- **Categorias**: criar, renomear, ativar/desativar (desativar tira os artigos do MCP).
+- **Testar a busca**: mostra o que `buscar_conhecimento` encontra (só publicado), com relevância e trechos.
+
+API (`backend/src/conhecimento/admin.ts`, prefixo `/api/v1/configuracoes/conhecimento`): GET `opcoes`, `categorias`, `artigos`, `artigos/:id`, `artigos/:id/versoes`, `artigos/:id/versoes/:v`, `auditoria`, `busca`; POST `categorias`, `artigos`, `artigos/:id/publicar|arquivar|reativar|duplicar`, `artigos/:id/versoes/:v/restaurar`, `importar`; PATCH `categorias/:id`, `artigos/:id`; PUT `artigos/:id/rascunho`.
+
+Dados: `dna_work.conhecimento_*` (migration `20261128120000_conhecimento`). Regras completas em `docs/mcp/conhecimento.md`. Cuidados: a versão publicada é imutável; publicar é a única forma de mudar o que o MCP vê; nunca colocar dados pessoais, conversas reais ou credenciais nos artigos. Testes: `backend/test/mcp-conhecimento.test.ts`, `frontend/test/markdown.test.ts`.

@@ -27,3 +27,18 @@ export function codigoParaStatus(status: StatusVaga, codigoAtual?: number | stri
   if (codigoAtual != null && codigoAtual !== "" && statusDaVaga(codigoAtual) === status) return Number(codigoAtual);
   return CODIGO_AO_EDITAR[status];
 }
+
+export type RecusaPorStatus = "VAGA_SEM_POSICAO" | "VAGA_ENCERRADA";
+
+/**
+ * Por que uma vaga que NÃO está "aberta" recusa contratação (sempre 409; nunca reabre a vaga):
+ * - "contratada" com todas as posições ocupadas → VAGA_SEM_POSICAO (foi o próprio sistema que a lotou);
+ * - qualquer outro caso (pausada, fechada/cancelada/desativada, ou "contratada" com posição livre) → VAGA_ENCERRADA.
+ * Vaga "aberta" devolve null: a capacidade é conferida depois, com a vaga travada (FOR UPDATE).
+ */
+export function recusaPorStatus(codigo: number | string | null | undefined, ocupadas: number, capacidade: number): RecusaPorStatus | null {
+  const status = statusDaVaga(codigo);
+  if (status === "aberta") return null;
+  if (status === "contratada" && ocupadas >= capacidade) return "VAGA_SEM_POSICAO";
+  return "VAGA_ENCERRADA";
+}
