@@ -1,6 +1,6 @@
 import { randomInt, randomUUID } from "node:crypto";
 import { hash } from "@node-rs/argon2";
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
 import { AppError } from "../lib/errors.js";
 import { EmpresaRepository } from "../repositories/empresa.repository.js";
 import type { EmpresaCreate, EmpresaListQuery, EmpresaPatch } from "../schemas/empresa.js";
@@ -18,18 +18,22 @@ export type AcessoPortal = {
   ativo: boolean;
   email: string | null;
   nome: string | null;
+  /** Outras empresas que o mesmo login abre. */
+  outras?: string[];
 };
 
 export type LoginPortalResultado = {
-  /** trocado: o login passou a ser o e-mail novo; juntado: a empresa entrou no login que já tinha esse e-mail; igual: o login já era esse e-mail; mantido: a empresa tem vários logins e nenhum usava o e-mail antigo; sem_acesso: a empresa não tem login. */
-  acao: "trocado" | "juntado" | "igual" | "mantido" | "sem_acesso";
+  /** trocado: o login passou a ser o e-mail novo; separado: o login abria outras empresas, então esta ganhou um login próprio com o e-mail novo (senha nova); juntado: a empresa entrou no login que já tinha esse e-mail; igual: o login já era esse e-mail; mantido: a empresa tem vários logins e nenhum usava o e-mail antigo; sem_acesso: a empresa não tem login. */
+  acao: "trocado" | "separado" | "juntado" | "igual" | "mantido" | "sem_acesso";
   email: string;
   empresas?: string[];
 };
 
+type UsuarioLogin = { id_u: string; email_u: string | null; empresa_u: string | null; nome_u?: string | null };
+
 type PlanoLogin = {
   acao: "trocado" | "juntado" | "igual" | "mantido";
-  alvos: Array<{ id_u: string; email_u: string | null; empresa_u: string | null }>;
+  alvos: UsuarioLogin[];
   dono: string | null;
 };
 
@@ -119,7 +123,13 @@ export class EmpresaService {
       await this.db.query("UPDATE public.empresa SET email = $2 WHERE id::text = $1", [id, emailNovo]).catch((error: unknown) => {
         if (!["42P01", "42703"].includes(codigoPg(error) ?? "")) throw error;
       });
-      loginPortal = plano ? await this.aplicarLogin(id, emailNovo, plano) : { acao: "sem_acesso", email: emailNovo };
+      if (plano) {
+        // Senha do login separado não volta pela edição: a ficha pede para gerar uma nova no card do portal.
+        const { senha: _senha, ...semSenha } = await this.aplicarLogin(id, emailNovo, plano);
+        loginPortal = semSenha;
+      } else {
+        loginPortal = { acao: "sem_acesso", email: emailNovo };
+      }
     }
     if (this.endereco && ENDERECO.some((campo) => campo in patch)) {
       // Falha aqui não desfaz a edição: o sync das vagas confere o endereço de novo no próximo horário.
@@ -135,65 +145,85 @@ export class EmpresaService {
    * aí esta empresa passa a entrar por aquele login, com a senha dele.
    */
   private async planoLogin(id: string, emailAntigo: string | null, emailNovo: string, juntar: boolean): Promise<PlanoLogin | null> {
-    let usuarios: Array<{ id_u: string; email_u: string | null; empresa_u: string | null }>;
+    const usuarios = await this.loginsDaEmpresa(id);
+    if (usuarios === null || !usuarios.length) return null;
+    const antigo = (emailAntigo ?? "").trim().toLowerCase();
+    let alvos = usuarios.filter((usuario) => antigo && (usuario.email_u ?? "").trim().toLowerCase() === antigo);
+    if (!alvos.length && usuarios.length === 1) alvos = usuarios;
+    if (!alvos.length) return { acao: "mantido", alvos: [], dono: null };
+    return this.planoPara(alvos, emailNovo, juntar, "LOGIN_EM_USO");
+  }
+
+  /** Logins ativos que abrem a empresa (`empresa_u` ou vínculo). null: as tabelas do portal não existem. */
+  private async loginsDaEmpresa(id: string): Promise<UsuarioLogin[] | null> {
     try {
-      usuarios = (await this.db.query<{ id_u: string; email_u: string | null; empresa_u: string | null }>(`
-        select u.id_u, u.email_u, u.empresa_u
+      return (await this.db.query<UsuarioLogin>(`
+        select u.id_u, u.email_u, u.empresa_u, u.nome_u
         from dna_work.usuario_empresa u
         where u.status = 1 and (
           u.empresa_u = $1
           or exists (select 1 from dna_work.vinculo_empresa_usuario v where v.id_usuario = u.id_u and v.id_empresa = $1)
         )
+        order by case when u.empresa_u = $1 then 0 else 1 end, u.nome_u
       `, [id])).rows;
     } catch (error) {
       if (codigoPg(error) === "42P01") return null;
       throw error;
     }
-    if (!usuarios.length) return null;
-    const antigo = (emailAntigo ?? "").trim().toLowerCase();
-    let alvos = usuarios.filter((usuario) => antigo && (usuario.email_u ?? "").trim().toLowerCase() === antigo);
-    if (!alvos.length && usuarios.length === 1) alvos = usuarios;
-    if (!alvos.length) return { acao: "mantido", alvos: [], dono: null };
+  }
+
+  private async planoPara(alvos: UsuarioLogin[], emailNovo: string, juntar: boolean, codigoConflito: string): Promise<PlanoLogin> {
     if (alvos.every((usuario) => (usuario.email_u ?? "").trim().toLowerCase() === emailNovo)) return { acao: "igual", alvos: [], dono: null };
-    const ids = alvos.map((usuario) => usuario.id_u);
-    const dono = (await this.db.query<{ id_u: string; nome_u: string | null }>(`
-      select id_u, nome_u from dna_work.usuario_empresa
+    const dono = (await this.db.query<{ id_u: string }>(`
+      select id_u from dna_work.usuario_empresa
       where status = 1 and lower(trim(email_u)) = $1 and not (id_u = any($2::varchar[]))
       order by id_u limit 1
-    `, [emailNovo, ids])).rows[0];
+    `, [emailNovo, alvos.map((usuario) => usuario.id_u)])).rows[0];
     if (!dono) return { acao: "trocado", alvos, dono: null };
     if (!juntar) {
       const empresas = await this.empresasDoLogin(dono.id_u);
-      throw new AppError(409, "LOGIN_EM_USO", `${emailNovo} já entra no portal por ${empresas.length ? empresas.join(", ") : "outra empresa"}. Confirme para esta empresa usar o mesmo login.`, { empresas, email: emailNovo });
+      throw new AppError(409, codigoConflito, `${emailNovo} já entra no portal por ${empresas.length ? empresas.join(", ") : "outra empresa"}. Confirme para esta empresa usar o mesmo login.`, { empresas, email: emailNovo });
     }
     return { acao: "juntado", alvos, dono: dono.id_u };
   }
 
-  private async aplicarLogin(id: string, emailNovo: string, plano: PlanoLogin): Promise<LoginPortalResultado> {
+  /**
+   * Aplica o plano numa transação. Login que só abre esta empresa troca de e-mail. Login que abre outras empresas
+   * não é renomeado (as outras continuariam no e-mail novo): esta empresa sai dele e ganha um login próprio com o
+   * e-mail novo, com senha nova (devolvida só aqui) e a troca obrigatória no primeiro acesso.
+   */
+  private async aplicarLogin(id: string, emailNovo: string, plano: PlanoLogin): Promise<LoginPortalResultado & { senha?: string }> {
     if (plano.acao === "mantido" || plano.acao === "igual") return { acao: plano.acao, email: emailNovo };
     const client = await this.db.connect();
+    let resultado: LoginPortalResultado & { senha?: string };
     try {
       await client.query("BEGIN");
-      if (plano.acao === "trocado") {
-        await client.query("update dna_work.usuario_empresa set email_u = $2 where id_u = any($1::varchar[])", [plano.alvos.map((usuario) => usuario.id_u), emailNovo]);
+      if (plano.acao === "juntado") {
+        await this.vincular(client, plano.dono!, id);
+        for (const usuario of plano.alvos) await this.tirarEmpresa(client, usuario, id);
+        resultado = { acao: "juntado", email: emailNovo };
       } else {
-        await client.query(`
-          insert into dna_work.vinculo_empresa_usuario (id_usuario, id_empresa)
-          select $1::varchar, $2::varchar
-          where not exists (select 1 from dna_work.vinculo_empresa_usuario where id_usuario = $1::varchar and id_empresa = $2::varchar)
-        `, [plano.dono, id]);
-        for (const usuario of plano.alvos) {
-          // O login antigo deixa de abrir esta empresa; se não sobra nenhuma, ele é desativado.
-          await client.query("delete from dna_work.vinculo_empresa_usuario where id_usuario = $1 and id_empresa = $2", [usuario.id_u, id]);
-          const outra = (await client.query<{ id_empresa: string }>(
-            "select id_empresa from dna_work.vinculo_empresa_usuario where id_usuario = $1 order by id_empresa limit 1",
-            [usuario.id_u],
-          )).rows[0]?.id_empresa;
-          if (usuario.empresa_u === id || !usuario.empresa_u) {
-            if (outra) await client.query("update dna_work.usuario_empresa set empresa_u = $2 where id_u = $1", [usuario.id_u, outra]);
-            else await client.query("update dna_work.usuario_empresa set status = 0 where id_u = $1", [usuario.id_u]);
+        // Primeiro os logins só desta empresa: um deles vira o login com o e-mail novo.
+        const comOutras = new Map<string, boolean>();
+        for (const usuario of plano.alvos) comOutras.set(usuario.id_u, await this.abreOutras(client, usuario.id_u, id));
+        const ordem = [...plano.alvos].sort((x, y) => Number(comOutras.get(x.id_u)) - Number(comOutras.get(y.id_u)));
+        let destino: string | null = null;
+        let senha: string | undefined;
+        for (const usuario of ordem) {
+          if (!destino && !comOutras.get(usuario.id_u)) {
+            await client.query("update dna_work.usuario_empresa set email_u = $2 where id_u = $1", [usuario.id_u, emailNovo]);
+            destino = usuario.id_u;
+            continue;
           }
+          if (!destino) {
+            senha = senhaInicial();
+            destino = await this.criarLoginSeparado(client, usuario, id, emailNovo, await hash(senha));
+          } else {
+            await this.vincular(client, destino, id);
+          }
+          await this.tirarEmpresa(client, usuario, id);
         }
+        resultado = senha ? { acao: "separado", email: emailNovo, senha } : { acao: "trocado", email: emailNovo };
       }
       await client.query("COMMIT");
     } catch (error) {
@@ -202,8 +232,78 @@ export class EmpresaService {
     } finally {
       client.release();
     }
-    if (plano.acao === "trocado") return { acao: "trocado", email: emailNovo };
-    return { acao: "juntado", email: emailNovo, empresas: await this.empresasDoLogin(plano.dono!) };
+    if (resultado.acao === "juntado") resultado.empresas = await this.empresasDoLogin(plano.dono!);
+    return resultado;
+  }
+
+  /** O login abre outra empresa além desta? */
+  private async abreOutras(client: PoolClient, usuarioId: string, id: string): Promise<boolean> {
+    const rows = await client.query(`
+      select 1 from dna_work.usuario_empresa where id_u = $1 and empresa_u is not null and empresa_u <> $2
+      union all
+      select 1 from dna_work.vinculo_empresa_usuario where id_usuario = $1 and id_empresa <> $2
+      limit 1
+    `, [usuarioId, id]);
+    return Boolean(rows.rowCount);
+  }
+
+  private async vincular(client: PoolClient, usuarioId: string, id: string) {
+    await client.query(`
+      insert into dna_work.vinculo_empresa_usuario (id_usuario, id_empresa)
+      select $1::varchar, $2::varchar
+      where not exists (select 1 from dna_work.vinculo_empresa_usuario where id_usuario = $1::varchar and id_empresa = $2::varchar)
+    `, [usuarioId, id]);
+  }
+
+  /** O login deixa de abrir esta empresa; se não sobra nenhuma, é desativado. */
+  private async tirarEmpresa(client: PoolClient, usuario: UsuarioLogin, id: string) {
+    await client.query("delete from dna_work.vinculo_empresa_usuario where id_usuario = $1 and id_empresa = $2", [usuario.id_u, id]);
+    if (usuario.empresa_u && usuario.empresa_u !== id) return;
+    const outra = (await client.query<{ id_empresa: string }>(
+      "select id_empresa from dna_work.vinculo_empresa_usuario where id_usuario = $1 order by id_empresa limit 1",
+      [usuario.id_u],
+    )).rows[0]?.id_empresa;
+    if (outra) await client.query("update dna_work.usuario_empresa set empresa_u = $2 where id_u = $1", [usuario.id_u, outra]);
+    else await client.query("update dna_work.usuario_empresa set status = 0 where id_u = $1", [usuario.id_u]);
+  }
+
+  /** Login novo só desta empresa, com o nome, o telefone e o menu do login de onde ela saiu. */
+  private async criarLoginSeparado(client: PoolClient, origem: UsuarioLogin, id: string, email: string, senhaHash: string): Promise<string> {
+    const novo = randomUUID();
+    const hoje = new Date().toISOString().slice(0, 10).replaceAll("-", "/");
+    await client.query(`
+      insert into dna_work.usuario_empresa
+        (id_u, nome_u, email_u, senha_u, senha_hash, telefone_u, empresa_u, status, tipo, data_senha, atualiza_senha)
+      select $1, nome_u, $2, null, $3, telefone_u, $4, 1, coalesce(tipo, 1), $5, 1
+      from dna_work.usuario_empresa where id_u = $6
+    `, [novo, email, senhaHash, id, hoje, origem.id_u]);
+    await this.vincular(client, novo, id);
+    const copiou = await client.query(`
+      insert into dna_work.paginas_usuario_empresa (id_usuario, menu, sub1, sub2, paginas)
+      select $1, menu, sub1, sub2, paginas from dna_work.paginas_usuario_empresa where id_usuario = $2 limit 1
+    `, [novo, origem.id_u]);
+    if (!copiou.rowCount) {
+      await client.query(
+        "insert into dna_work.paginas_usuario_empresa (id_usuario, menu, sub1, sub2, paginas) values ($1, $2, $3, $4, '')",
+        [novo, MENU_PORTAL, SUB1_PORTAL, SUB2_PORTAL],
+      );
+    }
+    return novo;
+  }
+
+  /**
+   * "Trocar e-mail de acesso" no card do portal: muda só o login desta empresa (não o e-mail da ficha), com as mesmas
+   * regras da edição. 409 EMAIL_EM_USO até `juntar` quando o e-mail já é login de outra empresa.
+   */
+  async trocarEmailPortal(id: string, input: { email: string; juntar?: boolean }) {
+    const empresa = await this.repo.findById(this.db, id);
+    if (!empresa) throw new AppError(404, "EMPRESA_NAO_ENCONTRADA", "Empresa não encontrada.");
+    const email = input.email.trim().toLowerCase();
+    if (!emailValido(email)) throw new AppError(422, "EMAIL_INVALIDO", "Informe um e-mail válido para o acesso da empresa.");
+    const logins = await this.loginsDaEmpresa(id);
+    if (!logins?.length) throw new AppError(409, "SEM_ACESSO", "Esta empresa ainda não tem acesso ao portal. Use Gerar acesso.");
+    const plano = await this.planoPara([logins[0]], email, input.juntar === true, "EMAIL_EM_USO");
+    return this.aplicarLogin(id, email, plano);
   }
 
   /** Nomes das empresas que um login do portal abre. */
@@ -386,9 +486,12 @@ export class EmpresaService {
       await this.limparSenhaEnvio();
       const usuario = await this.usuarioPortal(id);
       if (!usuario) return { acesso_portal: false, portal: vazio };
+      const empresa = await this.repo.findById(this.db, id);
+      const propria = (empresa?.nome_fantasia || empresa?.razao_social || "").trim();
+      const outras = (await this.empresasDoLogin(usuario.id)).filter((nome) => nome !== propria);
       return {
         acesso_portal: true,
-        portal: { ativo: true, email: usuario.email, nome: usuario.nome },
+        portal: { ativo: true, email: usuario.email, nome: usuario.nome, outras },
       };
     } catch (error) {
       if (codigoPg(error) === "42P01") return { acesso_portal: false, portal: vazio };

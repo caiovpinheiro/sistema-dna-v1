@@ -16,7 +16,7 @@ type Company = {
   /** Empresa que paga por esta (o boleto sai no CNPJ dela); null = a própria empresa é cobrada. */
   cobranca_por?: { id: string; nome: string; cnpj: string } | null;
   acesso_portal?: boolean;
-  portal?: { ativo: boolean; email: string | null; nome: string | null };
+  portal?: { ativo: boolean; email: string | null; nome: string | null; outras?: string[] };
   uso_portal?: { ultimo_login: string | null; ultimo_uso: string | null; logins: number; email: string | null } | null;
 };
 type Job = { id_vaga: string; cargo: string; regime: string; situacao: string; quantidade_posicoes: number | null; ocupadas: number; disponiveis: number | null; codigo: string | null; dataabertura: string | null };
@@ -245,6 +245,39 @@ function AcessoPortal({ empresaId, emailEmpresa, portal, uso }: { empresaId: str
     },
     onError: (error) => setErro(error instanceof ApiError ? error.message : "Não foi possível gerar o acesso."),
   });
+  const [editandoEmail, setEditandoEmail] = useState(false);
+  const [emailNovo, setEmailNovo] = useState("");
+  type Troca = { acao: "trocado" | "separado" | "juntado" | "igual"; email: string; empresas?: string[]; senha?: string };
+  const trocar = useMutation({
+    mutationFn: async (destino: string) => {
+      const enviar = (juntar: boolean) => api<Troca>(`/api/v1/empresas/${empresaId}/acesso-portal/email`, {
+        method: "POST",
+        body: JSON.stringify({ email: destino.trim(), ...(juntar ? { juntar: true } : {}) }),
+      });
+      try {
+        return await enviar(false);
+      } catch (error) {
+        if (!(error instanceof ApiError) || error.code !== "EMAIL_EM_USO") throw error;
+        if (!window.confirm(`${error.message}\n\nA empresa vai entrar no portal com o mesmo login e a mesma senha. Continuar?`)) throw new ApiError(409, "EMAIL_EM_USO", "E-mail de acesso não alterado.");
+        return enviar(true);
+      }
+    },
+    onSuccess: async (resposta) => {
+      const r = resposta.data;
+      setErro("");
+      setEditandoEmail(false);
+      setGerada(r.senha ? { empresaId, senha: r.senha } : null);
+      setAviso(r.acao === "trocado" ? `Pronto: o login do portal agora é ${r.email}. A senha continua a mesma.`
+        : r.acao === "separado" ? `O login antigo também abria outras empresas e continua com elas. Esta empresa ganhou um login só dela: ${r.email}. Envie a senha abaixo; no primeiro acesso o portal pede para trocar.`
+          : r.acao === "juntado" ? `Pronto: a empresa entra no portal pelo login ${r.email}, junto com ${(r.empresas ?? []).join(", ")}. A senha é a desse login.`
+            : `O login do portal já é ${r.email}.`);
+      await queryClient.invalidateQueries({ queryKey: ["empresa", empresaId] });
+      await queryClient.invalidateQueries({ queryKey: ["empresas"] });
+    },
+    onError: (error) => setErro(error instanceof ApiError ? error.message : "Não foi possível trocar o e-mail de acesso."),
+  });
+  const emailDaFicha = (emailEmpresa ?? "").trim().toLowerCase();
+  const loginDiferente = acesso.ativo && Boolean(emailDaFicha) && emailDaFicha !== (acesso.email ?? "").trim().toLowerCase();
   async function copiar(valor: string) {
     await navigator.clipboard.writeText(valor);
     setAviso("Copiado.");
@@ -266,6 +299,7 @@ function AcessoPortal({ empresaId, emailEmpresa, portal, uso }: { empresaId: str
               <span className="break-all">{acesso.email || "—"}</span>
               {acesso.email ? <button type="button" className="acao acao-cyan inline-flex items-center gap-1" onClick={() => void copiar(acesso.email!)}><Copy size={12} /> Copiar</button> : null}
             </dd>
+            {acesso.outras?.length ? <p className="mt-1 text-xs text-slate-500">Este login também abre: {acesso.outras.join(", ")}.</p> : null}
           </div>
           <div className="min-w-0">
             <dt className="text-xs text-slate-500">Senha</dt>
@@ -289,6 +323,24 @@ function AcessoPortal({ empresaId, emailEmpresa, portal, uso }: { empresaId: str
           <span className="text-xs text-slate-500">Esta empresa ainda não entra no portal. Este e-mail vira o login.</span>
         </label>
       )}
+      {loginDiferente && !editandoEmail ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          <span>O e-mail da empresa é <strong>{emailDaFicha}</strong>, mas o login do portal é outro.</span>
+          <Button type="button" variant="secondary" className="h-8" disabled={trocar.isPending} onClick={() => { setAviso(""); trocar.mutate(emailDaFicha); }}>
+            {trocar.isPending ? "Trocando…" : "Usar este e-mail no login"}
+          </Button>
+        </div>
+      ) : null}
+      {acesso.ativo && editandoEmail ? (
+        <form className="grid gap-2 md:max-w-md" onSubmit={(event) => { event.preventDefault(); setAviso(""); trocar.mutate(emailNovo); }}>
+          <span className="text-sm font-medium text-slate-700">Novo e-mail de acesso</span>
+          <Input aria-label="Novo e-mail de acesso" type="email" maxLength={255} value={emailNovo} onChange={(event) => setEmailNovo(event.target.value)} placeholder="email@empresa.com" autoFocus />
+          <div className="flex gap-2">
+            <Button type="submit" disabled={trocar.isPending || !emailNovo.includes("@")}>{trocar.isPending ? "Salvando…" : "Salvar e-mail"}</Button>
+            <Button type="button" variant="ghost" onClick={() => setEditandoEmail(false)}>Cancelar</Button>
+          </div>
+        </form>
+      ) : null}
       {erro ? <Alerta>{erro}</Alerta> : null}
       {aviso ? <p role="status" className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{aviso}</p> : null}
       <div>
@@ -298,9 +350,13 @@ function AcessoPortal({ empresaId, emailEmpresa, portal, uso }: { empresaId: str
             setAviso("");
             gerar.mutate(true);
           }}><KeyRound size={16} /> {gerar.isPending ? "Gerando…" : "Gerar nova senha"}</Button>
-        ) : (
+        ) : null}
+        {acesso.ativo && !editandoEmail ? (
+          <Button type="button" variant="ghost" className="ml-2" onClick={() => { setEmailNovo(emailDaFicha || acesso.email || ""); setEditandoEmail(true); }}><Pencil size={16} /> Trocar e-mail de acesso</Button>
+        ) : null}
+        {!acesso.ativo ? (
           <Button type="button" disabled={gerar.isPending || !email.includes("@")} onClick={() => { setAviso(""); gerar.mutate(false); }}><KeyRound size={16} /> {gerar.isPending ? "Gerando…" : "Gerar acesso"}</Button>
-        )}
+        ) : null}
       </div>
     </Card>
   );

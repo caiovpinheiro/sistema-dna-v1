@@ -58,12 +58,13 @@ function diferencas<T extends Record<string, unknown>>(values: T, base: T | null
   return Object.fromEntries(Object.entries(values).filter(([key, value]) => String(value ?? "") !== String(base[key] ?? "")));
 }
 
-type LoginPortal = { acao: "trocado" | "juntado" | "igual" | "mantido" | "sem_acesso"; email: string; empresas?: string[] };
+type LoginPortal = { acao: "trocado" | "separado" | "juntado" | "igual" | "mantido" | "sem_acesso"; email: string; empresas?: string[] };
 
 /** O que aconteceu com o login do portal quando o e-mail da empresa mudou. */
 function avisoLogin(login: LoginPortal) {
   if (login.acao === "trocado") return `E-mail salvo. O login do portal agora é ${login.email}; a senha continua a mesma.`;
   if (login.acao === "juntado") return `E-mail salvo. A empresa passou a entrar no portal pelo login ${login.email}, junto com ${(login.empresas ?? []).join(", ")}. A senha é a desse login.`;
+  if (login.acao === "separado") return `E-mail salvo. O login antigo também abria outras empresas e continua com elas; esta empresa ganhou um login só dela: ${login.email}. Use "Gerar nova senha" no card do portal para enviar a senha.`;
   if (login.acao === "igual") return `E-mail salvo. O login do portal já é ${login.email}.`;
   if (login.acao === "mantido") return "E-mail salvo. O login do portal não mudou: esta empresa tem mais de um usuário no portal e nenhum usava o e-mail antigo.";
   return "E-mail salvo. Esta empresa ainda não tem acesso ao portal.";

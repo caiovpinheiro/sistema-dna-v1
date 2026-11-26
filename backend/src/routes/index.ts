@@ -293,6 +293,13 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig, se
       body: z.object({ email: z.string().trim().max(255).optional(), redefinir: z.boolean().optional(), juntar: z.boolean().optional() }),
     },
   }, async (request) => ok(await services.empresas.gerarAcessoPortal(request.params.id, request.body)));
+  api.post("/api/v1/empresas/:id/acesso-portal/email", {
+    schema: {
+      tags: ["empresas"],
+      params: z.object({ id: z.string().min(1) }),
+      body: z.object({ email: z.string().trim().min(3).max(255), juntar: z.boolean().optional() }),
+    },
+  }, async (request) => ok(await services.empresas.trocarEmailPortal(request.params.id, request.body)));
   api.patch("/api/v1/empresas/:id", {
     schema: { tags: ["empresas"], params: z.object({ id: z.string().min(1) }), body: empresaPatchSchema },
   }, async (request) => ok(await services.empresas.update(request.params.id, request.body)));
