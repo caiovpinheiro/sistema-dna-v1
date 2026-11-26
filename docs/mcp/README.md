@@ -27,7 +27,7 @@ ChatGPT/navegador ─► monólito: listener PÚBLICO /oauth/*, /.well-known/*, 
 | `MCP_GATEWAY_SECRETS` | `id:segredo,id2:segredo2` (32+ caracteres cada). O gateway assina com um deles; vários permitem rotação sem queda. |
 | `MCP_HMAC_JANELA_S` | Tolerância de relógio da assinatura (padrão 60). |
 | `MCP_INTERNAL_TLS_CERT` / `_KEY` / `_CA` | **mTLS obrigatório** no listener interno (validado no boot; falha fechada). |
-| `MCP_INTERNAL_INSECURE` | Só dev/teste, nunca em produção: listener interno em texto puro. |
+| `MCP_INTERNAL_INSECURE` | `1` = listener interno sem TLS (sem mTLS), autenticado só pela assinatura HMAC. Use apenas em rede privada. |
 | `MCP_INTERNAL_CLIENTES` | CNs/SANs de cliente aceitos (ex.: `gateway-mcp`). |
 | `MCP_CONTRATOS` | Versões do contrato interno aceitas (`1`, `1,2` durante uma troca). |
 | `MCP_OAUTH_REDIRECT_URIS` | Redirect URIs **exatas** (precedência sobre hosts). Ex.: `https://chatgpt.com/connector_platform_oauth_redirect`. |

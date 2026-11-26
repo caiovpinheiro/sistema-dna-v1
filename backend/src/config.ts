@@ -85,7 +85,7 @@ const envSchema = z.object({
   MCP_INTERNAL_TLS_CERT: z.string().optional().default(""),
   MCP_INTERNAL_TLS_KEY: z.string().optional().default(""),
   MCP_INTERNAL_TLS_CA: z.string().optional().default(""),
-  // mTLS é obrigatório. Só em desenvolvimento/teste (nunca em produção) dá para ligar sem TLS com MCP_INTERNAL_INSECURE=1.
+  // Sem mTLS, o canal interno usa só a assinatura HMAC (segredo compartilhado). Exige MCP_INTERNAL_INSECURE=1 e rede privada.
   MCP_INTERNAL_INSECURE: z.string().optional().transform((value) => value === "1" || value === "true"),
   // CNs/SANs de certificados de cliente aceitos no listener interno (vazio = qualquer certificado emitido pela CA).
   MCP_INTERNAL_CLIENTES: z.string().optional().default(""),

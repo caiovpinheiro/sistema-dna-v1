@@ -57,8 +57,8 @@ export function lerMcpConfig(config: AppConfig): McpConfig {
   }
   const lista = (texto: string) => texto.split(",").map((item) => item.trim()).filter(Boolean);
   const temTls = Boolean(config.MCP_INTERNAL_TLS_CERT || config.MCP_INTERNAL_TLS_KEY || config.MCP_INTERNAL_TLS_CA);
-  if (!temTls && (!config.MCP_INTERNAL_INSECURE || producao)) {
-    throw new Error("MCP: o listener interno exige mTLS (MCP_INTERNAL_TLS_CERT, _KEY e _CA). Texto puro só fora de produção, com MCP_INTERNAL_INSECURE=1.");
+  if (!temTls && !config.MCP_INTERNAL_INSECURE) {
+    throw new Error("MCP: informe o mTLS do listener interno (MCP_INTERNAL_TLS_CERT, _KEY e _CA) ou, para usar só a assinatura HMAC em rede privada, MCP_INTERNAL_INSECURE=1.");
   }
   if (temTls) validarMaterialTls({ cert: config.MCP_INTERNAL_TLS_CERT, key: config.MCP_INTERNAL_TLS_KEY, ca: config.MCP_INTERNAL_TLS_CA });
   const escopoPadrao = lista((config.MCP_ESCOPO_PADRAO ?? "mcp:read").replace(/\s+/g, ","));

@@ -24,7 +24,7 @@ O monólito exige certificado de cliente (`requestCert`+`rejectUnauthorized`) e,
 | Cliente sem certificado ou de outra CA | handshake recusado | — |
 | Cliente com CN fora da lista | 403 `CERTIFICADO_CLIENTE_NAO_PERMITIDO` | 503 `CONFIGURACAO_INVALIDA` |
 | Servidor com SAN diferente / CA diferente | — | handshake recusado → 503 |
-| Texto puro | recusado em produção; só dev/teste com `MCP_INTERNAL_INSECURE=1` | idem com `MCP_GATEWAY_INSEGURO=1` |
+| Texto puro (sem mTLS) | permitido só com `MCP_INTERNAL_INSECURE=1` (inclusive em produção); autenticação só por HMAC, rede privada | idem com `MCP_GATEWAY_INSEGURO=1` e `MONOLITO_INTERNAL_URL` em `http://` |
 
 ## Emissão (na implantação)
 

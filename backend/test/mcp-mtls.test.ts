@@ -82,13 +82,15 @@ test("fail-closed: certificado expirado, futuro, sem SAN, de outra CA, chave tro
   assert.throws(() => validarMaterialTls({ ...curto, ca: pki.ca.cert }, new Date(Date.now() + 3 * 86_400_000)), /expirado/);
 });
 
-test("configuração do monólito: mTLS obrigatório; texto puro só fora de produção e só com a flag explícita", { skip: pula }, () => {
+test("configuração do monólito: mTLS ou flag explícita de texto puro (HMAC em rede privada)", { skip: pula }, () => {
   const base = { MCP_PUBLIC_URL: "https://mcp.dnawork.ai", APP_PUBLIC_URL: "https://painel.dnawork.ai", MCP_GATEWAY_SECRETS: SEGREDO, MCP_OAUTH_CLIENTS: "", MCP_OAUTH_REDIRECT_HOSTS: "", MCP_OAUTH_REDIRECT_URIS: "", MCP_OAUTH_CIMD_URLS: "", MCP_CONTRATOS: "1", MCP_INTERNAL_CLIENTES: "", MCP_INTERNAL_TLS_CERT: "", MCP_INTERNAL_TLS_KEY: "", MCP_INTERNAL_TLS_CA: "" };
   assert.throws(() => lerMcpConfig({ ...base, MCP_INTERNAL_INSECURE: false } as never), /mTLS/);
   const antes = process.env.NODE_ENV;
   process.env.NODE_ENV = "production";
   try {
-    assert.throws(() => lerMcpConfig({ ...base, MCP_INTERNAL_INSECURE: true } as never), /mTLS/);
+    // Em produção, texto puro só com a flag explícita (rede privada, autenticação por HMAC).
+    assert.throws(() => lerMcpConfig({ ...base, MCP_INTERNAL_INSECURE: false } as never), /mTLS/);
+    assert.equal(lerMcpConfig({ ...base, MCP_INTERNAL_INSECURE: true } as never).inseguro, true);
   } finally { process.env.NODE_ENV = antes; }
   assert.equal(lerMcpConfig({ ...base, MCP_INTERNAL_INSECURE: true } as never).inseguro, true);
   for (const nome of Object.keys(ruins)) {

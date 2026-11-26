@@ -43,7 +43,9 @@ export async function iniciarMcp(app: FastifyInstance, deps: { db: Pool; config:
   const interno = criarAppInterno({ db: deps.db, config: deps.config, mcp, provider, acesso: deps.acesso, registro, servicos: deps.servicos });
   const runtime: McpRuntime = { config: mcp, provider, registro, servicos: deps.servicos, integracoes: new IntegracoesMcpService(deps.db, mcp, registro), interno };
   app.decorate("mcp", runtime);
-  if (!mcp.inseguro) {
+  if (mcp.inseguro) {
+    app.log.warn("mcp: listener interno sem TLS (MCP_INTERNAL_INSECURE=1); autenticação só por assinatura HMAC. Mantenha-o apenas na rede privada.");
+  } else {
     const pararObservacao = observarTls(interno.server as unknown as import("node:tls").Server, { cert: deps.config.MCP_INTERNAL_TLS_CERT, key: deps.config.MCP_INTERNAL_TLS_KEY, ca: deps.config.MCP_INTERNAL_TLS_CA }, app.log);
     app.addHook("onClose", async () => pararObservacao());
   }

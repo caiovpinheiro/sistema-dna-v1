@@ -21,7 +21,7 @@ const schema = z.object({
   MCP_TLS_CA: z.string().default(""),
   MCP_TLS_CERT: z.string().default(""),
   MCP_TLS_KEY: z.string().default(""),
-  /** Só desenvolvimento/teste, nunca em produção: fala com o monólito em texto puro. */
+  /** Sem mTLS: fala com o monólito em texto puro, autenticado só pela assinatura HMAC. Use apenas em rede privada. */
   MCP_GATEWAY_INSEGURO: bool,
   MCP_ALLOWED_HOSTS: z.string().default(""),
   MCP_ALLOWED_ORIGINS: z.string().default(""),
@@ -84,8 +84,8 @@ export function lerConfig(env: NodeJS.ProcessEnv = process.env): GatewayConfig {
   const temTls = Boolean(e.MCP_TLS_CA || e.MCP_TLS_CERT || e.MCP_TLS_KEY);
   if (temTls && !(e.MCP_TLS_CA && e.MCP_TLS_CERT && e.MCP_TLS_KEY)) throw new Error("mTLS incompleto: informe MCP_TLS_CA, MCP_TLS_CERT e MCP_TLS_KEY.");
   if (!temTls) {
-    if (!e.MCP_GATEWAY_INSEGURO || producao) throw new Error("mTLS é obrigatório: informe MCP_TLS_CA, MCP_TLS_CERT e MCP_TLS_KEY (texto puro só fora de produção, com MCP_GATEWAY_INSEGURO=1).");
-    if (monolito.protocol !== "http:") throw new Error("Sem mTLS, MONOLITO_INTERNAL_URL deve ser http:// (modo inseguro de desenvolvimento).");
+    if (!e.MCP_GATEWAY_INSEGURO) throw new Error("Informe MCP_TLS_CA, MCP_TLS_CERT e MCP_TLS_KEY (mTLS) ou, para usar só a assinatura HMAC em rede privada, MCP_GATEWAY_INSEGURO=1.");
+    if (monolito.protocol !== "http:") throw new Error("Sem mTLS, MONOLITO_INTERNAL_URL deve ser http:// (rede privada, só assinatura HMAC).");
   } else if (monolito.protocol !== "https:") {
     throw new Error("Com mTLS, MONOLITO_INTERNAL_URL deve usar https://.");
   }
