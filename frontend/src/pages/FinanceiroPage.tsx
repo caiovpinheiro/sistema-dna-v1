@@ -811,35 +811,117 @@ export function ComissaoEmpresasPage() {
   );
 }
 
+type Rescisao = {
+  id_contratacao: number; id_empresa: string; empresa: string; cnpj: string; nome: string; cpf: string; cargo: string; inicio: string; demissao: string;
+  calculo: { bolsa_base: number; meses_fechados: number; dias_trabalhados: number; meses: number; valor_dias: number; valor_ferias: number; total: number };
+};
+type Rescisoes = { competencia: string; itens: Rescisao[]; total: number };
+
 export function GerarHoleritePage() {
   const inicial = { mes: nowMonth(), ano: nowYear() };
-  const [busca, setBusca] = useState(inicial);
+  const [aba, setAba] = useState<"folhas" | "rescisoes">("folhas");
+  const [busca, setBusca] = useState<{ mes: string; ano: string; empresa?: string }>(inicial);
   const [rodada, setRodada] = useState(0);
   const [pagina, setPagina] = useState(1);
   const limpeza = useLimpeza(inicial, busca, (valor) => { setBusca(valor); setPagina(1); });
+  const competencia = `${busca.ano}-${String(busca.mes).padStart(2, "0")}`;
   const result = useQuery({
     // "rodada" muda a cada Pesquisar: a mesma busca repetida também recarrega.
     queryKey: ["holerite", busca, pagina, rodada],
     queryFn: () => api<Holerite[]>(`/api/v1/holerite?${new URLSearchParams({ ...busca, page: String(pagina), pageSize: String(TAMANHO) })}`),
+    enabled: aba === "folhas",
+  });
+  const rescisoes = useQuery({
+    queryKey: ["holerite-rescisoes", busca, rodada],
+    queryFn: async () => (await api<Rescisoes>(`/api/v1/holerite/rescisoes?${new URLSearchParams({ competencia, empresa: busca.empresa ?? "" })}`)).data,
+    enabled: aba === "rescisoes",
   });
   const linhas = result.data?.data ?? [];
   const total = Number(result.data?.meta?.total ?? 0);
+  const desligados = rescisoes.data?.itens ?? [];
+  const carregando = aba === "folhas" ? result.isLoading : rescisoes.isLoading;
   return (
     <div className="grid gap-5">
       <CabecalhoPagina
         titulo="Holerite"
-        descricao="Empresas com contratados ativos no mês. Clique em “Lançar folha” para lançar faltas e valores e gerar os holerites de estágio em PDF."
+        descricao={aba === "folhas"
+          ? "Empresas com contratados ativos no mês. Clique em “Lançar folha” para lançar faltas e valores e gerar os holerites de estágio em PDF."
+          : "Estagiários desligados no mês. O sistema calcula os dias trabalhados e as férias proporcionais e gera o recibo de rescisão em PDF."}
       />
+      <div className="flex gap-2" role="tablist" aria-label="Holerite">
+        {([["folhas", "Folhas"], ["rescisoes", "Rescisões"]] as const).map(([chave, rotulo]) => (
+          <Button key={chave} type="button" role="tab" aria-selected={aba === chave} variant={aba === chave ? "primary" : "secondary"} className="h-9" onClick={() => setAba(chave)}>{rotulo}</Button>
+        ))}
+      </div>
       <Card>
         <form autoComplete="off" key={limpeza.versao} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_7rem_auto] lg:items-end" onSubmit={(event) => { event.preventDefault(); setBusca({ ...inicial, ...lerFiltros(event, ["empresa", "mes", "ano"]) }); setPagina(1); setRodada((atual) => atual + 1); }}>
           <EmpresaField />
           <MonthField />
           <YearField />
-          <SearchButton carregando={result.isFetching} />
+          <SearchButton carregando={aba === "folhas" ? result.isFetching : rescisoes.isFetching} />
         </form>
       </Card>
-      <ResumoResultados total={result.isLoading ? null : total} singular="empresa" plural="empresas" filtrando={limpeza.filtrando} carregando={result.isLoading} onLimpar={limpeza.limpar} />
-      {result.isLoading ? <Skeleton className="h-64" /> : result.isError ? (
+      <ResumoResultados total={carregando ? null : aba === "folhas" ? total : desligados.length} singular={aba === "folhas" ? "empresa" : "rescisão"} plural={aba === "folhas" ? "empresas" : "rescisões"} filtrando={limpeza.filtrando} carregando={carregando} onLimpar={limpeza.limpar} />
+      {aba === "rescisoes" ? (
+        rescisoes.isLoading ? <Skeleton className="h-64" /> : rescisoes.isError ? (
+          <Alerta>{erroDe(rescisoes.error, "Não foi possível carregar as rescisões.")}</Alerta>
+        ) : desligados.length ? (
+          <Card className="overflow-x-auto p-0">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Estagiário</th>
+                  <th>Empresa</th>
+                  <th>Início</th>
+                  <th>Desligamento</th>
+                  <th className="text-right">Bolsa</th>
+                  <th className="text-right">Dias trabalhados</th>
+                  <th className="text-right">Férias proporcionais</th>
+                  <th className="text-right">Total</th>
+                  <th><span className="sr-only">Recibo</span></th>
+                </tr>
+              </thead>
+              <tbody>
+                {desligados.map((item) => (
+                  <tr key={item.id_contratacao}>
+                    <td className="min-w-48">
+                      <p className="font-semibold text-navy-900">{item.nome}</p>
+                      <p className="text-xs text-slate-500">{[item.cpf, item.cargo].filter(Boolean).join(", ")}</p>
+                    </td>
+                    <td className="min-w-44 text-slate-700">{item.empresa}</td>
+                    <td className="whitespace-nowrap tabular-nums text-slate-600">{dateBr(item.inicio)}</td>
+                    <td className="whitespace-nowrap tabular-nums text-slate-600">{dateBr(item.demissao)}</td>
+                    <td className="whitespace-nowrap text-right tabular-nums text-slate-600">{money(item.calculo.bolsa_base)}</td>
+                    <td className="whitespace-nowrap text-right">
+                      <p className="font-semibold tabular-nums text-navy-900">{money(item.calculo.valor_dias)}</p>
+                      <p className="text-xs text-slate-500">{item.calculo.dias_trabalhados} {item.calculo.dias_trabalhados === 1 ? "dia" : "dias"}</p>
+                    </td>
+                    <td className="whitespace-nowrap text-right">
+                      <p className="font-semibold tabular-nums text-navy-900">{money(item.calculo.valor_ferias)}</p>
+                      <p className="text-xs text-slate-500">{item.calculo.meses}/12 ({item.calculo.meses} {item.calculo.meses === 1 ? "mês" : "meses"})</p>
+                    </td>
+                    <td className="whitespace-nowrap text-right font-semibold tabular-nums text-navy-900">{money(item.calculo.total)}</td>
+                    <td className="w-px whitespace-nowrap text-right">
+                      <a href={`/api/v1/holerite/rescisoes/${item.id_contratacao}/pdf`} target="_blank" rel="noreferrer">
+                        <Button type="button" className="h-9"><FileText size={15} /> Recibo PDF</Button>
+                      </a>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colSpan={7} className="text-right font-semibold text-slate-600">Total das rescisões do mês</td>
+                  <td className="whitespace-nowrap text-right font-semibold tabular-nums text-navy-900">{money(rescisoes.data?.total ?? 0)}</td>
+                  <td />
+                </tr>
+              </tfoot>
+            </table>
+          </Card>
+        ) : (
+          <Empty title="Nenhuma rescisão de estágio neste mês" text="Só aparecem estagiários com data de desligamento no mês escolhido. Troque o mês ou a empresa e clique em Pesquisar." />
+        )
+      ) : result.isLoading ? <Skeleton className="h-64" /> : result.isError ? (
         <Alerta>{erroDe(result.error, "Não foi possível carregar o holerite.")}</Alerta>
       ) : linhas.length ? (
         <Card className="overflow-x-auto p-0">
