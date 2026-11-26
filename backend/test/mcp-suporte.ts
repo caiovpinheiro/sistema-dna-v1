@@ -67,8 +67,8 @@ async function criarBanco(): Promise<{ url: string; limpar(): Promise<void> }> {
   const cliente = new pg.Client({ connectionString: urlBase.toString() });
   await cliente.connect();
   const sql = (arquivo: string) => fs.readFileSync(path.join(raiz, arquivo), "utf8");
-  await cliente.query(sql("database/schema/local-dev.sql"));
-  // Tabelas legadas do espelho (public.*) que os services de leitura consultam: o local-dev.sql só cria o schema dna_work.
+  // Espelho legado (public.*) com os ids que as suítes do MCP usam (texto/serial). Criado ANTES do local-dev.sql, que usa
+  // CREATE TABLE IF NOT EXISTS: assim a versão uuid do local-dev (outras suítes) não substitui esta.
   await cliente.query(`
     CREATE TABLE IF NOT EXISTS public.grupo (id serial PRIMARY KEY, nome text NOT NULL);
     CREATE TABLE IF NOT EXISTS public.empresa (id text PRIMARY KEY, nome_fantasia text, grupo_id integer, cnpj text, local text, cep text, latitude double precision, longitude double precision);
@@ -77,6 +77,10 @@ async function criarBanco(): Promise<{ url: string; limpar(): Promise<void> }> {
       id text PRIMARY KEY, vaga_id text, empresa_id text, tipo_vaga integer, cargo text, cargo_id integer, salario numeric, beneficios text,
       sexo text, idade integer, idade_ate integer, horario text, tipo_trabalho text, cep text, latitude double precision, longitude double precision,
       atividades text, descricao text, requisitos text, escolaridade text, carga_horaria text);
+  `);
+  await cliente.query(sql("database/schema/local-dev.sql"));
+  // Demais tabelas legadas do espelho (dna_work.*), que dependem do schema criado pelo local-dev.sql.
+  await cliente.query(`
     CREATE TABLE IF NOT EXISTS dna_work.usuario_empresa (id serial PRIMARY KEY, id_empresa text, email text, senha_hash text, senha_envio text);
     ALTER TABLE dna_work.vaga ADD COLUMN IF NOT EXISTS codigo text, ADD COLUMN IF NOT EXISTS texto_carga text, ADD COLUMN IF NOT EXISTS horabase text,
       ADD COLUMN IF NOT EXISTS hora_saida_base text, ADD COLUMN IF NOT EXISTS sexo text, ADD COLUMN IF NOT EXISTS idade text, ADD COLUMN IF NOT EXISTS idadeate text,
