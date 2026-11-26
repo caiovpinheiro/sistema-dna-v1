@@ -1,6 +1,6 @@
 # Agente — Contratações
 
-> Última revisão: 2026-11-26 (Fase 3 do MCP: nota sobre o consumo pelo MCP)
+> Última revisão: 2026-11-26 (recusa VAGA_SEM_POSICAO em vaga contratada e lotada)
 
 ## Para que serve
 
@@ -89,6 +89,7 @@ Criação (`contratacao.service.ts:93-207`, tudo numa transação):
 - Regime vem de `modalidade_vaga.descricao` via `classifyRegime`: só "estágio" ou "clt"; outro → 422 `MODALIDADE_NAO_SUPORTADA`.
 - 409 `VINCULO_DUPLICADO` se já ativo na mesma vaga; 409 `CANDIDATO_JA_ATIVO` se ativo em outra vaga e `ALLOW_MULTIPLE_ACTIVE_LINKS` for falso.
 - Capacidade = `quantidade_posicoes ?? 1`; cheia → 409 `VAGA_SEM_POSICAO`. Ao ocupar a última, vaga vai para `VAGA_STATUS_OCUPADA`.
+- Recusa por status (`recusaPorStatus` em `lib/vaga-status.ts`, sempre 409, nunca reabre a vaga): vaga **contratada e lotada** → `VAGA_SEM_POSICAO` ("Todas as posições desta vaga já estão ocupadas."), conferida depois da duplicidade e do vínculo ativo; pausada, fechada (demitida/cancelada/desativada), código desconhecido ou contratada com posição livre → `VAGA_ENCERRADA`. Vale também para "Trocar vaga" (mensagem "da nova vaga"). Antes, a vaga lotada pelo próprio sistema respondia `VAGA_ENCERRADA`; o frontend e as integrações não dependem desses códigos (mostram a mensagem). Testes: `backend/test/vaga-recusa.test.ts` e `escopo.test.ts`.
 - `id_contratacao`: antes do `nextval`, faz `setval` com o maior id existente (sync do legado grava ids explícitos) — `contratacao.repository.ts:103-117`.
 - Com `id_processo`, o processo precisa ser do mesmo candidato/vaga e não estar encerrado (409 `PROCESSO_DIVERGENTE`/`PROCESSO_ENCERRADO`); sem `id_processo`, vincula o processo aberto mais recente do par candidato+vaga, se houver.
 - Se faltar migration (`vaga.quantidade_posicoes`, sequence, `colaborador.id_contratacao`, `api_idempotencia`), `create/encerrar/documentos/assinatura` respondem erro de migration pendente (`ensureReady`).

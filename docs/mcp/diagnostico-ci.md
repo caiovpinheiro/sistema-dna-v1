@@ -56,7 +56,11 @@ O resultado de negócio é o mesmo (a contratação é recusada com 409); muda o
 1. Manter o comportamento e atualizar o teste para `VAGA_ENCERRADA` (a regra vigente é "só contrata em vaga aberta").
 2. Ajustar o serviço: se a vaga está `contratada` e todas as posições estão ocupadas, responder `VAGA_SEM_POSICAO` (mensagem mais clara para o operador), mantendo `VAGA_ENCERRADA` para pausada/fechada.
 
-Como é uma decisão de comportamento (mensagem ao operador), nada foi alterado.
+**Decisão (opção 2, aprovada):** vaga `contratada` com todas as posições ocupadas responde `409 VAGA_SEM_POSICAO` ("Todas as posições desta vaga já estão ocupadas."); pausada, fechada/cancelada/desativada e contratada com posição livre continuam `409 VAGA_ENCERRADA`. Justificativa: a mensagem mostra ao operador o motivo real (a vaga lotou), sem mudar o resultado (recusa 409).
+
+Implementação (commit isolado): função pura `recusaPorStatus` em `backend/src/lib/vaga-status.ts`, usada em `ContratacaoService.create` e na troca de vaga. A ocupação é contada com a vaga travada (`FOR UPDATE`), então contratações concorrentes continuam sem ultrapassar o limite (quem perde a corrida recebe `VAGA_SEM_POSICAO`). Duplicidade (`VINCULO_DUPLICADO`) e vínculo ativo (`CANDIDATO_JA_ATIVO`) mantêm a precedência; nenhum status é alterado ao recusar e a vaga nunca reabre sozinha. Nenhum consumidor depende dos códigos: o frontend mostra a mensagem do erro e nem o gateway MCP nem os scripts usam esses códigos.
+
+Testes novos: `vaga-recusa.test.ts` (matriz status × ocupação) e, em `escopo.test.ts`, "recusa por status e ocupação" (pausada/fechada/contratada com vaga, lotada, não reabre, pausada lotada), o perdedor da corrida com `VAGA_SEM_POSICAO` e a troca para uma vaga contratada lotada. O teste original "contrata até o limite" passa sem mudar a expectativa `VAGA_SEM_POSICAO`.
 
 ## Os 22 testes locais (`hookFailed`)
 

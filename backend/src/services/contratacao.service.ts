@@ -14,7 +14,7 @@ import { buildRescisaoPdf, type RescisaoPdfDados } from "../lib/rescisao-pdf.js"
 import { consultarDocumentoZapSign, criarDocumentoZapSign, type ZapDoc } from "../lib/zapsign.js";
 import { moneyToNumber } from "../lib/money.js";
 import { contratosFaltantes } from "../lib/contrato-faltante.js";
-import { CODIGOS_POR_STATUS, statusDaVaga } from "../lib/vaga-status.js";
+import { CODIGOS_POR_STATUS, recusaPorStatus } from "../lib/vaga-status.js";
 import { presentContratacao } from "./presenters.js";
 import type { ProcessoService } from "./processo.service.js";
 import { cnpjParaDocumento } from "../lib/cobranca-pela-matriz.js";
@@ -117,9 +117,11 @@ export class ContratacaoService {
           id_empresa: vaga.id_empresa,
         });
       }
-      if (statusDaVaga(vaga.status) !== "aberta") {
-        throw new AppError(409, "VAGA_ENCERRADA", "A vaga não está aberta para contratação.");
-      }
+      // A vaga está travada (FOR UPDATE): a contagem abaixo é consistente mesmo com contratações concorrentes.
+      const recusa = recusaPorStatus(vaga.status, (await this.repo.countActiveByVaga(client, vaga.id_vaga, this.config.CONTRATACAO_STATUS_ATIVO)).total, vaga.quantidade_posicoes ?? 1);
+      // "contratada" e lotada segue adiante: duplicidade e vínculo ativo têm precedência, e a checagem de capacidade
+      // logo abaixo (com a mesma vaga travada) responde VAGA_SEM_POSICAO. Nada aqui muda o status da vaga.
+      if (recusa === "VAGA_ENCERRADA") throw new AppError(409, "VAGA_ENCERRADA", "A vaga não está aberta para contratação.");
       const regime = classifyRegime(vaga.modalidade);
       if (regime === "outro") {
         throw new AppError(422, "MODALIDADE_NAO_SUPORTADA", "Esta versão contrata apenas vagas de CLT ou estágio.", {
@@ -348,9 +350,9 @@ export class ContratacaoService {
       for (const idVaga of ids) travadas.set(idVaga, await this.vagas.lockById(client, idVaga));
       const nova = travadas.get(input.id_vaga);
       if (!nova || !nova.id_empresa) throw new AppError(404, "VAGA_NAO_ENCONTRADA", "Vaga não encontrada.");
-      if (statusDaVaga(nova.status) !== "aberta") {
-        throw new AppError(409, "VAGA_ENCERRADA", "A nova vaga não está aberta para contratação.");
-      }
+      const recusaNova = recusaPorStatus(nova.status, (await this.repo.countActiveByVaga(client, nova.id_vaga, this.config.CONTRATACAO_STATUS_ATIVO)).total, nova.quantidade_posicoes ?? 1);
+      // "contratada" e lotada: o regime e a duplicidade são conferidos antes; a capacidade abaixo responde VAGA_SEM_POSICAO.
+      if (recusaNova === "VAGA_ENCERRADA") throw new AppError(409, "VAGA_ENCERRADA", "A nova vaga não está aberta para contratação.");
       const regimeNovo = classifyRegime(nova.modalidade);
       if (regimeNovo !== classifyRegime(current.modalidade)) {
         throw new AppError(409, "REGIME_DIVERGENTE", "A nova vaga precisa ter o mesmo regime (CLT ou estágio) da contratação.");

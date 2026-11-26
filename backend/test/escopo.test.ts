@@ -240,6 +240,40 @@ test("contrata até o limite, bloqueia a sexta, a duplicada, a sem vaga e a empr
   assert.equal(wrong.json().error.code, "EMPRESA_DIVERGENTE");
 });
 
+test("recusa por status e ocupação: pausada/fechada/contratada com vaga → VAGA_ENCERRADA; lotada → VAGA_SEM_POSICAO; nunca reabre", async () => {
+  const company = await call("POST", "/api/v1/empresas", { razao_social: "Empresa Status Ltda", cnpj: cnpj(9), email: "status@example.com" });
+  const idEmpresa = company.json().data.id_empresa as string;
+  const vaga = await call("POST", "/api/v1/vagas", { id_empresa: idEmpresa, cargo: "Atendente Status", tipo_vaga: 2, quantidade_posicoes: 2, salario: "2000" });
+  const idVaga = vaga.json().data.id_vaga as string;
+  const pessoas: string[] = [];
+  for (let index = 0; index < 4; index += 1) {
+    const p = await call("POST", "/api/v1/candidatos", { nome: `Status ${index}`, cpf: cpf(900 + index), email: `status${index}@example.com` });
+    pessoas.push(p.json().data.id_candidato);
+  }
+  const contratar = (i: number) => call("POST", "/api/v1/contratacoes", { id_candidato: pessoas[i], id_vaga: idVaga, data_inicio: "2026-11-01" }, { "idempotency-key": `status-${i}-${Date.now()}-${Math.random()}` });
+  const situacao = async () => (await call("GET", `/api/v1/vagas/${idVaga}`)).json().data.situacao;
+  assert.equal((await contratar(0)).statusCode, 201);
+  for (const s of ["pausada", "fechada", "contratada"]) {
+    assert.equal((await call("PATCH", `/api/v1/vagas/${idVaga}`, { situacao: s })).statusCode, 200, s);
+    const r = await contratar(1);
+    assert.equal(r.statusCode, 409, s);
+    assert.equal(r.json().error.code, "VAGA_ENCERRADA", `${s} com posição livre`);
+    assert.equal(await situacao(), s, "o status não muda ao recusar");
+  }
+  assert.equal((await call("PATCH", `/api/v1/vagas/${idVaga}`, { situacao: "aberta" })).statusCode, 200);
+  assert.equal((await contratar(1)).statusCode, 201);
+  assert.equal(await situacao(), "contratada", "ao lotar, vira contratada");
+  const lotada = await contratar(2);
+  assert.equal(lotada.statusCode, 409);
+  assert.equal(lotada.json().error.code, "VAGA_SEM_POSICAO");
+  assert.equal(lotada.json().error.message, "Todas as posições desta vaga já estão ocupadas.");
+  assert.equal(await situacao(), "contratada", "não reabre sozinha");
+  assert.equal((await call("GET", `/api/v1/vagas/${idVaga}`)).json().data.ocupadas, 2);
+  // Pausar uma vaga lotada continua sendo "encerrada" (não é a lotação que impede, é o status).
+  assert.equal((await call("PATCH", `/api/v1/vagas/${idVaga}`, { situacao: "pausada" })).statusCode, 200);
+  assert.equal((await contratar(2)).json().error.code, "VAGA_ENCERRADA");
+});
+
 test("duas contratações concorrentes não ultrapassam a última posição", async () => {
   const company = await call("POST", "/api/v1/empresas", {
     razao_social: "Empresa Corrida Ltda", cnpj: cnpj(5), email: "corrida@example.com",
@@ -258,6 +292,8 @@ test("duas contratações concorrentes não ultrapassam a última posição", as
   }, { "idempotency-key": `corrida-${index}-${Date.now()}` })));
   const statuses = results.map((item) => item.statusCode).sort();
   assert.deepEqual(statuses, [201, 409]);
+  // Quem perde a corrida recebe "sem posição" (a vencedora lotou a vaga, que virou contratada).
+  assert.equal(results.find((item) => item.statusCode === 409)!.json().error.code, "VAGA_SEM_POSICAO");
   const detail = await call("GET", `/api/v1/vagas/${vaga.json().data.id_vaga}`);
   assert.equal(detail.json().data.ocupadas, 1);
   assert.equal(detail.json().data.regime, "estagio");
@@ -300,6 +336,20 @@ test("troca a vaga de uma contratação ativa: a posição sai da antiga e entra
   assert.equal(nova.disponiveis, 1);
   const colaborador = await db.query("SELECT id_empresa, cargo FROM dna_work.colaborador WHERE id_contratacao = $1", [id]);
   assert.equal(colaborador.rows[0].id_empresa, idB);
+
+  // Trocar para uma vaga "contratada" e lotada: VAGA_SEM_POSICAO (409), sem mexer em nenhuma das duas vagas.
+  const lotada = await call("POST", "/api/v1/vagas", { id_empresa: idA, cargo: "Suporte Comercial", tipo_vaga: 2, quantidade_posicoes: 1, salario: "2000" });
+  const idLotada = lotada.json().data.id_vaga as string;
+  const outra = await call("POST", "/api/v1/candidatos", { nome: "Ocupa Vaga", cpf: cpf(950), email: "ocupa@example.com" });
+  assert.equal((await call("POST", "/api/v1/contratacoes", { id_candidato: outra.json().data.id_candidato, id_vaga: idLotada, data_inicio: "2026-11-30" }, { "idempotency-key": `ocupa-${Date.now()}` })).statusCode, 201);
+  const paraLotada = await call("POST", `/api/v1/contratacoes/${id}/trocar-vaga`, { id_vaga: idLotada });
+  assert.equal(paraLotada.statusCode, 409);
+  assert.equal(paraLotada.json().error.code, "VAGA_SEM_POSICAO");
+  assert.equal((await call("GET", `/api/v1/vagas/${idLotada}`)).json().data.situacao, "contratada");
+  assert.equal((await call("GET", `/api/v1/vagas/${idCerta}`)).json().data.ocupadas, 1);
+  // Trocar para uma vaga pausada continua VAGA_ENCERRADA.
+  assert.equal((await call("PATCH", `/api/v1/vagas/${idErrada}`, { situacao: "pausada" })).statusCode, 200);
+  assert.equal((await call("POST", `/api/v1/contratacoes/${id}/trocar-vaga`, { id_vaga: idErrada })).json().error.code, "VAGA_ENCERRADA");
 });
 
 test("encerra contratação e preserva o histórico", async () => {
