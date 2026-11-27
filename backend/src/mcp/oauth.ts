@@ -235,6 +235,16 @@ export function montarOAuth(app: FastifyInstance, provider: Provider, limitePorM
   provider.on("server_error", (_ctx, erro) => {
     app.log.error({ mensagem: erro.message }, "mcp oauth: erro interno do provider");
   });
+  // Diagnóstico: por que um login ou uma troca de código falhou (só códigos e descrições do OAuth, nunca código, token ou assertion).
+  const registrarFalha = (etapa: string) => (ctx: { oidc?: { client?: { clientId?: string }; params?: Record<string, unknown> } }, erro: { error?: string; error_description?: string; message?: string }) => {
+    const params = ctx?.oidc?.params ?? {};
+    app.log.warn({
+      etapa, erro: erro.error ?? "erro", descricao: erro.error_description ?? erro.message, cliente: ctx?.oidc?.client?.clientId ?? params.client_id,
+      grant_type: params.grant_type, resource: params.resource, redirect_uri: params.redirect_uri,
+    }, "mcp oauth: falha");
+  };
+  provider.on("grant.error", registrarFalha("token"));
+  provider.on("authorization.error", registrarFalha("autorizacao"));
   void app.register(async (oauth) => {
     for (const tipo of ["application/x-www-form-urlencoded", "application/json"]) {
       oauth.addContentTypeParser(tipo, (_request, _payload, done) => done(null));
