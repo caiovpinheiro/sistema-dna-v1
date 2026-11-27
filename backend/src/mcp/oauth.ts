@@ -189,7 +189,7 @@ export function criarProvider(db: Pool, config: AppConfig, mcp: McpConfig, chave
       rpInitiatedLogout: { enabled: false },
       registration: { enabled: config.MCP_OAUTH_DCR, initialAccessToken: false },
       clientIdMetadataDocument: {
-        enabled: true,
+        enabled: config.MCP_OAUTH_CIMD,
         ack: "draft-03",
         // Lista exata de client_id (ex.: https://chatgpt.com/oauth/client.json). Vazia = qualquer https público (com proteção SSRF).
         allowFetch: async (_ctx, clientId) => !mcp.cimdUrls.length || mcp.cimdUrls.includes(clientId),

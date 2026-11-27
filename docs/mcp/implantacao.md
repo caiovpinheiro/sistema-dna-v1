@@ -84,3 +84,11 @@ A titularidade do monólito só muda com **autorização expressa**: defina `MON
 Monólito: `MCP_ESCOPO_PADRAO` (mcp:read), `MCP_JWKS_CACHE_S` (60), `MCP_FERRAMENTA_TIMEOUT_MS` (20000), `MCP_AUDITORIA_RETENCAO_DIAS` (180), `MCP_OAUTH_RETENCAO_DIAS` (7), `MCP_MANUTENCAO_INTERVALO_MIN` (60), `MCP_NONCE_TTL_S`. Gateway: `MCP_DESCOBERTA_PUBLICA` (ligada). GitHub (variável): `MONOLITO_DEPLOY_DONO`.
 
 Para o ChatGPT (CIMD com `private_key_jwt`, preferencial): `MCP_OAUTH_CIMD_URLS=https://chatgpt.com/oauth/client.json` e `MCP_OAUTH_REDIRECT_URIS=https://chatgpt.com/connector_platform_oauth_redirect` (mais URIs por conexão, se o ChatGPT fornecer). O servidor de autorização precisa de saída HTTPS para `chatgpt.com` (busca do documento e do `jwks_uri`).
+
+
+## ChatGPT: modo CIMD (padrão) ou registro dinâmico (DCR)
+
+- **CIMD (padrão):** o ChatGPT se identifica por `https://chatgpt.com/oauth/client.json` e assina a troca do código com a chave dele (`private_key_jwt`); o sistema baixa o JWKS do ChatGPT. Variáveis: `MCP_OAUTH_CIMD_URLS`, `MCP_OAUTH_REDIRECT_URIS`.
+- **DCR (alternativa mais simples):** `MCP_OAUTH_CIMD=0` e `MCP_OAUTH_DCR=1`. O ChatGPT registra um cliente público e usa PKCE, sem assinatura de cliente nem download de JWKS. Continua obrigatório: login real no painel, consentimento, `resource` exato e redirect exato (`MCP_OAUTH_REDIRECT_URIS=https://chatgpt.com/connector_platform_oauth_redirect`). Coberto por `backend/test/mcp-chatgpt-dcr.test.ts`.
+- Ao trocar de modo, no ChatGPT **desinstale e instale de novo** o app (o cliente registrado muda).
+- Falhas de login e de troca de código aparecem no log do sistema como `mcp oauth: falha` (etapa, código OAuth e descrição; sem segredos).

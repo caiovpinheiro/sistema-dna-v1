@@ -93,6 +93,9 @@ const envSchema = z.object({
   MCP_CONTRATOS: z.string().optional().default("1"),
   // OAuth: DCR desligado por padrão; clientes previamente cadastrados em JSON (segredos só no ambiente).
   MCP_OAUTH_DCR: z.string().optional().transform((value) => value === "1" || value === "true"),
+  // CIMD (client_id = URL de documento, ex.: ChatGPT com private_key_jwt). Ligado por padrão; "0" desliga e o ChatGPT
+  // passa a usar o registro dinâmico (MCP_OAUTH_DCR=1): cliente público + PKCE, sem assinatura de cliente.
+  MCP_OAUTH_CIMD: z.string().optional().transform((value) => !(value === "0" || value === "false")),
   MCP_OAUTH_CLIENTS: z.string().optional().default(""),
   MCP_OAUTH_REDIRECT_HOSTS: z.string().optional().default(""),
   // Redirect URIs EXATAS permitidas (ex.: https://chatgpt.com/connector_platform_oauth_redirect). Têm precedência sobre hosts.
