@@ -31,6 +31,15 @@ type Empresa = {
 };
 type GrupoDetalhe = Grupo & { empresas: Empresa[] };
 
+/** Onde fica a empresa: "Rua X, 123 - Bairro - Cidade / UF · CEP 00000-000" (o que houver). */
+function localizacaoDa(empresa: Pick<Empresa, "logradouro" | "numero" | "complemento" | "local" | "cep">) {
+  const rua = [empresa.logradouro?.trim(), empresa.numero?.trim(), empresa.complemento?.trim()].filter(Boolean).join(", ");
+  const local = (empresa.local ?? "").trim().replace(/^-\s*|\s*-\s*$/g, "").replace(/^\/\s*$/, "");
+  const cep = (empresa.cep ?? "").replace(/\D/g, "");
+  const cepTexto = cep.length === 8 ? `CEP ${cep.slice(0, 5)}-${cep.slice(5)}` : "";
+  return [[rua, local].filter(Boolean).join(" - "), cepTexto].filter(Boolean).join(" · ");
+}
+
 const abas: Array<{ id: Aba; label: string }> = [
   { id: "grupo", label: "Grupo" },
   { id: "empresa", label: "Empresa" },
@@ -843,11 +852,20 @@ function AbaVaga({ empresaInicial, modeloInicial, modo = "vaga" }: { empresaInic
                 <BuscaOpcao
                   value={form.empresa_id}
                   onChange={(empresaId) => setForm({ ...form, empresa_id: empresaId })}
-                  opcoes={(empresas.data?.data ?? []).map((empresa) => ({ id: empresa.id, label: empresa.nome_fantasia || empresa.razao_social, detalhe: empresa.cnpj ? `CNPJ ${formatCnpj(empresa.cnpj)}` : "Sem CNPJ" }))}
-                  placeholder="Pesquisar empresa pelo nome ou CNPJ"
+                  opcoes={(empresas.data?.data ?? []).map((empresa) => ({
+                    id: empresa.id,
+                    label: empresa.nome_fantasia || empresa.razao_social,
+                    detalhe: [empresa.cnpj ? `CNPJ ${formatCnpj(empresa.cnpj)}` : "Sem CNPJ", localizacaoDa(empresa) || "Sem endereço"].join(" · "),
+                  }))}
+                  placeholder="Pesquisar empresa pelo nome, CNPJ, bairro, cidade ou CEP"
                 />
               </Field>
-              {empresaDaVaga ? <p className="mt-1 text-xs text-slate-500">{empresaDaVaga.cnpj ? `CNPJ ${formatCnpj(empresaDaVaga.cnpj)}` : "Empresa sem CNPJ"}{empresaDaVaga.nome_fantasia && empresaDaVaga.razao_social !== empresaDaVaga.nome_fantasia ? ` · ${empresaDaVaga.razao_social}` : ""}</p> : null}
+              {empresaDaVaga ? (
+                <div className="mt-1 grid gap-0.5 text-xs text-slate-500">
+                  <p>{empresaDaVaga.cnpj ? `CNPJ ${formatCnpj(empresaDaVaga.cnpj)}` : "Empresa sem CNPJ"}{empresaDaVaga.nome_fantasia && empresaDaVaga.razao_social !== empresaDaVaga.nome_fantasia ? ` · ${empresaDaVaga.razao_social}` : ""}</p>
+                  <p>{localizacaoDa(empresaDaVaga) || "Empresa sem endereço cadastrado"}</p>
+                </div>
+              ) : null}
             </Celula>
             <Celula span={2}>
               <Field label="Modelo (opcional)">

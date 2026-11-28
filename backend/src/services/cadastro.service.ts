@@ -422,7 +422,8 @@ export class CadastroService {
   async listarEmpresas() {
     await this.ensureMirror();
     const { rows } = await this.db.query<EmpresaRow>(
-      `SELECT id::text AS id, grupo_id::text AS grupo_id, cnpj, razao_social, nome_fantasia, email, telefone, local
+      `SELECT id::text AS id, grupo_id::text AS grupo_id, cnpj, razao_social, nome_fantasia, email, telefone,
+              cep, logradouro, numero, complemento, local
        FROM public.empresa ORDER BY nome_fantasia LIMIT 500`,
     );
     return rows;
